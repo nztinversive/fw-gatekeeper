@@ -42,6 +42,15 @@ const links = [
     ),
   },
   {
+    href: '/onboarding',
+    label: 'Onboarding Guide',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H8.25m0 12.75h7.5m-7.5 3h4.5m-6-15h3.375c.621 0 1.216.247 1.655.686l4.034 4.034c.439.439.686 1.034.686 1.655V19.5A2.25 2.25 0 0114.25 21.75h-6A2.25 2.25 0 016 19.5v-15A2.25 2.25 0 018.25 2.25z" />
+      </svg>
+    ),
+  },
+  {
     href: '/kiosks',
     label: 'Kiosks',
     icon: (

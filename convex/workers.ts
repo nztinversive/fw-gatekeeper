@@ -59,7 +59,7 @@ export const create = mutation({
   args: {
     name: v.string(),
     department: v.optional(v.string()),
-    faceEncoding: v.optional(v.array(v.float64())),
+    faceEncoding: v.array(v.float64()),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
   },
   handler: async (ctx, args) => {
