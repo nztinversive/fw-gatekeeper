@@ -3,14 +3,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
+import { hasValidAdminSession, unauthorizedApiResponse } from '@/lib/auth';
+
+async function requireAdmin(req: NextRequest) {
+  return (await hasValidAdminSession(req)) ? null : unauthorizedApiResponse();
+}
 
 export async function GET(req: NextRequest) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const includeEncodings = req.nextUrl.searchParams.get('include_encodings') === 'true';
   const workers = await convex.query(api.workers.list, { includeEncodings });
   return NextResponse.json(workers);
 }
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const body = await req.json();
   const { name, department, face_encoding } = body;
 
@@ -32,6 +43,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const body = await req.json();
   const { id, name, department, face_encoding } = body;
 
@@ -50,6 +64,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 

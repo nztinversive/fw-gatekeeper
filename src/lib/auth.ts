@@ -119,7 +119,6 @@ export function isKioskRequestAllowed(req: NextRequest): boolean {
   return (
     (pathname === '/api/sync' && req.method === 'GET') ||
     (pathname === '/api/attendance' && req.method === 'POST') ||
-    (pathname === '/api/attendance/bulk' && req.method === 'POST') ||
-    (pathname === '/api/workers' && req.method === 'GET')
+    (pathname === '/api/attendance/bulk' && req.method === 'POST')
   );
 }

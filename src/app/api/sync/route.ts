@@ -2,8 +2,12 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
+import { hasValidAdminSession, hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
+  const isAuthorized = (await hasValidAdminSession(req)) || hasValidKioskKey(req);
+  if (!isAuthorized) return unauthorizedApiResponse();
+
   const kioskId = req.nextUrl.searchParams.get('kiosk_id');
   const since = req.nextUrl.searchParams.get('since') || '1970-01-01T00:00:00.000Z';
 
