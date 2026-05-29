@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthActions } from '@convex-dev/auth/react';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 
 const links = [
   {
@@ -53,6 +55,16 @@ const links = [
     ),
   },
   {
+    href: '/accounts',
+    label: 'Accounts',
+    adminOnly: true,
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5h-15A1.5 1.5 0 003 6v12a1.5 1.5 0 001.5 1.5zm0-12.75h15M7.5 12a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm-2.25 4.5a3 3 0 016 0" />
+      </svg>
+    ),
+  },
+  {
     href: '/kiosks',
     label: 'Kiosks',
     icon: (
@@ -85,6 +97,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useAuthActions();
+  const currentMember = useQuery(api.portalMembers.current);
+  const visibleLinks = links.filter((link) => !link.adminOnly || currentMember?.role === 'admin');
   const [logoutError, setLogoutError] = useState('');
 
   async function handleLogout() {
@@ -135,7 +149,7 @@ export default function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           <p className="section-label px-3 mb-2">Navigation</p>
-          {links.map((l) => {
+          {visibleLinks.map((l) => {
             const isActive = pathname === l.href;
             return (
               <Link
@@ -188,7 +202,7 @@ export default function Sidebar() {
 
       {/* Mobile bottom tabs */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-navy-900/90 backdrop-blur-xl border-t border-navy-600/40 flex z-30 safe-area-bottom">
-        {links.map((l) => {
+        {visibleLinks.map((l) => {
           const isActive = pathname === l.href;
           return (
             <Link
