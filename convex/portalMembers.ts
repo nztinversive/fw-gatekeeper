@@ -1,17 +1,18 @@
+import { getAuthUserId } from '@convex-dev/auth/server';
+
 import { query } from './_generated/server';
-import type { Id } from './_generated/dataModel';
 
 export const current = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
       return null;
     }
 
     const member = await ctx.db
       .query('portalMembers')
-      .withIndex('by_user', (q) => q.eq('userId', identity.subject as Id<'users'>))
+      .withIndex('by_user', (q) => q.eq('userId', userId))
       .unique();
 
     if (!member?.active) {

@@ -25,13 +25,18 @@ const convexHttp = read(at('convex/http.ts'));
 assert.match(convexHttp, /httpRouter\s*\(/, 'convex/http.ts should create a Convex httpRouter');
 assert.match(convexHttp, /auth\.addHttpRoutes\(http\)/, 'convex/http.ts should add Convex Auth HTTP routes');
 
+assert.ok(exists(at('convex/auth.config.ts')), 'convex/auth.config.ts should register the Convex Auth JWT issuer for token validation');
+const authConfig = read(at('convex/auth.config.ts'));
+assert.match(authConfig, /domain:\s*process\.env\.CONVEX_SITE_URL/, 'auth.config.ts should trust the Convex site URL issuer');
+assert.match(authConfig, /applicationID:\s*['"]convex['"]/, 'auth.config.ts should use the Convex Auth application id');
+
 const schema = read(at('convex/schema.ts'));
 assert.match(schema, /authTables/, 'convex/schema.ts should include Convex Auth tables');
 assert.match(schema, /\.\.\.authTables/, 'convex/schema.ts should spread authTables into the schema');
 assert.match(schema, /portalMembers/, 'convex/schema.ts should include portalMembers for roles around Convex Auth users');
 assert.ok(exists(at('convex/portalMembers.ts')), 'Convex should expose a portalMembers query for active named-user authorization');
 const portalMembers = read(at('convex/portalMembers.ts'));
-assert.match(portalMembers, /ctx\.auth\.getUserIdentity/, 'portalMembers query should validate the authenticated Convex identity server-side');
+assert.match(portalMembers, /getAuthUserId\(ctx\)/, 'portalMembers query should resolve the authenticated Convex Auth user id server-side');
 assert.match(portalMembers, /\.query\('portalMembers'\)/, 'portalMembers query should check the portalMembers table');
 assert.match(portalMembers, /member\?\.active/, 'portalMembers query should require an active member record');
 
