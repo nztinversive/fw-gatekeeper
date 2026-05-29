@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminToken, getAdminCookieMaxAge, getAdminCookieName } from '@/lib/auth';
 
-const ADMIN_PIN = process.env.ADMIN_PIN || '1234';
+function getAdminPin(): string {
+  const pin = process.env.ADMIN_PIN?.trim();
+  if (pin) return pin;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ADMIN_PIN is required in production');
+  }
+
+  return '1234';
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { pin } = await req.json();
 
-    if (pin !== ADMIN_PIN) {
+    if (pin !== getAdminPin()) {
       return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 });
     }
 
@@ -23,7 +32,11 @@ export async function POST(req: NextRequest) {
     });
 
     return res;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('required in production')) {
+      return NextResponse.json({ error: 'Auth is not configured' }, { status: 500 });
+    }
+
     return NextResponse.json({ error: 'Bad request' }, { status: 400 });
   }
 }

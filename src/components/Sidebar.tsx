@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useAuthActions } from '@convex-dev/auth/react';
 
 const links = [
   {
@@ -82,9 +84,29 @@ const links = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { signOut } = useAuthActions();
+  const [logoutError, setLogoutError] = useState('');
 
   async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    setLogoutError('');
+
+    let legacyLogoutOk = false;
+    try {
+      const legacyLogout = await fetch('/api/auth/logout', { method: 'POST' });
+      legacyLogoutOk = legacyLogout.ok;
+      await signOut();
+    } catch {
+      setLogoutError('Sign out failed. Please try again.');
+      router.refresh();
+      return;
+    }
+
+    if (!legacyLogoutOk) {
+      setLogoutError('Sign out failed. Please try again.');
+      router.refresh();
+      return;
+    }
+
     router.push('/login');
     router.refresh();
   }
@@ -147,6 +169,11 @@ export default function Sidebar() {
 
         {/* Logout */}
         <div className="p-3 border-t border-navy-600/40">
+          {logoutError && (
+            <p role="alert" className="px-3 pb-2 text-xs text-red-400">
+              {logoutError}
+            </p>
+          )}
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all duration-200 w-full"

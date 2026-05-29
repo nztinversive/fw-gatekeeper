@@ -2,10 +2,11 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
-import { hasValidAdminSession, hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
+import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
+import { hasValidPortalSession } from '@/lib/portal-auth';
 
 export async function GET(req: NextRequest) {
-  const isAuthorized = (await hasValidAdminSession(req)) || hasValidKioskKey(req);
+  const isAuthorized = (await hasValidPortalSession(req, ['admin'])) || hasValidKioskKey(req);
   if (!isAuthorized) return unauthorizedApiResponse();
 
   const kioskId = req.nextUrl.searchParams.get('kiosk_id');
