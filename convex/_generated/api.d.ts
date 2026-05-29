@@ -9,7 +9,10 @@
  */
 
 import type * as attendance from "../attendance.js";
+import type * as auth from "../auth.js";
+import type * as http from "../http.js";
 import type * as kiosks from "../kiosks.js";
+import type * as portalMembers from "../portalMembers.js";
 import type * as schedules from "../schedules.js";
 import type * as seed from "../seed.js";
 import type * as stats from "../stats.js";
@@ -23,7 +26,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   attendance: typeof attendance;
+  auth: typeof auth;
+  http: typeof http;
   kiosks: typeof kiosks;
+  portalMembers: typeof portalMembers;
   schedules: typeof schedules;
   seed: typeof seed;
   stats: typeof stats;

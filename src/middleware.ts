@@ -1,12 +1,18 @@
+import { convexAuthNextjsMiddleware } from '@convex-dev/auth/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { hasValidAdminSession, hasValidKioskKey, isKioskRequestAllowed, unauthorizedApiResponse } from '@/lib/auth';
+import { hasPortalMemberAccess } from '@/lib/portal-member';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/', '/api/health'];
+const PUBLIC_PATHS = ['/login', '/api/auth', '/api/convex-auth', '/api/health'];
 
-export async function middleware(req: NextRequest) {
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+async function legacyAccessMiddleware(req: NextRequest, hasConvexPortalMember: boolean, hasConvexPortalAdmin: boolean) {
   const { pathname } = req.nextUrl;
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -16,9 +22,10 @@ export async function middleware(req: NextRequest) {
   }
 
   const hasAdminSession = await hasValidAdminSession(req);
+  const hasHumanSession = hasAdminSession || hasConvexPortalMember;
 
   if (pathname.startsWith('/api/')) {
-    if (hasAdminSession) {
+    if (hasAdminSession || hasConvexPortalAdmin) {
       return NextResponse.next();
     }
 
@@ -29,12 +36,21 @@ export async function middleware(req: NextRequest) {
     return unauthorizedApiResponse();
   }
 
-  if (!hasAdminSession) {
+  if (!hasHumanSession) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
   return NextResponse.next();
 }
+
+export const middleware = convexAuthNextjsMiddleware(async (req, { convexAuth }) => {
+  const token = await convexAuth.getToken();
+  const hasConvexPortalMember = await hasPortalMemberAccess(token);
+  const hasConvexPortalAdmin = await hasPortalMemberAccess(token, ['admin']);
+  return legacyAccessMiddleware(req, hasConvexPortalMember, hasConvexPortalAdmin);
+}, {
+  apiRoute: '/api/convex-auth',
+});
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],

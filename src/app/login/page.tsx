@@ -2,17 +2,28 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuthActions } from '@convex-dev/auth/react';
 
 export default function LoginPage() {
   const [pin, setPin] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [convexError, setConvexError] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+  const [convexLoading, setConvexLoading] = useState(false);
   const router = useRouter();
+  const { signIn } = useAuthActions();
 
-  async function handleSubmit(e: React.FormEvent) {
+  function finishLogin() {
+    router.push('/');
+    router.refresh();
+  }
+
+  async function handlePinSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    setPinError('');
+    setPinLoading(true);
 
     try {
       const res = await fetch('/api/auth/login', {
@@ -22,28 +33,47 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        router.push('/');
-        router.refresh();
+        finishLogin();
       } else {
-        setError('Invalid PIN');
+        setPinError('Invalid PIN');
         setPin('');
       }
     } catch {
-      setError('Connection error');
+      setPinError('Connection error');
     } finally {
-      setLoading(false);
+      setPinLoading(false);
     }
   }
 
+  async function handleConvexSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setConvexError('');
+    setConvexLoading(true);
+
+    try {
+      await signIn('password', {
+        flow: 'signIn',
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      finishLogin();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to authenticate';
+      setConvexError(message);
+    } finally {
+      setConvexLoading(false);
+    }
+  }
+
+  const convexButtonLabel = 'Sign in with email';
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-navy-950 relative overflow-hidden">
-      {/* Background effects */}
       <div className="absolute inset-0 bg-grid-pattern bg-grid opacity-30" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gold/[0.03] rounded-full blur-3xl" />
       <div className="absolute top-1/4 right-1/4 w-[300px] h-[300px] bg-cyan-500/[0.02] rounded-full blur-3xl" />
 
-      <div className="w-full max-w-sm p-8 relative z-10 animate-fade-in">
-        {/* Logo */}
+      <div className="w-full max-w-md p-8 relative z-10 animate-fade-in">
         <div className="text-center mb-10">
           <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-gold/5">
             <svg className="w-8 h-8 text-gold" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -56,52 +86,85 @@ export default function LoginPage() {
           <p className="text-slate-500 text-sm font-mono mt-3 uppercase tracking-widest text-[11px]">Access Control System</p>
         </div>
 
-        {/* Form card */}
-        <div className="glass-card p-6">
-          <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="glass-card p-6 space-y-8">
+          <form onSubmit={handleConvexSubmit} className="space-y-5">
             <div>
-              <label className="section-label mb-2 block">Access PIN</label>
+              <label className="section-label mb-2 block">Email</label>
               <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={8}
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="Enter PIN"
-                className="w-full px-4 py-3.5 bg-navy-900/80 border border-navy-600/50 rounded-xl text-center text-2xl font-mono tracking-[0.5em] text-gold placeholder-slate-600 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@fadingwest.com"
+                className="w-full px-4 py-3 bg-navy-900/80 border border-navy-600/50 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
                 autoFocus
               />
             </div>
 
-            {error && (
-              <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/5 border border-red-400/10 rounded-xl px-4 py-2.5">
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-                {error}
+            <div>
+              <label className="section-label mb-2 block">Password</label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-4 py-3 bg-navy-900/80 border border-navy-600/50 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+              />
+            </div>
+
+            {convexError && (
+              <div role="alert" className="flex items-center gap-2 text-red-400 text-sm bg-red-400/5 border border-red-400/10 rounded-xl px-4 py-2.5">
+                {convexError}
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loading || pin.length < 4}
+              disabled={convexLoading || !email.trim() || password.length < 8}
               className="btn-primary w-full py-3.5 text-base"
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Verifying...
-                </span>
-              ) : 'Authenticate'}
+              {convexLoading ? 'Authenticating...' : convexButtonLabel}
             </button>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Email login is being introduced for named portal users. Use the PIN fallback below if your account has not been created yet.
+            </p>
           </form>
+
+          <div className="border-t border-navy-600/40 pt-6">
+            <form onSubmit={handlePinSubmit} className="space-y-5">
+              <div>
+                <label className="section-label mb-2 block">Temporary admin PIN fallback</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={8}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="Enter PIN"
+                  className="w-full px-4 py-3.5 bg-navy-900/80 border border-navy-600/50 rounded-xl text-center text-2xl font-mono tracking-[0.5em] text-gold placeholder-slate-600 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+                />
+              </div>
+
+              {pinError && (
+                <div role="alert" className="flex items-center gap-2 text-red-400 text-sm bg-red-400/5 border border-red-400/10 rounded-xl px-4 py-2.5">
+                  {pinError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={pinLoading || pin.length < 4}
+                className="btn-secondary w-full py-3.5 text-base"
+              >
+                {pinLoading ? 'Verifying...' : 'Use PIN fallback'}
+              </button>
+            </form>
+          </div>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-[10px] font-mono text-slate-600 mt-8 uppercase tracking-wider">
           Fading West Manufacturing
         </p>

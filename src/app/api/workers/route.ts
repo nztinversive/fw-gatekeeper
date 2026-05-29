@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
-import { hasValidAdminSession, unauthorizedApiResponse } from '@/lib/auth';
+import { hasValidPortalSession } from '@/lib/portal-auth';
+import { unauthorizedApiResponse } from '@/lib/auth';
 
 async function requireAdmin(req: NextRequest) {
-  return (await hasValidAdminSession(req)) ? null : unauthorizedApiResponse();
+  return (await hasValidPortalSession(req, ['admin'])) ? null : unauthorizedApiResponse();
 }
 
 export async function GET(req: NextRequest) {

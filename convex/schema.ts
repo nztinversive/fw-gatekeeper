@@ -1,7 +1,20 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  ...authTables,
+
+  portalMembers: defineTable({
+    userId: v.id("users"),
+    role: v.union(v.literal("admin"), v.literal("enrollment"), v.literal("viewer")),
+    active: v.boolean(),
+    createdAt: v.string(),
+    updatedAt: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_active", ["active"]),
+
   workers: defineTable({
     name: v.string(),
     department: v.string(),

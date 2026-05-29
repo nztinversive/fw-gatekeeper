@@ -29,7 +29,14 @@ function base64UrlDecode(value: string): Uint8Array {
 }
 
 function getAuthSecret(): string {
-  return process.env.AUTH_SECRET || process.env.ADMIN_PIN || 'dev-fw-gatekeeper-secret';
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (secret) return secret;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('AUTH_SECRET is required in production');
+  }
+
+  return process.env.ADMIN_PIN?.trim() || 'dev-fw-gatekeeper-secret';
 }
 
 async function importSigningKey() {
