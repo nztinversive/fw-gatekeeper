@@ -13,8 +13,8 @@ function normalizeEmail(email: string) {
 }
 
 function assertValidPassword(password: string) {
-  if (password.length < 12) {
-    throw new Error('Temporary password must be at least 12 characters long');
+  if (password.length < 8) {
+    throw new Error('Temporary password must be at least 8 characters long');
   }
   if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
     throw new Error('Temporary password must include uppercase, lowercase, and a number');

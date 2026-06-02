@@ -66,8 +66,8 @@ export default function AccountsPage() {
       toast('Email is required', 'error');
       return;
     }
-    if (password.length < 12) {
-      toast('Initial password must be at least 12 characters', 'error');
+    if (password.length < 8) {
+      toast('Initial password must be at least 8 characters', 'error');
       return;
     }
 
