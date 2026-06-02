@@ -17,8 +17,8 @@ function assertValidPassword(password: string) {
   if (password.length < 8) {
     throw new ConvexError('Temporary password must be at least 8 characters long');
   }
-  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    throw new ConvexError('Temporary password must include uppercase, lowercase, and a number');
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]/.test(password)) {
+    throw new ConvexError('Temporary password must include uppercase, lowercase, and a number or symbol');
   }
 }
 

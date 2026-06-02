@@ -17,8 +17,8 @@ function getPasswordPolicyError(password: string) {
   if (password.length < 8) {
     return 'Initial password must be at least 8 characters';
   }
-  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    return 'Initial password must include uppercase, lowercase, and a number';
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]/.test(password)) {
+    return 'Initial password must include uppercase, lowercase, and a number or symbol';
   }
   return null;
 }
