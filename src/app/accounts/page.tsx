@@ -51,6 +51,7 @@ export default function AccountsPage() {
   const isAdmin = currentMember?.role === 'admin';
   const members = useQuery(api.portalMembers.list, isAdmin ? {} : 'skip');
   const createPortalAccount = useAction(api.portalMembers.createPortalAccount);
+  const resetPortalAccountPassword = useAction(api.portalMembers.resetPortalAccountPassword);
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<PortalRole>('enrollment');
@@ -59,9 +60,13 @@ export default function AccountsPage() {
   const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
 
   const sortedMembers = useMemo(() => members ?? [], [members]);
+  const normalizedEmail = email.trim().toLowerCase();
+  const existingMember = useMemo(
+    () => sortedMembers.find((member) => member.email.toLowerCase() === normalizedEmail),
+    [normalizedEmail, sortedMembers]
+  );
 
   async function handleCreateAccount() {
-    const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
       toast('Email is required', 'error');
       return;
@@ -70,16 +75,26 @@ export default function AccountsPage() {
       toast('Initial password must be at least 8 characters', 'error');
       return;
     }
+    if (existingMember) {
+      const confirmed = window.confirm(
+        `Reset the password for ${normalizedEmail} and update their role to ${role}? This will sign out any existing sessions for that user.`
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
 
     setSubmitting(true);
     setCreatedAccount(null);
     try {
-      const result = await createPortalAccount({ email: normalizedEmail, password, role });
+      const result = existingMember
+        ? await resetPortalAccountPassword({ email: normalizedEmail, password, role })
+        : await createPortalAccount({ email: normalizedEmail, password, role });
       setCreatedAccount({ email: result.email, password, role: result.role });
       setEmail('');
       setPassword(generatePassword());
       setRole('enrollment');
-      toast(`Account ready for ${result.email}`);
+      toast(existingMember ? `Password updated for ${result.email}` : `Account ready for ${result.email}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create account';
       toast(message, 'error');
@@ -180,13 +195,19 @@ export default function AccountsPage() {
               </p>
             </div>
 
+            {existingMember && (
+              <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200 leading-6">
+                This email already has an account. Submitting will reset the password and update the role instead of creating a duplicate.
+              </div>
+            )}
+
             <button
               type="button"
               onClick={handleCreateAccount}
               disabled={submitting}
               className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Creating…' : 'Create Account'}
+              {submitting ? (existingMember ? 'Updating…' : 'Creating…') : existingMember ? 'Reset Password / Update Role' : 'Create Account'}
             </button>
           </div>
         </div>

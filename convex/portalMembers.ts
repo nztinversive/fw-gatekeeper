@@ -1,9 +1,10 @@
-import { createAccount, getAuthUserId } from '@convex-dev/auth/server';
+import { createAccount, getAuthUserId, invalidateSessions, modifyAccountCredentials } from '@convex-dev/auth/server';
 import { v } from 'convex/values';
 
 import { action, internalMutation, internalQuery, query } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
+import type { ActionCtx } from './_generated/server';
 
 const portalMemberRole = v.union(v.literal('admin'), v.literal('enrollment'), v.literal('viewer'));
 type PortalMemberRole = Doc<'portalMembers'>['role'];
@@ -146,6 +147,21 @@ export const upsertMember = internalMutation({
   },
 });
 
+async function assertAdminUser(ctx: ActionCtx) {
+  const adminUserId = await getAuthUserId(ctx);
+  if (!adminUserId) {
+    throw new Error('Unauthorized');
+  }
+
+  const adminMember = await ctx.runQuery(internal.portalMembers.getActiveMemberByUserId, {
+    userId: adminUserId,
+  });
+
+  if (adminMember?.role !== 'admin') {
+    throw new Error('Admin access required');
+  }
+}
+
 export const createPortalAccount = action({
   args: {
     email: v.string(),
@@ -153,18 +169,7 @@ export const createPortalAccount = action({
     role: portalMemberRole,
   },
   handler: async (ctx, args): Promise<{ email: string; role: PortalMemberRole; active: boolean }> => {
-    const adminUserId = await getAuthUserId(ctx);
-    if (!adminUserId) {
-      throw new Error('Unauthorized');
-    }
-
-    const adminMember = await ctx.runQuery(internal.portalMembers.getActiveMemberByUserId, {
-      userId: adminUserId,
-    });
-
-    if (adminMember?.role !== 'admin') {
-      throw new Error('Admin access required');
-    }
+    await assertAdminUser(ctx);
 
     const email = normalizeEmail(args.email);
     if (!email || !email.includes('@')) {
@@ -175,7 +180,7 @@ export const createPortalAccount = action({
     const existing = await ctx.runQuery(internal.portalMembers.getPasswordAccountByEmail, { email });
 
     if (existing) {
-      throw new Error('An account with this email already exists. Password resets and role changes should use a separate admin flow.');
+      throw new Error('An account with this email already exists. Use Reset Password / Update Role instead.');
     }
 
     const created = await createAccount(ctx, {
@@ -186,6 +191,42 @@ export const createPortalAccount = action({
 
     await ctx.runMutation(internal.portalMembers.upsertMember, {
       userId: created.user._id,
+      role: args.role,
+      active: true,
+    });
+
+    return { email, role: args.role, active: true };
+  },
+});
+
+export const resetPortalAccountPassword = action({
+  args: {
+    email: v.string(),
+    password: v.string(),
+    role: portalMemberRole,
+  },
+  handler: async (ctx, args): Promise<{ email: string; role: PortalMemberRole; active: boolean }> => {
+    await assertAdminUser(ctx);
+
+    const email = normalizeEmail(args.email);
+    if (!email || !email.includes('@')) {
+      throw new Error('A valid email address is required');
+    }
+    assertValidPassword(args.password);
+
+    const existing = await ctx.runQuery(internal.portalMembers.getPasswordAccountByEmail, { email });
+    if (!existing) {
+      throw new Error('No existing password account was found for this email. Create the account first.');
+    }
+
+    await modifyAccountCredentials(ctx, {
+      provider: 'password',
+      account: { id: email, secret: args.password },
+    });
+    await invalidateSessions(ctx, { userId: existing.userId });
+
+    await ctx.runMutation(internal.portalMembers.upsertMember, {
+      userId: existing.userId,
       role: args.role,
       active: true,
     });
