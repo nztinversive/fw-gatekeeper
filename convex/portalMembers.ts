@@ -1,5 +1,5 @@
 import { createAccount, getAuthUserId, invalidateSessions, modifyAccountCredentials } from '@convex-dev/auth/server';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 
 import { action, internalMutation, internalQuery, query } from './_generated/server';
 import { internal } from './_generated/api';
@@ -15,10 +15,10 @@ function normalizeEmail(email: string) {
 
 function assertValidPassword(password: string) {
   if (password.length < 8) {
-    throw new Error('Temporary password must be at least 8 characters long');
+    throw new ConvexError('Temporary password must be at least 8 characters long');
   }
   if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    throw new Error('Temporary password must include uppercase, lowercase, and a number');
+    throw new ConvexError('Temporary password must include uppercase, lowercase, and a number');
   }
 }
 
@@ -52,7 +52,7 @@ export const list = query({
   handler: async (ctx) => {
     const currentUserId = await getAuthUserId(ctx);
     if (!currentUserId) {
-      throw new Error('Unauthorized');
+      throw new ConvexError('Unauthorized');
     }
 
     const currentMember = await ctx.db
@@ -61,7 +61,7 @@ export const list = query({
       .unique();
 
     if (!currentMember?.active || currentMember.role !== 'admin') {
-      throw new Error('Admin access required');
+      throw new ConvexError('Admin access required');
     }
 
     const members = await ctx.db.query('portalMembers').collect();
@@ -150,7 +150,7 @@ export const upsertMember = internalMutation({
 async function assertAdminUser(ctx: ActionCtx) {
   const adminUserId = await getAuthUserId(ctx);
   if (!adminUserId) {
-    throw new Error('Unauthorized');
+    throw new ConvexError('Unauthorized');
   }
 
   const adminMember = await ctx.runQuery(internal.portalMembers.getActiveMemberByUserId, {
@@ -158,7 +158,7 @@ async function assertAdminUser(ctx: ActionCtx) {
   });
 
   if (adminMember?.role !== 'admin') {
-    throw new Error('Admin access required');
+    throw new ConvexError('Admin access required');
   }
 }
 
@@ -173,14 +173,14 @@ export const createPortalAccount = action({
 
     const email = normalizeEmail(args.email);
     if (!email || !email.includes('@')) {
-      throw new Error('A valid email address is required');
+      throw new ConvexError('A valid email address is required');
     }
     assertValidPassword(args.password);
 
     const existing = await ctx.runQuery(internal.portalMembers.getPasswordAccountByEmail, { email });
 
     if (existing) {
-      throw new Error('An account with this email already exists. Use Reset Password / Update Role instead.');
+      throw new ConvexError('An account with this email already exists. Use Reset Password / Update Role instead.');
     }
 
     const created = await createAccount(ctx, {
@@ -210,13 +210,13 @@ export const resetPortalAccountPassword = action({
 
     const email = normalizeEmail(args.email);
     if (!email || !email.includes('@')) {
-      throw new Error('A valid email address is required');
+      throw new ConvexError('A valid email address is required');
     }
     assertValidPassword(args.password);
 
     const existing = await ctx.runQuery(internal.portalMembers.getPasswordAccountByEmail, { email });
     if (!existing) {
-      throw new Error('No existing password account was found for this email. Create the account first.');
+      throw new ConvexError('No existing password account was found for this email. Create the account first.');
     }
 
     await modifyAccountCredentials(ctx, {

@@ -13,6 +13,23 @@ type CreatedAccount = {
   role: PortalRole;
 };
 
+function getPasswordPolicyError(password: string) {
+  if (password.length < 8) {
+    return 'Initial password must be at least 8 characters';
+  }
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'Initial password must include uppercase, lowercase, and a number';
+  }
+  return null;
+}
+
+function getActionErrorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'data' in error && typeof error.data === 'string') {
+    return error.data;
+  }
+  return error instanceof Error ? error.message : 'Failed to update account';
+}
+
 const roleDescriptions: Record<PortalRole, string> = {
   admin: 'Full portal access, including creating user accounts.',
   enrollment: 'Can use the portal for face enrollment and day-to-day review pages.',
@@ -71,8 +88,9 @@ export default function AccountsPage() {
       toast('Email is required', 'error');
       return;
     }
-    if (password.length < 8) {
-      toast('Initial password must be at least 8 characters', 'error');
+    const passwordError = getPasswordPolicyError(password);
+    if (passwordError) {
+      toast(passwordError, 'error');
       return;
     }
     if (existingMember) {
@@ -96,7 +114,7 @@ export default function AccountsPage() {
       setRole('enrollment');
       toast(existingMember ? `Password updated for ${result.email}` : `Account ready for ${result.email}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create account';
+      const message = getActionErrorMessage(error);
       toast(message, 'error');
     } finally {
       setSubmitting(false);
