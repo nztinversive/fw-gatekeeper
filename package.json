@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:auth-scaffold": "node scripts/test-convex-auth-scaffold.mjs"
+    "test:auth-scaffold": "node scripts/test-convex-auth-scaffold.mjs",
+    "test:login-error-copy": "node scripts/test-login-error-copy.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.92",

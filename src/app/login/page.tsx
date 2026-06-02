@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthActions } from '@convex-dev/auth/react';
+import { normalizeConvexAuthError } from '@/lib/convex-auth-errors';
 
 export default function LoginPage() {
   const [pin, setPin] = useState('');
@@ -59,7 +60,7 @@ export default function LoginPage() {
       finishLogin();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to authenticate';
-      setConvexError(message);
+      setConvexError(normalizeConvexAuthError(message));
     } finally {
       setConvexLoading(false);
     }
