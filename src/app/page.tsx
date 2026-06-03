@@ -17,9 +17,70 @@ interface WorkerWithStatus {
   clockInTime?: string;
 }
 
+type HealthStatus = 'online' | 'degraded' | 'stale' | 'offline' | 'never_synced';
+
+interface KioskHealthRow {
+  id: string;
+  name: string;
+  kiosk_id: string | null;
+  type: string;
+  location: string;
+  last_sync: string | null;
+  status: 'online' | 'stale' | 'offline' | 'never_synced';
+  expected_worker_count: number;
+  last_attendance_upload: string | null;
+}
+
+interface SystemHealth {
+  checked_at: string;
+  portal: { status: 'online'; checked_at: string };
+  face_service: {
+    status: 'online' | 'degraded' | 'offline';
+    latency_ms: number;
+    version: string | null;
+    model_ready: boolean;
+  };
+  kiosks: {
+    total: number;
+    counts: { online: number; stale: number; offline: number; never_synced: number };
+    rows: KioskHealthRow[];
+  };
+  sync: { ready_worker_count: number; last_attendance_upload: string | null };
+  warnings: string[];
+}
+
+function formatRelativeTime(value: string | null) {
+  if (!value) return 'Never';
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return 'Unknown';
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < -60_000) return 'Clock skew';
+  if (diffMs < 60_000) return 'Just now';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function healthTone(status: HealthStatus) {
+  return {
+    online: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
+    degraded: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+    stale: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+    offline: 'border-red-400/20 bg-red-400/10 text-red-300',
+    never_synced: 'border-red-400/20 bg-red-400/10 text-red-300',
+  }[status];
+}
+
+function healthLabel(status: HealthStatus) {
+  return status === 'never_synced' ? 'Never synced' : status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null, scheduleWarning: undefined as string | undefined });
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -29,17 +90,20 @@ export default function Dashboard() {
     if (isRefresh) setRefreshing(true);
     try {
       const today = getLocalDateString();
-      const [statsRes, workersRes, attendanceRes] = await Promise.all([
+      const [statsRes, workersRes, attendanceRes, systemHealthRes] = await Promise.all([
         fetch(`/api/stats?date=${today}`),
         fetch('/api/workers'),
         fetch(`/api/attendance?date=${today}`),
+        fetch(`/api/system-health?date=${today}`),
       ]);
 
       const statsData = await statsRes.json();
       const workersData = await workersRes.json();
       const attendanceData = await attendanceRes.json();
+      const systemHealthData = systemHealthRes.ok ? await systemHealthRes.json() : null;
 
       setStats(statsData);
+      setSystemHealth(systemHealthData);
 
       const statusMap = new Map<string, { event_type: string; timestamp: string }>();
       for (const e of attendanceData) {
@@ -118,6 +182,15 @@ export default function Dashboard() {
           cta: 'Review now',
         }]
       : []),
+    ...(systemHealth?.warnings?.map((warning, index) => ({
+          key: `system-health-${index}`,
+          label: warning.includes('Face service') ? 'Face service warning' : 'Kiosk sync warning',
+          value: '!',
+          tone: warning.includes('offline') || warning.includes('never synced') ? 'red' as const : 'amber' as const,
+          description: warning,
+          href: '/kiosks',
+          cta: 'Open kiosks',
+        })) || []),
     ...(stats.scheduleWarning
       ? [{
           key: 'schedule-warning',
@@ -168,6 +241,90 @@ export default function Dashboard() {
       </div>
 
       <StatsBar stats={stats} />
+
+      {/* System Health */}
+      <section className="glass-card p-5 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p className="section-label">System Health</p>
+            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Kiosk fleet & sync readiness</h2>
+            <p className="mt-1 text-xs text-slate-500 font-mono">
+              {systemHealth ? `Checked ${formatRelativeTime(systemHealth.checked_at)}` : 'Health check unavailable'}
+            </p>
+          </div>
+          <Link href="/kiosks" className="btn-secondary text-xs">Manage kiosks</Link>
+        </div>
+
+        {systemHealth ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4">
+                <p className="section-label">Portal</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className={`badge border ${healthTone(systemHealth.portal.status)}`}>Online</span>
+                  <span className="text-xs font-mono text-slate-500">Live</span>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
+                <p className="section-label">Face service</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className={`badge border ${healthTone(systemHealth.face_service.status)}`}>{healthLabel(systemHealth.face_service.status)}</span>
+                  <span className="text-xs font-mono text-slate-500">{systemHealth.face_service.latency_ms}ms</span>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500 truncate">
+                  {systemHealth.face_service.version || (systemHealth.face_service.model_ready ? 'Models ready' : 'Model readiness unknown')}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
+                <p className="section-label">Kiosks</p>
+                <div className="mt-3 flex items-end gap-2">
+                  <span className="text-3xl font-display font-bold text-emerald-400">{systemHealth.kiosks.counts.online}</span>
+                  <span className="pb-1 text-sm text-slate-500">online / {systemHealth.kiosks.total} total</span>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  {systemHealth.kiosks.counts.stale} stale · {systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced} offline/never
+                </p>
+              </div>
+              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
+                <p className="section-label">Sync payload</p>
+                <div className="mt-3 flex items-end gap-2">
+                  <span className="text-3xl font-display font-bold text-gold">{systemHealth.sync.ready_worker_count}</span>
+                  <span className="pb-1 text-sm text-slate-500">workers ready</span>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">Last event upload {formatRelativeTime(systemHealth.sync.last_attendance_upload)}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {systemHealth.kiosks.rows.slice(0, 4).map((kiosk) => (
+                <div key={kiosk.id} className="rounded-2xl border border-navy-600/45 bg-navy-900/40 p-4 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-display font-semibold text-sm text-slate-200 truncate">{kiosk.name}</h3>
+                      <span className={`badge border text-[10px] ${healthTone(kiosk.status)}`}>{healthLabel(kiosk.status)}</span>
+                    </div>
+                    <p className="mt-1 text-xs font-mono text-slate-500 truncate">{kiosk.location || kiosk.kiosk_id || 'No location set'}</p>
+                    <p className="mt-2 text-[11px] text-slate-500">Last sync {formatRelativeTime(kiosk.last_sync)} · Last upload {formatRelativeTime(kiosk.last_attendance_upload)}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-2xl font-display font-bold text-slate-200">{kiosk.expected_worker_count}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-600">expected</p>
+                  </div>
+                </div>
+              ))}
+              {systemHealth.kiosks.rows.length === 0 && (
+                <div className="rounded-2xl border border-amber-400/15 bg-amber-400/5 p-4 text-sm text-amber-200">
+                  No kiosks are registered yet. Add the first kiosk before employee launch so sync health has something to monitor.
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-2xl border border-red-400/15 bg-red-400/5 p-4 text-sm text-red-200">
+            System health is unavailable right now. Refresh or open Kiosks to inspect device records.
+          </div>
+        )}
+      </section>
 
       {/* Action Center */}
       <section className="glass-card p-5 mb-6">
