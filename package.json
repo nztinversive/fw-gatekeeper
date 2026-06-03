@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "test:auth-scaffold": "node scripts/test-convex-auth-scaffold.mjs",
-    "test:login-error-copy": "node scripts/test-login-error-copy.mjs"
+    "test:login-error-copy": "node scripts/test-login-error-copy.mjs",
+    "test:worker-ui": "node scripts/test-worker-ui-contract.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.92",

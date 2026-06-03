@@ -3,7 +3,7 @@ export interface Worker {
   name: string;
   department: string;
   photo_url: string | null;
-  face_encoding: string | null;
+  face_encoding: number[] | null;
   enrolled_at: string;
   active: number;
 }

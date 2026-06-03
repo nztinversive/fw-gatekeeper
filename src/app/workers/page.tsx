@@ -5,6 +5,14 @@ import Link from 'next/link';
 import { useToast } from '@/components/Toast';
 import { Worker } from '@/lib/types';
 
+function hasFaceEncoding(worker: Worker) {
+  return Array.isArray(worker.face_encoding) && worker.face_encoding.length > 0;
+}
+
+function getInitials(name: string) {
+  return name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+}
+
 export default function WorkersPage() {
   const { toast } = useToast();
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -14,7 +22,7 @@ export default function WorkersPage() {
 
   const fetchWorkers = useCallback(async () => {
     try {
-      const res = await fetch('/api/workers');
+      const res = await fetch('/api/workers?include_encodings=true');
       if (!res.ok) throw new Error('Failed to fetch workers');
       setWorkers(await res.json());
     } catch (err) {
@@ -70,6 +78,9 @@ export default function WorkersPage() {
     setDepartment(w.department);
   };
 
+  const enrolledCount = workers.filter(hasFaceEncoding).length;
+  const missingFaceCount = workers.length - enrolledCount;
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
@@ -77,7 +88,9 @@ export default function WorkersPage() {
           <h1 className="page-title text-slate-100">
             Worker <span className="text-gold">Management</span>
           </h1>
-          <p className="text-sm text-slate-500 mt-1 font-mono">{workers.length} registered workers</p>
+          <p className="text-sm text-slate-500 mt-1 font-mono">
+            {workers.length} registered workers · {enrolledCount} face enrolled · {missingFaceCount} needs enrollment
+          </p>
         </div>
         <div className="flex gap-3 flex-wrap">
           <Link href="/onboarding" className="btn-secondary flex items-center gap-2">
@@ -92,12 +105,30 @@ export default function WorkersPage() {
         </div>
       </div>
 
-      <div className="glass-card p-5 mb-8 border-l-4 border-gold/70">
-        <h2 className="font-display font-semibold text-gold mb-2">Adding a new person?</h2>
-        <p className="text-sm text-slate-400 leading-6">
-          Use <span className="text-slate-200 font-semibold">Enroll Face</span> for all new facial-recognition enrollments.
-          The Workers page is for reviewing enrolled people, editing names/departments, and deactivating workers.
-        </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+        <div className="glass-card p-4">
+          <p className="section-label">Recognition ready</p>
+          <div className="mt-2 flex items-end gap-2">
+            <span className="text-3xl font-display font-bold text-emerald-400">{enrolledCount}</span>
+            <span className="pb-1 text-sm text-slate-500">workers</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Face enrolled and ready for kiosk recognition.</p>
+        </div>
+        <div className="glass-card p-4">
+          <p className="section-label">Needs enrollment</p>
+          <div className="mt-2 flex items-end gap-2">
+            <span className={`text-3xl font-display font-bold ${missingFaceCount > 0 ? 'text-amber-400' : 'text-slate-500'}`}>{missingFaceCount}</span>
+            <span className="pb-1 text-sm text-slate-500">workers</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Missing face data; use Enroll Face before kiosk use.</p>
+        </div>
+        <div className="glass-card p-4 border-l-4 border-gold/70">
+          <p className="section-label">Canonical workflow</p>
+          <h2 className="mt-2 font-display font-semibold text-gold">Adding a new person?</h2>
+          <p className="mt-2 text-xs text-slate-400 leading-5">
+            Use <span className="text-slate-200 font-semibold">Enroll Face</span> for all new facial-recognition enrollments.
+          </p>
+        </div>
       </div>
 
       {editId && (
@@ -111,59 +142,58 @@ export default function WorkersPage() {
           <div className="space-y-4">
             <div>
               <label className="section-label mb-1.5 block">Full Name</label>
-              <input
-                placeholder="e.g. John Smith"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="input-field"
-              />
+              <input placeholder="e.g. John Smith" value={name} onChange={(e) => setName(e.target.value)} className="input-field" />
             </div>
             <div>
               <label className="section-label mb-1.5 block">Department</label>
-              <input
-                placeholder="e.g. Production, QC, Electrical"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className="input-field"
-              />
+              <input placeholder="e.g. Production, QC, Electrical" value={department} onChange={(e) => setDepartment(e.target.value)} className="input-field" />
             </div>
             <div className="flex gap-3 flex-wrap">
-              <button onClick={handleSubmit} className="btn-primary">
-                Save Changes
-              </button>
-              <button onClick={resetEdit} className="btn-secondary">
-                Cancel
-              </button>
+              <button onClick={handleSubmit} className="btn-primary">Save Changes</button>
+              <button onClick={resetEdit} className="btn-secondary">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="space-y-2">
-        {workers.map((w, i) => (
-          <div
-            key={w.id}
-            className={`glass-card-hover p-4 flex items-center gap-4 animate-fade-in stagger-${Math.min(i + 1, 6)}`}
-          >
-            <div className="w-11 h-11 rounded-xl bg-gold/10 border border-gold/15 flex items-center justify-center text-sm font-display font-bold text-gold shrink-0">
-              {w.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {workers.map((w, i) => {
+          const faceReady = hasFaceEncoding(w);
+          return (
+            <div key={w.id} className={`glass-card-hover p-4 flex flex-col gap-4 animate-fade-in stagger-${Math.min(i + 1, 6)}`}>
+              <div className="flex items-start gap-4">
+                <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center text-sm font-display font-bold shrink-0 ${faceReady ? 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400' : 'bg-amber-400/10 border-amber-400/20 text-amber-400'}`}>
+                  {getInitials(w.name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-display font-semibold text-sm text-slate-200 truncate">{w.name}</div>
+                  <div className="text-xs font-mono text-slate-500 truncate">{w.department || 'No department'}</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="badge border bg-emerald-400/10 text-emerald-400 border-emerald-400/20">Active</span>
+                    <span className={`badge border ${faceReady ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' : 'bg-amber-400/10 text-amber-400 border-amber-400/20'}`}>
+                      {faceReady ? 'Face enrolled' : 'Missing face'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-navy-600/40 bg-navy-900/45 px-3 py-2">
+                <p className="text-xs font-medium text-slate-300">{faceReady ? 'Ready for kiosk recognition' : 'Needs enrollment'}</p>
+                <p className="mt-1 text-[11px] text-slate-500 leading-4">
+                  {faceReady ? 'This worker has face data and will sync to kiosks.' : 'Capture photos in Enroll Face before this person can be recognized.'}
+                </p>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => startEdit(w)} className="btn-secondary flex-1 text-xs">Edit</button>
+                <Link href="/enroll" className={`flex-1 text-center text-xs ${faceReady ? 'btn-ghost' : 'btn-primary'}`}>
+                  {faceReady ? 'Re-enroll' : 'Enroll now'}
+                </Link>
+                <button onClick={() => deactivate(w.id)} className="px-3 py-2 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
+                  Deactivate
+                </button>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-display font-medium text-sm text-slate-200">{w.name}</div>
-              <div className="text-xs font-mono text-slate-500">{w.department || 'No department'}</div>
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button onClick={() => startEdit(w)} className="btn-ghost text-xs">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                </svg>
-              </button>
-              <button onClick={() => deactivate(w.id)} className="px-3 py-1.5 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
-                Deactivate
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
@@ -10,12 +11,13 @@ interface WorkerWithStatus {
   id: string;
   name: string;
   department: string;
+  face_encoding: number[] | null;
   status: 'in' | 'out' | 'absent';
   clockInTime?: string;
 }
 
 export default function Dashboard() {
-  const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null });
+  const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null, scheduleWarning: undefined as string | undefined });
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState<string>('');
@@ -28,7 +30,7 @@ export default function Dashboard() {
       const today = getLocalDateString();
       const [statsRes, workersRes, attendanceRes] = await Promise.all([
         fetch(`/api/stats?date=${today}`),
-        fetch('/api/workers'),
+        fetch('/api/workers?include_encodings=true'),
         fetch(`/api/attendance?date=${today}`),
       ]);
 
@@ -46,7 +48,7 @@ export default function Dashboard() {
         }
       }
 
-      const enriched: WorkerWithStatus[] = workersData.map((w: { id: string; name: string; department: string }) => {
+      const enriched: WorkerWithStatus[] = workersData.map((w: { id: string; name: string; department: string; face_encoding: number[] | null }) => {
         const latest = statusMap.get(w.id);
         let status: 'in' | 'out' | 'absent' = 'absent';
         let clockInTime: string | undefined;
@@ -89,6 +91,43 @@ export default function Dashboard() {
       w.name.toLowerCase().includes(search.toLowerCase()) ||
       w.department.toLowerCase().includes(search.toLowerCase())
   );
+  const missingFaceWorkers = workers.filter((w) => !Array.isArray(w.face_encoding) || w.face_encoding.length === 0);
+  const absentWorkers = workers.filter((w) => w.status === 'absent');
+  const actionItems = [
+    ...(missingFaceWorkers.length > 0
+      ? [{
+          key: 'missing-face',
+          label: 'Face enrollment needed',
+          value: missingFaceWorkers.length,
+          tone: 'amber' as const,
+          description: `${missingFaceWorkers.length} worker${missingFaceWorkers.length === 1 ? '' : 's'} missing face data for kiosk recognition.`,
+          href: '/workers',
+          cta: 'Review now',
+        }]
+      : []),
+    ...(stats.scheduleWarning
+      ? [{
+          key: 'schedule-warning',
+          label: 'Schedule warning',
+          value: '!',
+          tone: 'red' as const,
+          description: stats.scheduleWarning,
+          href: '/schedules',
+          cta: 'Review now',
+        }]
+      : []),
+    ...(absentWorkers.length > 0
+      ? [{
+          key: 'not-arrived',
+          label: 'Not arrived today',
+          value: absentWorkers.length,
+          tone: 'slate' as const,
+          description: `${absentWorkers.length} active worker${absentWorkers.length === 1 ? '' : 's'} have no clock event today.`,
+          href: '/log',
+          cta: 'Open log',
+        }]
+      : []),
+  ];
 
   return (
     <div className="animate-fade-in">
@@ -116,6 +155,53 @@ export default function Dashboard() {
       </div>
 
       <StatsBar stats={stats} />
+
+      {/* Action Center */}
+      <section className="glass-card p-5 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p className="section-label">Action Center</p>
+            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">What needs attention</h2>
+          </div>
+          <span className="badge border bg-navy-900/60 text-slate-400 border-navy-600/50">
+            {actionItems.length || 'All clear'}
+          </span>
+        </div>
+
+        {actionItems.length === 0 ? (
+          <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4 flex items-start gap-3">
+            <span className="status-dot-pulse bg-emerald-400 mt-1.5" />
+            <div>
+              <p className="font-display font-semibold text-emerald-300">All clear</p>
+              <p className="text-sm text-slate-500 mt-1">No enrollment, schedule, or arrival issues need review right now.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            {actionItems.map((item) => {
+              const tone = {
+                amber: 'border-amber-400/20 bg-amber-400/5 text-amber-300',
+                red: 'border-red-400/20 bg-red-400/5 text-red-300',
+                slate: 'border-navy-600/50 bg-navy-900/55 text-slate-300',
+              }[item.tone];
+              return (
+                <div key={item.key} className={`rounded-2xl border p-4 ${tone}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-mono uppercase tracking-wider opacity-80">{item.label}</p>
+                      <p className="mt-2 text-sm leading-5 text-slate-400">{item.description}</p>
+                    </div>
+                    <span className="text-3xl font-display font-bold tabular-nums">{item.value}</span>
+                  </div>
+                  <Link href={item.href} className="mt-4 inline-flex text-xs font-semibold text-gold hover:text-gold-light">
+                    {item.cta} →
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Search */}
       <div className="relative mb-6">
