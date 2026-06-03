@@ -33,6 +33,7 @@ type OpsReadinessStatus = 'ready' | 'attention' | 'critical';
 interface RecentEvent {
   id: string;
   tone: 'emerald' | 'amber' | 'red' | 'slate';
+  source: 'system-warning' | 'attendance';
   label: string;
   title: string;
   description: string;
@@ -234,9 +235,9 @@ export default function Dashboard() {
           label: 'Not arrived today',
           value: absentWorkers.length,
           tone: 'slate' as const,
-          description: `${absentWorkers.length} active worker${absentWorkers.length === 1 ? '' : 's'} have no clock event today.`,
+          description: `${absentWorkers.length} active worker${absentWorkers.length === 1 ? '' : 's'} have no clock-in scans today.`,
           href: '/log',
-          cta: 'Open log',
+          cta: 'Review attendance',
         }]
       : []),
   ];
@@ -292,15 +293,16 @@ export default function Dashboard() {
   const readinessChecks = [
     { label: 'Portal', value: systemHealth ? 'Online' : 'Unknown', status: systemHealth ? 'online' as HealthStatus : 'offline' as HealthStatus, href: '/' },
     { label: 'Face service', value: systemHealth ? healthLabel(systemHealth.face_service.status) : 'Unknown', status: systemHealth?.face_service.status || 'offline' as HealthStatus, href: '/enroll' },
-    { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online}/${systemHealth.kiosks.total}` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/kiosks' },
-    { label: 'Workers ready', value: systemHealth ? `${systemHealth.sync.ready_worker_count}/${stats.totalWorkers}` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length}/${stats.totalWorkers}`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/workers' },
+    { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/kiosks' },
+    { label: 'Workers enrolled', value: systemHealth ? `${systemHealth.sync.ready_worker_count} of ${stats.totalWorkers} enrolled` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length} of ${stats.totalWorkers} enrolled`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/workers' },
   ];
 
   const recentEvents: RecentEvent[] = [
     ...(systemHealth?.warnings || []).map((warning, index) => ({
       id: `warning-${index}`,
       tone: warning.includes('offline') || warning.includes('never synced') ? 'red' as const : 'amber' as const,
-      label: warning.includes('Face service') ? 'System warning' : 'Kiosk warning',
+      source: 'system-warning' as const,
+      label: warning.includes('Face service') ? 'System warning' : 'Kiosk timeline signal',
       title: warning.includes('Face service') ? 'Face service needs attention' : 'Kiosk sync needs attention',
       description: warning,
       timestamp: systemHealth?.checked_at || null,
@@ -309,6 +311,7 @@ export default function Dashboard() {
     ...attendanceEvents.map((event) => ({
       id: event.id || `${event.worker_id}-${event.timestamp}-${event.event_type}`,
       tone: event.event_type === 'clock_in' ? 'emerald' as const : 'slate' as const,
+      source: 'attendance' as const,
       label: event.event_type === 'clock_in' ? 'Clock in' : event.event_type === 'clock_out' ? 'Clock out' : 'Attendance',
       title: `${event.worker_name || 'Worker'} ${event.event_type === 'clock_in' ? 'clocked in' : event.event_type === 'clock_out' ? 'clocked out' : 'recorded an event'}`,
       description: `${event.worker_department || 'No department'}${event.kiosk_name ? ` · ${event.kiosk_name}` : event.kiosk_id ? ` · ${event.kiosk_id}` : ''}`,
@@ -358,6 +361,14 @@ export default function Dashboard() {
               <span className="badge border border-current/20 bg-black/10 text-current">{readinessCopy.label}</span>
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-300">{readinessCopy.description}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href="/kiosks" className="btn-primary inline-flex px-4 py-2 text-sm">
+                Fix kiosk sync
+              </Link>
+              <Link href="/log" className="btn-secondary inline-flex px-4 py-2 text-sm">
+                Review attendance
+              </Link>
+            </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 xl:min-w-[560px] gap-3">
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
@@ -368,21 +379,21 @@ export default function Dashboard() {
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Arrived</p>
               <p className="mt-1 text-2xl font-display font-bold text-emerald-300">{stats.clockedIn + stats.clockedOut}</p>
-              <p className="text-[11px] text-slate-500">have events</p>
+              <p className="text-[11px] text-slate-500">clock events today</p>
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Not arrived</p>
               <p className="mt-1 text-2xl font-display font-bold text-amber-300">{stats.notArrived}</p>
-              <p className="text-[11px] text-slate-500">no scan yet</p>
+              <p className="text-[11px] text-slate-500">no clock-in scans yet</p>
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Kiosk sync</p>
-              <p className="mt-1 text-2xl font-display font-bold text-slate-100">{systemHealth ? `${systemHealth.kiosks.counts.online}/${systemHealth.kiosks.total}` : '—'}</p>
-              <p className="text-[11px] text-slate-500">online now</p>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Kiosks online</p>
+              <p className="mt-1 text-2xl font-display font-bold text-slate-100">{systemHealth ? systemHealth.kiosks.counts.online : '—'}</p>
+              <p className="text-[11px] text-slate-500">{systemHealth ? `of ${systemHealth.kiosks.total} connected` : 'sync unknown'}</p>
             </div>
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="mt-5 hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {readinessChecks.map((check) => (
             <Link key={check.label} href={check.href} className="rounded-2xl border border-white/10 bg-navy-950/30 p-3 hover:border-gold/30 transition-colors">
               <div className="flex items-center justify-between gap-2">
@@ -427,7 +438,7 @@ export default function Dashboard() {
                   <span className="text-xs font-mono text-slate-500">{systemHealth.face_service.latency_ms}ms</span>
                 </div>
                 <p className="mt-2 text-[11px] text-slate-500 truncate">
-                  {systemHealth.face_service.version || (systemHealth.face_service.model_ready ? 'Models ready' : 'Model readiness unknown')}
+                  {systemHealth.face_service.model_ready ? 'Recognition models ready' : 'Model readiness unknown'}
                 </p>
               </div>
               <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
@@ -441,10 +452,10 @@ export default function Dashboard() {
                 </p>
               </div>
               <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
-                <p className="section-label">Sync payload</p>
+                <p className="section-label">Worker data ready</p>
                 <div className="mt-3 flex items-end gap-2">
                   <span className="text-3xl font-display font-bold text-gold">{systemHealth.sync.ready_worker_count}</span>
-                  <span className="pb-1 text-sm text-slate-500">workers ready</span>
+                  <span className="pb-1 text-sm text-slate-500">workers enrolled</span>
                 </div>
                 <p className="mt-2 text-[11px] text-slate-500">Last event upload {formatRelativeTime(systemHealth.sync.last_attendance_upload)}</p>
               </div>
@@ -553,7 +564,7 @@ export default function Dashboard() {
                 slate: 'bg-slate-400',
               }[event.tone];
               return (
-                <Link key={event.id} href={event.href} className="rounded-2xl border border-navy-600/45 bg-navy-900/40 p-4 flex items-start gap-3 hover:border-gold/30 transition-colors">
+                <Link key={event.id} href={event.href} data-event-source={event.source} className="rounded-2xl border border-navy-600/45 bg-navy-900/40 p-4 flex items-start gap-3 hover:border-gold/30 transition-colors">
                   <span className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 ${tone}`} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
@@ -570,19 +581,28 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Search */}
-      <div className="relative mb-6">
-        <svg className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-        </svg>
-        <input
-          type="text"
-          placeholder="Search workers by name or department..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input-field pl-11 w-full md:w-96"
-        />
-      </div>
+      {/* Attendance roster */}
+      <section className="mb-6">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
+          <div>
+            <p className="section-label">Attendance roster</p>
+            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Today’s workers</h2>
+            <p className="mt-1 text-xs text-slate-500 font-mono">Search active workers by name or department</p>
+          </div>
+          <div className="relative w-full md:w-96">
+            <svg className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search workers by name or department..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input-field pl-11 w-full"
+            />
+          </div>
+        </div>
+      </section>
 
       {/* Worker grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
