@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [pinError, setPinError] = useState('');
   const [convexError, setConvexError] = useState('');
   const [pinLoading, setPinLoading] = useState(false);
@@ -55,7 +56,7 @@ export default function LoginPage() {
       await signIn('password', {
         flow: 'signIn',
         email: email.trim().toLowerCase(),
-        password,
+        password: password.trim(),
       });
       finishLogin();
     } catch (error) {
@@ -104,14 +105,23 @@ export default function LoginPage() {
 
             <div>
               <label className="section-label mb-2 block">Password</label>
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                className="w-full px-4 py-3 bg-navy-900/80 border border-navy-600/50 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="w-full px-4 py-3 pr-20 bg-navy-900/80 border border-navy-600/50 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono uppercase tracking-wider text-slate-400 hover:text-gold transition-colors"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
 
             {convexError && (
@@ -122,7 +132,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={convexLoading || !email.trim() || password.length < 8}
+              disabled={convexLoading || !email.trim() || password.trim().length < 8}
               className="btn-primary w-full py-3.5 text-base"
             >
               {convexLoading ? 'Authenticating...' : convexButtonLabel}
