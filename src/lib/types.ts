@@ -3,7 +3,9 @@ export interface Worker {
   name: string;
   department: string;
   photo_url: string | null;
-  face_encoding: number[] | null;
+  face_encoding?: number[] | null;
+  has_face_encoding?: boolean;
+  encoding_status?: 'valid' | 'missing' | 'invalid';
   enrolled_at: string;
   active: number;
 }

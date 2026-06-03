@@ -5,8 +5,19 @@ import Link from 'next/link';
 import { useToast } from '@/components/Toast';
 import { Worker } from '@/lib/types';
 
+function getEncodingStatus(worker: Worker) {
+  if (worker.encoding_status) return worker.encoding_status;
+  if (Array.isArray(worker.face_encoding)) {
+    if (worker.face_encoding.length === 128 || worker.face_encoding.length === 512) {
+      return worker.face_encoding.every((value) => Number.isFinite(value)) ? 'valid' : 'invalid';
+    }
+    return worker.face_encoding.length > 0 ? 'invalid' : 'missing';
+  }
+  return worker.has_face_encoding ? 'valid' : 'missing';
+}
+
 function hasFaceEncoding(worker: Worker) {
-  return Array.isArray(worker.face_encoding) && worker.face_encoding.length > 0;
+  return getEncodingStatus(worker) === 'valid';
 }
 
 function getInitials(name: string) {
@@ -79,7 +90,8 @@ export default function WorkersPage() {
   };
 
   const enrolledCount = workers.filter(hasFaceEncoding).length;
-  const missingFaceCount = workers.length - enrolledCount;
+  const invalidFaceCount = workers.filter((worker) => getEncodingStatus(worker) === 'invalid').length;
+  const missingFaceCount = workers.filter((worker) => getEncodingStatus(worker) === 'missing').length;
 
   return (
     <div className="animate-fade-in">
@@ -89,7 +101,7 @@ export default function WorkersPage() {
             Worker <span className="text-gold">Management</span>
           </h1>
           <p className="text-sm text-slate-500 mt-1 font-mono">
-            {workers.length} registered workers · {enrolledCount} face enrolled · {missingFaceCount} needs enrollment
+            {workers.length} registered workers · {enrolledCount} face enrolled · {missingFaceCount} needs enrollment · {invalidFaceCount} invalid
           </p>
         </div>
         <div className="flex gap-3 flex-wrap">
@@ -121,6 +133,14 @@ export default function WorkersPage() {
             <span className="pb-1 text-sm text-slate-500">workers</span>
           </div>
           <p className="mt-2 text-xs text-slate-500">Missing face data; use Enroll Face before kiosk use.</p>
+        </div>
+        <div className="glass-card p-4">
+          <p className="section-label">Invalid face data</p>
+          <div className="mt-2 flex items-end gap-2">
+            <span className={`text-3xl font-display font-bold ${invalidFaceCount > 0 ? 'text-red-400' : 'text-slate-500'}`}>{invalidFaceCount}</span>
+            <span className="pb-1 text-sm text-slate-500">workers</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Needs re-enrollment before kiosk recognition is reliable.</p>
         </div>
         <div className="glass-card p-4 border-l-4 border-gold/70">
           <p className="section-label">Canonical workflow</p>
@@ -158,11 +178,20 @@ export default function WorkersPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {workers.map((w, i) => {
-          const faceReady = hasFaceEncoding(w);
+          const encodingStatus = getEncodingStatus(w);
+          const faceReady = encodingStatus === 'valid';
+          const faceInvalid = encodingStatus === 'invalid';
+          const statusLabel = faceReady ? 'Face enrolled' : faceInvalid ? 'Invalid face data' : 'Missing face';
+          const readinessLabel = faceReady ? 'Ready for kiosk recognition' : faceInvalid ? 'Needs re-enrollment' : 'Needs enrollment';
+          const readinessDetail = faceReady
+            ? 'This worker has valid face data and will sync to kiosks.'
+            : faceInvalid
+              ? 'This worker has face data, but it is not a supported kiosk vector. Re-enroll from photos.'
+              : 'Capture photos in Enroll Face before this person can be recognized.';
           return (
             <div key={w.id} className={`glass-card-hover p-4 flex flex-col gap-4 animate-fade-in stagger-${Math.min(i + 1, 6)}`}>
               <div className="flex items-start gap-4">
-                <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center text-sm font-display font-bold shrink-0 ${faceReady ? 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400' : 'bg-amber-400/10 border-amber-400/20 text-amber-400'}`}>
+                <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center text-sm font-display font-bold shrink-0 ${faceReady ? 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400' : faceInvalid ? 'bg-red-400/10 border-red-400/20 text-red-400' : 'bg-amber-400/10 border-amber-400/20 text-amber-400'}`}>
                   {getInitials(w.name)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -170,22 +199,22 @@ export default function WorkersPage() {
                   <div className="text-xs font-mono text-slate-500 truncate">{w.department || 'No department'}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <span className="badge border bg-emerald-400/10 text-emerald-400 border-emerald-400/20">Active</span>
-                    <span className={`badge border ${faceReady ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' : 'bg-amber-400/10 text-amber-400 border-amber-400/20'}`}>
-                      {faceReady ? 'Face enrolled' : 'Missing face'}
+                    <span className={`badge border ${faceReady ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' : faceInvalid ? 'bg-red-400/10 text-red-400 border-red-400/20' : 'bg-amber-400/10 text-amber-400 border-amber-400/20'}`}>
+                      {statusLabel}
                     </span>
                   </div>
                 </div>
               </div>
               <div className="rounded-2xl border border-navy-600/40 bg-navy-900/45 px-3 py-2">
-                <p className="text-xs font-medium text-slate-300">{faceReady ? 'Ready for kiosk recognition' : 'Needs enrollment'}</p>
+                <p className="text-xs font-medium text-slate-300">{readinessLabel}</p>
                 <p className="mt-1 text-[11px] text-slate-500 leading-4">
-                  {faceReady ? 'This worker has face data and will sync to kiosks.' : 'Capture photos in Enroll Face before this person can be recognized.'}
+                  {readinessDetail}
                 </p>
               </div>
               <div className="flex gap-2 pt-1">
                 <button onClick={() => startEdit(w)} className="btn-secondary flex-1 text-xs">Edit</button>
-                <Link href="/enroll" className={`flex-1 text-center text-xs ${faceReady ? 'btn-ghost' : 'btn-primary'}`}>
-                  {faceReady ? 'Re-enroll' : 'Enroll now'}
+                <Link href={`/enroll?worker_id=${encodeURIComponent(w.id)}`} className={`flex-1 text-center text-xs ${faceReady ? 'btn-ghost' : 'btn-primary'}`}>
+                  {faceReady ? 'Re-enroll' : faceInvalid ? 'Re-enroll' : 'Enroll now'}
                 </Link>
                 <button onClick={() => deactivate(w.id)} className="px-3 py-2 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
                   Deactivate

@@ -7,10 +7,11 @@ import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encodin
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { name, department, photos } = body as {
+    const { name, department, photos, workerId } = body as {
       name?: string;
       department?: string;
       photos?: string[];
+      workerId?: string;
     };
 
     const normalizedName = name?.trim();
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const existingWorker = await convex.query(api.workers.findByName, { name: normalizedName });
-    if (existingWorker?.active) {
+    if (existingWorker?.active && (!workerId || existingWorker.id !== workerId)) {
       return NextResponse.json({ error: 'Worker name already exists' }, { status: 409 });
     }
 
@@ -84,16 +85,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const result = await convex.mutation(api.workers.create, {
-      name: normalizedName,
-      department: department?.trim() || undefined,
-      faceEncoding,
-      photoStorageIds: storageIds.length > 0 ? storageIds as any : undefined,
-    });
+    const now = new Date().toISOString();
+    const result = workerId
+      ? await convex.mutation(api.workers.update, {
+          id: workerId as any,
+          name: normalizedName,
+          department: department?.trim() || undefined,
+          faceEncoding,
+          photoStorageIds: storageIds.length > 0 ? storageIds as any : undefined,
+          enrolledAt: now,
+        })
+      : await convex.mutation(api.workers.create, {
+          name: normalizedName,
+          department: department?.trim() || undefined,
+          faceEncoding,
+          photoStorageIds: storageIds.length > 0 ? storageIds as any : undefined,
+        });
 
     return NextResponse.json(
       {
-        id: result.id,
+        id: workerId || (result as any).id,
         name: normalizedName,
         photosCount: storageIds.length,
         encoded: true,

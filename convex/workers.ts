@@ -18,6 +18,11 @@ function normalizeDepartment(department?: string) {
   return department?.trim() || "";
 }
 
+function getEncodingStatus(encoding?: number[]) {
+  if (!encoding || encoding.length === 0) return "missing" as const;
+  return isSupportedFaceEncoding(encoding) ? "valid" as const : "invalid" as const;
+}
+
 async function findWorkerByName(ctx: any, name: string) {
   const normalizedLower = normalizeName(name).toLocaleLowerCase();
   if (!normalizedLower) {
@@ -34,15 +39,20 @@ export const list = query({
       .query("workers")
       .withIndex("by_active", (q) => q.eq("active", true))
       .collect();
-    return workers.map((w) => ({
-      id: w._id,
-      name: w.name,
-      department: w.department,
-      photo_url: null,
-      ...(args.includeEncodings ? { face_encoding: w.faceEncoding || null } : {}),
-      enrolled_at: w.enrolledAt,
-      active: 1,
-    }));
+    return workers.map((w) => {
+      const encodingStatus = getEncodingStatus(w.faceEncoding);
+      return {
+        id: w._id,
+        name: w.name,
+        department: w.department,
+        photo_url: null,
+        ...(args.includeEncodings ? { face_encoding: w.faceEncoding || null } : {}),
+        has_face_encoding: encodingStatus === "valid",
+        encoding_status: encodingStatus,
+        enrolled_at: w.enrolledAt,
+        active: 1,
+      };
+    });
   },
 });
 
@@ -51,7 +61,17 @@ export const get = query({
   handler: async (ctx, args) => {
     const w = await ctx.db.get(args.id);
     if (!w || !w.active) return null;
-    return { id: w._id, name: w.name, department: w.department, photo_url: null, face_encoding: w.faceEncoding || null, enrolled_at: w.enrolledAt, active: 1 };
+    return {
+      id: w._id,
+      name: w.name,
+      department: w.department,
+      photo_url: null,
+      face_encoding: w.faceEncoding || null,
+      has_face_encoding: getEncodingStatus(w.faceEncoding) === "valid",
+      encoding_status: getEncodingStatus(w.faceEncoding),
+      enrolled_at: w.enrolledAt,
+      active: 1,
+    };
   },
 });
 
@@ -126,6 +146,7 @@ export const update = mutation({
     department: v.optional(v.string()),
     faceEncoding: v.optional(v.array(v.float64())),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
+    enrolledAt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { id, ...fields } = args;
@@ -147,6 +168,7 @@ export const update = mutation({
     if (fields.department !== undefined) updates.department = normalizeDepartment(fields.department);
     if (fields.faceEncoding !== undefined) updates.faceEncoding = fields.faceEncoding;
     if (fields.photoStorageIds !== undefined) updates.photoStorageIds = fields.photoStorageIds;
+    if (fields.enrolledAt !== undefined) updates.enrolledAt = fields.enrolledAt;
     updates.updatedAt = new Date().toISOString();
     await ctx.db.patch(id, updates);
     return { ok: true };

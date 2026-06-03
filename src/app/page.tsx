@@ -11,7 +11,8 @@ interface WorkerWithStatus {
   id: string;
   name: string;
   department: string;
-  face_encoding: number[] | null;
+  has_face_encoding?: boolean;
+  encoding_status?: 'valid' | 'missing' | 'invalid';
   status: 'in' | 'out' | 'absent';
   clockInTime?: string;
 }
@@ -30,7 +31,7 @@ export default function Dashboard() {
       const today = getLocalDateString();
       const [statsRes, workersRes, attendanceRes] = await Promise.all([
         fetch(`/api/stats?date=${today}`),
-        fetch('/api/workers?include_encodings=true'),
+        fetch('/api/workers'),
         fetch(`/api/attendance?date=${today}`),
       ]);
 
@@ -48,7 +49,7 @@ export default function Dashboard() {
         }
       }
 
-      const enriched: WorkerWithStatus[] = workersData.map((w: { id: string; name: string; department: string; face_encoding: number[] | null }) => {
+      const enriched: WorkerWithStatus[] = workersData.map((w: { id: string; name: string; department: string; has_face_encoding?: boolean; encoding_status?: 'valid' | 'missing' | 'invalid' }) => {
         const latest = statusMap.get(w.id);
         let status: 'in' | 'out' | 'absent' = 'absent';
         let clockInTime: string | undefined;
@@ -91,7 +92,8 @@ export default function Dashboard() {
       w.name.toLowerCase().includes(search.toLowerCase()) ||
       w.department.toLowerCase().includes(search.toLowerCase())
   );
-  const missingFaceWorkers = workers.filter((w) => !Array.isArray(w.face_encoding) || w.face_encoding.length === 0);
+  const missingFaceWorkers = workers.filter((w) => w.encoding_status === 'missing' || (!w.encoding_status && !w.has_face_encoding));
+  const invalidFaceWorkers = workers.filter((w) => w.encoding_status === 'invalid');
   const absentWorkers = workers.filter((w) => w.status === 'absent');
   const actionItems = [
     ...(missingFaceWorkers.length > 0
@@ -101,6 +103,17 @@ export default function Dashboard() {
           value: missingFaceWorkers.length,
           tone: 'amber' as const,
           description: `${missingFaceWorkers.length} worker${missingFaceWorkers.length === 1 ? '' : 's'} missing face data for kiosk recognition.`,
+          href: '/workers',
+          cta: 'Review now',
+        }]
+      : []),
+    ...(invalidFaceWorkers.length > 0
+      ? [{
+          key: 'invalid-face',
+          label: 'Invalid face data',
+          value: invalidFaceWorkers.length,
+          tone: 'red' as const,
+          description: `${invalidFaceWorkers.length} worker${invalidFaceWorkers.length === 1 ? '' : 's'} need re-enrollment because their face data is not kiosk-valid.`,
           href: '/workers',
           cta: 'Review now',
         }]

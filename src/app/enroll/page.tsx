@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 type Step = 'name' | 'camera' | 'capturing' | 'processing' | 'done' | 'error';
@@ -8,7 +9,9 @@ type Step = 'name' | 'camera' | 'capturing' | 'processing' | 'done' | 'error';
 const CAPTURES_REQUIRED = 3;
 const CAPTURE_INTERVAL_MS = 1500;
 
-export default function EnrollPage() {
+function EnrollPageContent() {
+  const searchParams = useSearchParams();
+  const workerId = searchParams.get('worker_id') || '';
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('');
@@ -22,8 +25,10 @@ export default function EnrollPage() {
   const captureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameRef = useRef(name);
   const departmentRef = useRef(department);
+  const workerIdRef = useRef(workerId);
   nameRef.current = name;
   departmentRef.current = department;
+  workerIdRef.current = workerId;
 
   const stopCamera = useCallback(() => {
     if (captureTimerRef.current) {
@@ -39,6 +44,27 @@ export default function EnrollPage() {
   useEffect(() => {
     return () => stopCamera();
   }, [stopCamera]);
+
+  useEffect(() => {
+    if (!workerId) return;
+    let cancelled = false;
+    async function loadWorker() {
+      try {
+        const res = await fetch(`/api/workers?id=${encodeURIComponent(workerId)}`);
+        if (!res.ok) throw new Error('Worker not found');
+        const worker = await res.json();
+        if (cancelled) return;
+        setName(worker.name || '');
+        setDepartment(worker.department || '');
+      } catch (err) {
+        if (cancelled) return;
+        setErrorMsg(err instanceof Error ? err.message : 'Unable to load worker for re-enrollment');
+        setStep('error');
+      }
+    }
+    loadWorker();
+    return () => { cancelled = true; };
+  }, [workerId]);
 
   const startCamera = async () => {
     try {
@@ -82,6 +108,7 @@ export default function EnrollPage() {
         body: JSON.stringify({
           name: nameRef.current.trim(),
           department: departmentRef.current.trim(),
+          workerId: workerIdRef.current,
           photos: capturedPhotos,
         }),
       });
@@ -148,7 +175,7 @@ export default function EnrollPage() {
             <h1 className="page-title text-slate-100">
               Face <span className="text-gold">Enrollment</span>
             </h1>
-            <p className="text-slate-400 mt-2 text-sm">Add a new team member to the gatekeeper system</p>
+            <p className="text-slate-400 mt-2 text-sm">{workerId ? 'Update face data for an existing team member' : 'Add a new team member to the gatekeeper system'}</p>
           </div>
 
           <div className="glass-card p-6 space-y-5">
@@ -336,18 +363,9 @@ export default function EnrollPage() {
           <p className="text-slate-400 mb-8 text-sm">{resultMsg}</p>
 
           <div className="space-y-3">
-            <button
-              onClick={() => {
-                setName('');
-                setDepartment('');
-                setPhotos([]);
-                setCaptureCount(0);
-                setStep('name');
-              }}
-              className="btn-primary w-full py-3.5 text-base"
-            >
+            <Link href="/enroll" className="btn-primary w-full py-3.5 text-base block text-center">
               Enroll Another Person
-            </button>
+            </Link>
             <Link href="/workers" className="btn-secondary block w-full text-center">
               Back to Workers
             </Link>
@@ -387,5 +405,13 @@ export default function EnrollPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function EnrollPage() {
+  return (
+    <Suspense fallback={null}>
+      <EnrollPageContent />
+    </Suspense>
   );
 }

@@ -14,9 +14,27 @@ export async function GET(req: NextRequest) {
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;
 
+  const id = req.nextUrl.searchParams.get('id');
+  if (id) {
+    const worker = await convex.query(api.workers.get, { id: id as any });
+    if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
+    const { face_encoding: _faceEncoding, ...safeWorker } = worker;
+    return NextResponse.json(safeWorker);
+  }
+
   const includeEncodings = req.nextUrl.searchParams.get('include_encodings') === 'true';
   const workers = await convex.query(api.workers.list, { includeEncodings });
-  return NextResponse.json(workers);
+  return NextResponse.json(workers.map((worker: any) => ({
+    id: worker.id,
+    name: worker.name,
+    department: worker.department,
+    photo_url: worker.photo_url,
+    has_face_encoding: worker.has_face_encoding,
+    encoding_status: worker.encoding_status,
+    ...(includeEncodings ? { face_encoding: worker.face_encoding } : {}),
+    enrolled_at: worker.enrolled_at,
+    active: worker.active,
+  })));
 }
 
 export async function POST(req: NextRequest) {
