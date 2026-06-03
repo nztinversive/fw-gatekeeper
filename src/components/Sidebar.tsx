@@ -93,13 +93,20 @@ const links = [
   },
 ];
 
+const primaryMobileLinks = ['/', '/workers', '/enroll'];
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useAuthActions();
   const currentMember = useQuery(api.portalMembers.current);
   const visibleLinks = links.filter((link) => !link.adminOnly || currentMember?.role === 'admin');
+  const mobilePrimaryLinks = visibleLinks.filter((link) => primaryMobileLinks.includes(link.href));
+  const mobileSecondaryLinks = visibleLinks.filter((link) => !primaryMobileLinks.includes(link.href));
+  const currentLink = visibleLinks.find((link) => link.href === pathname);
+  const moreIsActive = mobileSecondaryLinks.some((link) => link.href === pathname);
   const [logoutError, setLogoutError] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   async function handleLogout() {
     setLogoutError('');
@@ -200,23 +207,129 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Mobile bottom tabs */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-navy-900/90 backdrop-blur-xl border-t border-navy-600/40 flex z-30 safe-area-bottom">
-        {visibleLinks.map((l) => {
+      {/* Mobile header */}
+      <header className="md:hidden fixed top-0 left-0 right-0 z-30 bg-navy-950/92 backdrop-blur-xl border-b border-navy-600/40 safe-area-top">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-gold" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">FW Gatekeeper</p>
+              <h1 className="text-base font-display font-semibold text-slate-100 truncate">
+                {currentLink?.label ?? 'Command Center'}
+              </h1>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-more-menu"
+            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+              mobileMenuOpen || moreIsActive
+                ? 'border-gold/30 bg-gold/10 text-gold'
+                : 'border-navy-600/60 bg-navy-800/80 text-slate-300'
+            }`}
+          >
+            Menu
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d={mobileMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5'} />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-40">
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="absolute inset-0 bg-navy-950/70 backdrop-blur-sm"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div
+            id="mobile-more-menu"
+            className="absolute left-3 right-3 bottom-24 rounded-3xl border border-navy-600/60 bg-navy-900/95 p-3 shadow-2xl shadow-black/40"
+          >
+            <div className="flex items-center justify-between px-2 pb-2">
+              <div>
+                <p className="section-label">More pages</p>
+                <p className="text-xs text-slate-500">Secondary tools stay here instead of crowding the bottom bar.</p>
+              </div>
+              <span className="status-dot-pulse bg-emerald-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {mobileSecondaryLinks.map((l) => {
+                const isActive = pathname === l.href;
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'border-gold/25 bg-gold/10 text-gold'
+                        : 'border-navy-600/40 bg-navy-800/50 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <span className={isActive ? 'text-gold' : 'text-slate-500'}>{l.icon}</span>
+                    <span className="leading-tight">{l.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+            <div className="mt-3 border-t border-navy-600/40 pt-3">
+              {logoutError && (
+                <p role="alert" className="px-2 pb-2 text-xs text-red-400">
+                  {logoutError}
+                </p>
+              )}
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-400/10 bg-red-400/5 px-4 py-3 text-sm font-semibold text-red-300 transition-colors hover:bg-red-400/10"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                </svg>
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile primary tabs */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-navy-900/95 backdrop-blur-xl border-t border-navy-600/40 grid grid-cols-4 z-30 safe-area-bottom">
+        {mobilePrimaryLinks.map((l) => {
           const isActive = pathname === l.href;
           return (
             <Link
               key={l.href}
               href={l.href}
-              className={`flex-1 flex flex-col items-center py-2.5 text-[10px] font-medium transition-colors ${
+              className={`flex flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-medium transition-colors ${
                 isActive ? 'text-gold' : 'text-slate-500'
               }`}
             >
-              <span className={`mb-1 ${isActive ? 'text-gold' : 'text-slate-500'}`}>{l.icon}</span>
-              {l.label}
+              <span className={isActive ? 'text-gold' : 'text-slate-500'}>{l.icon}</span>
+              <span className="max-w-full truncate">{l.label.replace(' Face', '')}</span>
             </Link>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          className={`flex flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-medium transition-colors ${
+            mobileMenuOpen || moreIsActive ? 'text-gold' : 'text-slate-500'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+          </svg>
+          More
+        </button>
       </nav>
     </>
   );
