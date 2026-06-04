@@ -31,7 +31,11 @@ assert.match(workersPage, /grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3/, 'Wor
 assert.match(enrollPage, /useSearchParams/, 'Enroll page must read worker_id from the URL.');
 assert.match(enrollPage, /\/api\/workers\?id=\$\{encodeURIComponent\(workerId\)\}/, 'Enroll page must fetch an existing worker by id for prefill.');
 assert.match(enrollPage, /workerId: workerIdRef\.current/, 'Enroll submit payload must include the existing worker id when present.');
+assert.match(enrollPage, /Employee ID Number[\s\S]*Department/, 'Enroll page must show Employee ID Number between Full Name and Department.');
+assert.match(enrollPage, /employeeId: employeeIdRef\.current\.trim\(\)/, 'Enroll submit payload must include the employee ID number.');
+assert.match(enrollPage, /setEmployeeId\(worker\.employee_id \|\| ''\)/, 'Re-enrollment prefill must load the existing employee ID number.');
 assert.match(enrollPage, /<Link href="\/enroll" className="btn-primary w-full py-3\.5 text-base block text-center">/, 'Done state must clear worker_id by navigating to a fresh /enroll URL before enrolling another person.');
+assert.match(enrollRoute, /employeeId\?: string/, 'Enroll API must accept an optional employee ID number.');
 assert.match(enrollRoute, /workerId\?: string/, 'Enroll API must accept an optional existing worker id.');
 assert.match(enrollRoute, /api\.workers\.update/, 'Enroll API must update an existing worker when workerId is provided.');
 assert.doesNotMatch(enrollRoute, /if \(existingWorker\?\.active\) \{\n\s*return NextResponse\.json\(\{ error: 'Worker name already exists' \}/, 'Enroll API must not reject the same active worker before checking workerId.');
@@ -60,7 +64,10 @@ assert.match(appShell, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\]|pb-32
 assert.match(convexWorkers, /encoding_status/, 'Convex worker list must expose encoding_status readiness metadata.');
 assert.match(convexWorkers, /has_face_encoding/, 'Convex worker list must expose has_face_encoding readiness metadata.');
 assert.match(workersRoute, /includeEncodings \? \{ face_encoding: worker\.face_encoding \}/, 'Workers API should only include raw face_encoding when explicitly requested.');
+assert.match(workersRoute, /employee_id: worker\.employee_id/, 'Workers API list must expose employee ID number metadata.');
 assert.match(workersRoute, /const \{ face_encoding: _faceEncoding, \.\.\.safeWorker \} = worker/, 'Workers API id prefill should strip raw face_encoding before returning worker data.');
+assert.match(convexWorkers, /employee_id: w\.employeeId \|\| ""/, 'Convex worker queries must expose employee ID number metadata.');
+assert.match(types, /employee_id\?:\s*string/, 'Worker type should model employee ID number metadata.');
 assert.match(types, /encoding_status\?:\s*'valid'\s*\|\s*'missing'\s*\|\s*'invalid'/, 'Worker type should model encoding_status readiness metadata.');
 assert.match(types, /has_face_encoding\?:\s*boolean/, 'Worker type should model has_face_encoding readiness metadata.');
 

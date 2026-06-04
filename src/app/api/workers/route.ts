@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(workers.map((worker: any) => ({
     id: worker.id,
     name: worker.name,
+    employee_id: worker.employee_id,
     department: worker.department,
     photo_url: worker.photo_url,
     has_face_encoding: worker.has_face_encoding,
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
   if (unauthorized) return unauthorized;
 
   const body = await req.json();
-  const { name, department, face_encoding } = body;
+  const { name, employee_id, department, face_encoding } = body;
 
   if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 });
   if (!isSupportedEncoding(face_encoding)) {
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
 
   const result = await convex.mutation(api.workers.create, {
     name,
+    employeeId: employee_id || undefined,
     department: department || undefined,
     faceEncoding: face_encoding,
   });
@@ -66,7 +68,7 @@ export async function PATCH(req: NextRequest) {
   if (unauthorized) return unauthorized;
 
   const body = await req.json();
-  const { id, name, department, face_encoding } = body;
+  const { id, name, employee_id, department, face_encoding } = body;
 
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
   if (face_encoding !== undefined && !isSupportedEncoding(face_encoding)) {
@@ -75,6 +77,7 @@ export async function PATCH(req: NextRequest) {
 
   const updates: Record<string, unknown> = { id };
   if (name !== undefined) updates.name = name;
+  if (employee_id !== undefined) updates.employeeId = employee_id;
   if (department !== undefined) updates.department = department;
   if (face_encoding !== undefined) updates.faceEncoding = face_encoding;
 

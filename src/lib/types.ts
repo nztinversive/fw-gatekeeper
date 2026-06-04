@@ -1,6 +1,7 @@
 export interface Worker {
   id: string;
   name: string;
+  employee_id?: string;
   department: string;
   photo_url: string | null;
   face_encoding?: number[] | null;

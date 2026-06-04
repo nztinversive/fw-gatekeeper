@@ -18,6 +18,10 @@ function normalizeDepartment(department?: string) {
   return department?.trim() || "";
 }
 
+function normalizeEmployeeId(employeeId?: string) {
+  return employeeId?.trim() || undefined;
+}
+
 function getEncodingStatus(encoding?: number[]) {
   if (!encoding || encoding.length === 0) return "missing" as const;
   return isSupportedFaceEncoding(encoding) ? "valid" as const : "invalid" as const;
@@ -44,6 +48,7 @@ export const list = query({
       return {
         id: w._id,
         name: w.name,
+        employee_id: w.employeeId || "",
         department: w.department,
         photo_url: null,
         ...(args.includeEncodings ? { face_encoding: w.faceEncoding || null } : {}),
@@ -64,6 +69,7 @@ export const get = query({
     return {
       id: w._id,
       name: w.name,
+      employee_id: w.employeeId || "",
       department: w.department,
       photo_url: null,
       face_encoding: w.faceEncoding || null,
@@ -78,6 +84,7 @@ export const get = query({
 export const create = mutation({
   args: {
     name: v.string(),
+    employeeId: v.optional(v.string()),
     department: v.optional(v.string()),
     faceEncoding: v.array(v.float64()),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
@@ -91,6 +98,7 @@ export const create = mutation({
       throw new Error("faceEncoding must contain 128 or 512 finite values");
     }
     const now = new Date().toISOString();
+    const employeeId = normalizeEmployeeId(args.employeeId);
     const department = normalizeDepartment(args.department);
     const existing = await findWorkerByName(ctx, name);
 
@@ -101,6 +109,7 @@ export const create = mutation({
     if (existing && !existing.active) {
       await ctx.db.patch(existing._id, {
         name,
+        employeeId,
         department,
         faceEncoding: args.faceEncoding,
         photoStorageIds: args.photoStorageIds,
@@ -108,11 +117,12 @@ export const create = mutation({
         updatedAt: now,
         active: true,
       });
-      return { id: existing._id, name, department };
+      return { id: existing._id, name, employeeId, department };
     }
 
     const id = await ctx.db.insert("workers", {
       name,
+      employeeId,
       department,
       faceEncoding: args.faceEncoding,
       photoStorageIds: args.photoStorageIds,
@@ -120,7 +130,7 @@ export const create = mutation({
       updatedAt: now,
       active: true,
     });
-    return { id, name, department };
+    return { id, name, employeeId, department };
   },
 });
 
@@ -143,6 +153,7 @@ export const update = mutation({
   args: {
     id: v.id("workers"),
     name: v.optional(v.string()),
+    employeeId: v.optional(v.string()),
     department: v.optional(v.string()),
     faceEncoding: v.optional(v.array(v.float64())),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
@@ -165,6 +176,7 @@ export const update = mutation({
       }
       updates.name = trimmedName;
     }
+    if (fields.employeeId !== undefined) updates.employeeId = normalizeEmployeeId(fields.employeeId);
     if (fields.department !== undefined) updates.department = normalizeDepartment(fields.department);
     if (fields.faceEncoding !== undefined) updates.faceEncoding = fields.faceEncoding;
     if (fields.photoStorageIds !== undefined) updates.photoStorageIds = fields.photoStorageIds;
@@ -204,6 +216,7 @@ export const listForSync = query({
       result.push({
         id: w._id,
         name: w.name,
+        employee_id: w.employeeId || "",
         department: w.department,
         photo_url: photoUrls[0] || null,
         face_encoding: w.faceEncoding || null,

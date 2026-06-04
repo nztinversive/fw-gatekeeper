@@ -17,6 +17,7 @@ export default defineSchema({
 
   workers: defineTable({
     name: v.string(),
+    employeeId: v.optional(v.string()),
     department: v.string(),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
     faceEncoding: v.optional(v.array(v.float64())),

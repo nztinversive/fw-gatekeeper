@@ -29,6 +29,7 @@ export default function WorkersPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [department, setDepartment] = useState('');
 
   const fetchWorkers = useCallback(async () => {
@@ -46,6 +47,7 @@ export default function WorkersPage() {
   const resetEdit = () => {
     setEditId(null);
     setName('');
+    setEmployeeId('');
     setDepartment('');
   };
 
@@ -60,7 +62,7 @@ export default function WorkersPage() {
       const res = await fetch('/api/workers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editId, name, department }),
+        body: JSON.stringify({ id: editId, name, employee_id: employeeId, department }),
       });
       if (!res.ok) throw new Error('Failed to update worker');
       toast(`${name} updated successfully`);
@@ -86,6 +88,7 @@ export default function WorkersPage() {
   const startEdit = (w: Worker) => {
     setEditId(w.id);
     setName(w.name);
+    setEmployeeId(w.employee_id || '');
     setDepartment(w.department);
   };
 
@@ -165,6 +168,10 @@ export default function WorkersPage() {
               <input placeholder="e.g. John Smith" value={name} onChange={(e) => setName(e.target.value)} className="input-field" />
             </div>
             <div>
+              <label className="section-label mb-1.5 block">Employee ID Number</label>
+              <input placeholder="e.g. 1042" inputMode="numeric" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="input-field" />
+            </div>
+            <div>
               <label className="section-label mb-1.5 block">Department</label>
               <input placeholder="e.g. Production, QC, Electrical" value={department} onChange={(e) => setDepartment(e.target.value)} className="input-field" />
             </div>
@@ -196,6 +203,7 @@ export default function WorkersPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-display font-semibold text-sm text-slate-200 truncate">{w.name}</div>
+                  <div className="text-xs font-mono text-slate-500 truncate">ID: {w.employee_id || 'Not set'}</div>
                   <div className="text-xs font-mono text-slate-500 truncate">{w.department || 'No department'}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <span className="badge border bg-emerald-400/10 text-emerald-400 border-emerald-400/20">Active</span>

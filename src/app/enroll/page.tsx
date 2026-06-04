@@ -14,6 +14,7 @@ function EnrollPageContent() {
   const workerId = searchParams.get('worker_id') || '';
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [department, setDepartment] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [captureCount, setCaptureCount] = useState(0);
@@ -24,9 +25,11 @@ function EnrollPageContent() {
   const streamRef = useRef<MediaStream | null>(null);
   const captureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameRef = useRef(name);
+  const employeeIdRef = useRef(employeeId);
   const departmentRef = useRef(department);
   const workerIdRef = useRef(workerId);
   nameRef.current = name;
+  employeeIdRef.current = employeeId;
   departmentRef.current = department;
   workerIdRef.current = workerId;
 
@@ -55,6 +58,7 @@ function EnrollPageContent() {
         const worker = await res.json();
         if (cancelled) return;
         setName(worker.name || '');
+        setEmployeeId(worker.employee_id || '');
         setDepartment(worker.department || '');
       } catch (err) {
         if (cancelled) return;
@@ -107,6 +111,7 @@ function EnrollPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: nameRef.current.trim(),
+          employeeId: employeeIdRef.current.trim(),
           department: departmentRef.current.trim(),
           workerId: workerIdRef.current,
           photos: capturedPhotos,
@@ -188,6 +193,18 @@ function EnrollPageContent() {
                 placeholder="e.g. John Smith"
                 autoFocus
                 className="input-field text-lg py-3"
+              />
+            </div>
+
+            <div>
+              <label className="section-label mb-1.5 block">Employee ID Number</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                placeholder="e.g. 1042"
+                className="input-field"
               />
             </div>
 

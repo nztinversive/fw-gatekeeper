@@ -7,8 +7,9 @@ import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encodin
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { name, department, photos, workerId } = body as {
+    const { name, employeeId, department, photos, workerId } = body as {
       name?: string;
+      employeeId?: string;
       department?: string;
       photos?: string[];
       workerId?: string;
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
       ? await convex.mutation(api.workers.update, {
           id: workerId as any,
           name: normalizedName,
+          employeeId: employeeId?.trim() || undefined,
           department: department?.trim() || undefined,
           faceEncoding,
           photoStorageIds: storageIds.length > 0 ? storageIds as any : undefined,
@@ -97,6 +99,7 @@ export async function POST(req: NextRequest) {
         })
       : await convex.mutation(api.workers.create, {
           name: normalizedName,
+          employeeId: employeeId?.trim() || undefined,
           department: department?.trim() || undefined,
           faceEncoding,
           photoStorageIds: storageIds.length > 0 ? storageIds as any : undefined,
