@@ -1,186 +1,252 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Kiosk } from '@/lib/types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/components/Toast';
+
+type KioskReadinessStatus = 'online' | 'stale' | 'offline' | 'never_synced';
+
+type KioskHealthRow = {
+  id: string;
+  name: string;
+  kiosk_id: string | null;
+  type: string;
+  location: string;
+  last_sync: string | null;
+  status: KioskReadinessStatus;
+  expected_worker_count: number;
+  last_attendance_upload: string | null;
+};
+
+type SystemHealthPayload = {
+  checked_at: string;
+  kiosks: {
+    total: number;
+    counts: Record<KioskReadinessStatus, number>;
+    stale_threshold_minutes: number;
+    offline_threshold_minutes: number;
+    rows: KioskHealthRow[];
+  };
+  sync: {
+    ready_worker_count: number;
+    last_attendance_upload: string | null;
+  };
+  warnings: string[];
+};
+
+const statusStyles: Record<KioskReadinessStatus, string> = {
+  online: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
+  stale: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+  offline: 'bg-red-400/10 text-red-300 border-red-400/20',
+  never_synced: 'bg-slate-400/10 text-slate-300 border-slate-400/20',
+};
+
+const statusLabels: Record<KioskReadinessStatus, string> = {
+  online: 'Online',
+  stale: 'Stale',
+  offline: 'Offline',
+  never_synced: 'Never synced',
+};
+
+function formatTimestamp(value: string | null) {
+  if (!value) return 'No data yet';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Invalid timestamp';
+  return date.toLocaleString();
+}
 
 export default function KiosksPage() {
   const { toast } = useToast();
-  const [kiosks, setKiosks] = useState<Kiosk[]>([]);
+  const [health, setHealth] = useState<SystemHealthPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<'entry' | 'exit'>('entry');
   const [location, setLocation] = useState('');
 
-  const fetchKiosks = useCallback(async () => {
+  const fetchReadiness = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
-      const res = await fetch('/api/kiosks');
-      if (!res.ok) throw new Error('Failed to fetch kiosks');
-      setKiosks(await res.json());
+      const res = await fetch('/api/system-health', { cache: 'no-store' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to load kiosk readiness');
+      setHealth(body);
     } catch (err) {
-      console.error('Failed to fetch kiosks', err);
+      const message = err instanceof Error ? err.message : 'Failed to load kiosk readiness';
+      setError(message);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchKiosks(); }, [fetchKiosks]);
+  useEffect(() => {
+    fetchReadiness();
+  }, [fetchReadiness]);
+
+  const counts = health?.kiosks.counts;
+  const readinessLabel = useMemo(() => {
+    if (!health) return 'Checking readiness';
+    if (health.kiosks.total === 0) return 'No kiosks registered';
+    if ((counts?.offline || 0) + (counts?.never_synced || 0) > 0) return 'Kiosks need attention';
+    if ((counts?.stale || 0) > 0) return 'Some kiosks are stale';
+    return 'All kiosks online';
+  }, [counts, health]);
 
   const handleSubmit = async () => {
-    if (!name.trim()) { toast('Kiosk name required', 'error'); return; }
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      toast('Kiosk name required', 'error');
+      return;
+    }
+
     try {
-      await fetch('/api/kiosks', {
+      const res = await fetch('/api/kiosks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type, location }),
+        body: JSON.stringify({ name: trimmedName, type, location: location.trim() }),
       });
-      toast(`Kiosk "${name}" registered`);
-      setName(''); setLocation(''); setShowForm(false);
-      fetchKiosks();
-    } catch {
-      toast('Failed to register kiosk', 'error');
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to register kiosk');
+      toast(`Kiosk "${trimmedName}" registered`);
+      setName('');
+      setLocation('');
+      setType('entry');
+      setShowForm(false);
+      fetchReadiness();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to register kiosk', 'error');
     }
   };
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
+    <div className="animate-fade-in space-y-6 pb-24 md:pb-8">
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
+          <p className="section-label mb-2">Device Operations</p>
           <h1 className="page-title text-slate-100">
-            Kiosk <span className="text-gold">Management</span>
+            Kiosk <span className="text-gold">readiness</span>
           </h1>
-          <p className="text-sm text-slate-500 mt-1 font-mono">{kiosks.length} registered kiosks</p>
+          <p className="text-sm text-slate-400 mt-2 max-w-2xl leading-6">
+            Verify whether every gate kiosk has synced recently, how many enrolled workers it should receive,
+            and whether attendance uploads are reaching the portal.
+          </p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className={showForm ? 'btn-secondary' : 'btn-primary flex items-center gap-2'}
-        >
-          {showForm ? 'Cancel' : (
-            <>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Add Kiosk
-            </>
-          )}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={fetchReadiness} className="btn-secondary" disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button onClick={() => setShowForm(!showForm)} className={showForm ? 'btn-secondary' : 'btn-primary'}>
+            {showForm ? 'Cancel' : 'Add Kiosk'}
+          </button>
+        </div>
       </div>
 
+      <section className="glass-card p-5">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <p className="section-label mb-2">Kiosk readiness</p>
+            <h2 className="font-display text-2xl text-slate-100">{readinessLabel}</h2>
+            <p className="text-sm text-slate-400 mt-2">
+              Online means synced within {health?.kiosks.stale_threshold_minutes ?? 15} minutes; stale means 15–{health?.kiosks.offline_threshold_minutes ?? 60} minutes; offline means over {health?.kiosks.offline_threshold_minutes ?? 60} minutes; never synced means no sync has been recorded.
+            </p>
+          </div>
+          <span className="badge bg-gold/10 text-gold border border-gold/20">
+            {health?.sync.ready_worker_count ?? 0} Expected worker records
+          </span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+          {(['online', 'stale', 'offline', 'never_synced'] as KioskReadinessStatus[]).map((status) => (
+            <div key={status} className="rounded-xl border border-navy-600/50 bg-navy-900/35 p-4">
+              <p className="text-xs text-slate-500">{statusLabels[status]}</p>
+              <p className="font-display text-2xl text-slate-100 mt-1">{counts?.[status] ?? 0}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-5">
+        <h2 className="font-display font-semibold text-amber-200">Kiosk setup reminder</h2>
+        <p className="text-sm text-amber-100/80 leading-6 mt-2">
+          Each Raspberry Pi kiosk must point at this portal URL and use a matching <code className="font-mono">KIOSK_API_KEY</code> in its environment. The secret key is never shown here; verify it in Render and on the Pi when sync is failing.
+        </p>
+      </section>
+
       {showForm && (
-        <div className="glass-card p-6 mb-8 space-y-4 animate-slide-up">
-          <h2 className="font-display font-semibold text-gold flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-            </svg>
-            Register New Kiosk
-          </h2>
+        <section className="glass-card p-6 space-y-4 animate-slide-up">
+          <h2 className="font-display font-semibold text-gold">Register New Kiosk</h2>
           <div>
             <label className="section-label mb-1.5 block">Kiosk Name</label>
-            <input
-              placeholder="e.g. Main Entrance Kiosk"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="input-field"
-            />
+            <input placeholder="e.g. Main Entrance Kiosk" value={name} onChange={(e) => setName(e.target.value)} className="input-field" />
           </div>
           <div>
             <label className="section-label mb-1.5 block">Type</label>
             <div className="flex gap-3">
-              <button
-                onClick={() => setType('entry')}
-                className={`flex-1 py-3 rounded-xl text-sm font-medium border transition-all ${
-                  type === 'entry'
-                    ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20'
-                    : 'bg-navy-900/50 text-slate-400 border-navy-600/50 hover:border-slate-600'
-                }`}
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
-                  </svg>
-                  Entry
-                </span>
-              </button>
-              <button
-                onClick={() => setType('exit')}
-                className={`flex-1 py-3 rounded-xl text-sm font-medium border transition-all ${
-                  type === 'exit'
-                    ? 'bg-amber-400/10 text-amber-400 border-amber-400/20'
-                    : 'bg-navy-900/50 text-slate-400 border-navy-600/50 hover:border-slate-600'
-                }`}
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-                  </svg>
-                  Exit
-                </span>
-              </button>
+              <button onClick={() => setType('entry')} className={`flex-1 py-3 rounded-xl text-sm font-medium border transition-all ${type === 'entry' ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' : 'bg-navy-900/50 text-slate-400 border-navy-600/50 hover:border-slate-600'}`}>Entry</button>
+              <button onClick={() => setType('exit')} className={`flex-1 py-3 rounded-xl text-sm font-medium border transition-all ${type === 'exit' ? 'bg-amber-400/10 text-amber-400 border-amber-400/20' : 'bg-navy-900/50 text-slate-400 border-navy-600/50 hover:border-slate-600'}`}>Exit</button>
             </div>
           </div>
           <div>
             <label className="section-label mb-1.5 block">Location</label>
-            <input
-              placeholder="e.g. Building A, Front Gate"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="input-field"
-            />
+            <input placeholder="e.g. Building A, Front Gate" value={location} onChange={(e) => setLocation(e.target.value)} className="input-field" />
           </div>
           <button onClick={handleSubmit} className="btn-primary">Register Kiosk</button>
+        </section>
+      )}
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {kiosks.map((k, i) => (
-          <div key={k.id} className={`glass-card-hover p-5 animate-fade-in stagger-${Math.min(i + 1, 6)}`}>
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
-                  k.type === 'entry'
-                    ? 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400'
-                    : 'bg-amber-400/10 border-amber-400/20 text-amber-400'
-                }`}>
-                  {k.type === 'entry' ? (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-                    </svg>
-                  )}
-                </div>
-                <div>
-                  <h3 className="font-display font-medium text-slate-200">{k.name}</h3>
-                  <span className={`badge text-[10px] mt-1 border ${
-                    k.type === 'entry'
-                      ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20'
-                      : 'bg-amber-400/10 text-amber-400 border-amber-400/20'
-                  }`}>
-                    {k.type === 'entry' ? 'Entry Point' : 'Exit Point'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2 text-slate-400">
-                <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                </svg>
-                <span className="font-mono">{k.location || 'No location set'}</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-500">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-                <span className="font-mono">
-                  {k.last_sync ? `Synced ${new Date(k.last_sync).toLocaleString()}` : 'Never synced'}
-                </span>
-              </div>
-            </div>
+      {loading && !health ? (
+        <div className="glass-card p-6 text-sm text-slate-400">Loading kiosk readiness…</div>
+      ) : (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="font-display font-semibold text-slate-100">Registered kiosks</h2>
+            <span className="text-xs font-mono text-slate-500">{health?.kiosks.total ?? 0} devices</span>
           </div>
-        ))}
-      </div>
+          {health?.kiosks.rows.length ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {health.kiosks.rows.map((kiosk) => (
+                <article key={kiosk.id} className="glass-card-hover p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-display font-medium text-slate-100">{kiosk.name}</h3>
+                      <p className="text-xs font-mono text-slate-500 mt-1">{kiosk.kiosk_id || kiosk.id}</p>
+                    </div>
+                    <span className={`badge border ${statusStyles[kiosk.status]}`}>{statusLabels[kiosk.status]}</span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 text-sm">
+                    <div className="rounded-xl bg-navy-900/40 border border-navy-600/40 p-3">
+                      <p className="text-xs text-slate-500">Location</p>
+                      <p className="text-slate-200 mt-1">{kiosk.location || 'No location set'}</p>
+                    </div>
+                    <div className="rounded-xl bg-navy-900/40 border border-navy-600/40 p-3">
+                      <p className="text-xs text-slate-500">Last sync</p>
+                      <p className="text-slate-200 mt-1">{formatTimestamp(kiosk.last_sync)}</p>
+                    </div>
+                    <div className="rounded-xl bg-navy-900/40 border border-navy-600/40 p-3">
+                      <p className="text-xs text-slate-500">Expected worker payload</p>
+                      <p className="text-slate-200 mt-1">{kiosk.expected_worker_count} workers</p>
+                    </div>
+                    <div className="rounded-xl bg-navy-900/40 border border-navy-600/40 p-3">
+                      <p className="text-xs text-slate-500">Last attendance upload</p>
+                      <p className="text-slate-200 mt-1">{formatTimestamp(kiosk.last_attendance_upload)}</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="glass-card p-6 text-sm text-slate-400 leading-6">
+              No kiosks are registered yet. Add a kiosk record, then configure the Pi with the portal URL and matching <code className="font-mono">KIOSK_API_KEY</code> before launch.
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

@@ -10,17 +10,24 @@ async function requireAdmin(req: NextRequest) {
   return (await hasValidPortalSession(req, ['admin'])) ? null : unauthorizedApiResponse();
 }
 
-export async function GET(req: NextRequest) {
-  const unauthorized = await requireAdmin(req);
-  if (unauthorized) return unauthorized;
+async function requireWorkerRead(req: NextRequest) {
+  return (await hasValidPortalSession(req, ['admin', 'enrollment'])) ? null : unauthorizedApiResponse();
+}
 
+export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
   if (id) {
+    const unauthorized = await requireWorkerRead(req);
+    if (unauthorized) return unauthorized;
+
     const worker = await convex.query(api.workers.get, { id: id as any });
     if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
     const { face_encoding: _faceEncoding, ...safeWorker } = worker;
     return NextResponse.json(safeWorker);
   }
+
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
 
   const includeEncodings = req.nextUrl.searchParams.get('include_encodings') === 'true';
   const workers = await convex.query(api.workers.list, { includeEncodings });

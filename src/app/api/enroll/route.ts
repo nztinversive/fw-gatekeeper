@@ -3,8 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
+import { hasValidPortalSession } from '@/lib/portal-auth';
+import { unauthorizedApiResponse } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
+  const isAdminSession = await hasValidPortalSession(req, ['admin']);
+  if (!isAdminSession && !(await hasValidPortalSession(req, ['enrollment']))) {
+    return unauthorizedApiResponse();
+  }
+
   try {
     const body = await req.json().catch(() => ({}));
     const { name, employeeId, department, photos, workerId } = body as {
@@ -15,7 +22,17 @@ export async function POST(req: NextRequest) {
       workerId?: string;
     };
 
-    const normalizedName = name?.trim();
+    let normalizedName = name?.trim();
+    let employeeIdForSave = employeeId?.trim() || undefined;
+    let departmentForSave = department?.trim() || undefined;
+
+    if (workerId && !isAdminSession) {
+      const existingForEnrollment = await convex.query(api.workers.get, { id: workerId as any });
+      if (!existingForEnrollment) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
+      normalizedName = existingForEnrollment.name;
+      employeeIdForSave = existingForEnrollment.employee_id || undefined;
+      departmentForSave = existingForEnrollment.department || undefined;
+    }
 
     if (!normalizedName) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -91,16 +108,16 @@ export async function POST(req: NextRequest) {
       ? await convex.mutation(api.workers.update, {
           id: workerId as any,
           name: normalizedName,
-          employeeId: employeeId?.trim() || undefined,
-          department: department?.trim() || undefined,
+          employeeId: employeeIdForSave,
+          department: departmentForSave,
           faceEncoding,
           photoStorageIds: storageIds.length > 0 ? storageIds as any : undefined,
           enrolledAt: now,
         })
       : await convex.mutation(api.workers.create, {
           name: normalizedName,
-          employeeId: employeeId?.trim() || undefined,
-          department: department?.trim() || undefined,
+          employeeId: employeeIdForSave,
+          department: departmentForSave,
           faceEncoding,
           photoStorageIds: storageIds.length > 0 ? storageIds as any : undefined,
         });
