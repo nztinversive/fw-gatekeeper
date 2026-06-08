@@ -119,7 +119,12 @@ def sync_attendance() -> bool:
 
 def sync_workers() -> bool:
     """Download new/updated workers from server. Returns True on success."""
-    last_sync = database.get_sync_state("last_worker_sync") or "2000-01-01T00:00:00"
+    if database.has_workers_missing_employee_id():
+        # Existing kiosk databases created before employee_id support need one full
+        # backfill so the scan-success screen can show the portal employee ID.
+        last_sync = "2000-01-01T00:00:00"
+    else:
+        last_sync = database.get_sync_state("last_worker_sync") or "2000-01-01T00:00:00"
 
     try:
         r = requests.get(
@@ -138,6 +143,7 @@ def sync_workers() -> bool:
         for w in workers:
             server_id = w.get("id")
             name = w.get("name")
+            employee_id = w.get("employee_id")
             encoding_data = w.get("face_encoding")
             photo_url = w.get("photo_url")
             enrolled_at = w.get("enrolled_at")
@@ -165,6 +171,7 @@ def sync_workers() -> bool:
                 photo_paths=[photo_path] if photo_path else [],
                 enrolled_at=enrolled_at,
                 server_id=str(server_id),
+                employee_id=employee_id,
             )
             logger.info("Synced worker: %s (server_id=%s)", name, server_id)
 

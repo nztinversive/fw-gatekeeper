@@ -60,6 +60,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS workers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            employee_id TEXT,
             encoding_blob BLOB NOT NULL,
             enrolled_at TEXT NOT NULL DEFAULT (datetime('now')),
             photo_count INTEGER NOT NULL DEFAULT 0,
@@ -92,6 +93,7 @@ def init_db():
 
     # Migration support for previous schema versions.
     _ensure_column(conn, "workers", "encoding_blob", "encoding_blob BLOB")
+    _ensure_column(conn, "workers", "employee_id", "employee_id TEXT")
     _ensure_column(conn, "workers", "enrolled_at", "enrolled_at TEXT DEFAULT (datetime('now'))")
     _ensure_column(conn, "workers", "photo_count", "photo_count INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "workers", "photo_paths", "photo_paths TEXT NOT NULL DEFAULT '[]'")
@@ -140,6 +142,7 @@ def add_worker(
     photo_paths: Optional[list[str]] = None,
     enrolled_at: Optional[str] = None,
     server_id: Optional[str] = None,
+    employee_id: Optional[str] = None,
 ) -> int:
     """Insert or update a worker and return worker id."""
     conn = _get_conn()
@@ -154,6 +157,7 @@ def add_worker(
     payload_blob = _serialize_encoding(encoding)
     photo_paths_json = json.dumps(photo_paths)
     enrolled_at = enrolled_at or datetime.now().isoformat(timespec="seconds")
+    normalized_employee_id = employee_id.strip() if isinstance(employee_id, str) else ""
 
     row = None
     if server_id is not None:
@@ -167,18 +171,27 @@ def add_worker(
         conn.execute(
             """
             UPDATE workers
-            SET name = ?, encoding_blob = ?, enrolled_at = ?, photo_count = ?, photo_paths = ?, server_id = ?
+            SET name = ?, employee_id = ?, encoding_blob = ?, enrolled_at = ?, photo_count = ?, photo_paths = ?, server_id = ?
             WHERE id = ?
             """,
-            (normalized_name, payload_blob, enrolled_at, len(photo_paths), photo_paths_json, stored_server_id, worker_id),
+            (
+                normalized_name,
+                normalized_employee_id,
+                payload_blob,
+                enrolled_at,
+                len(photo_paths),
+                photo_paths_json,
+                stored_server_id,
+                worker_id,
+            ),
         )
     else:
         cursor = conn.execute(
             """
-            INSERT INTO workers (name, encoding_blob, enrolled_at, photo_count, photo_paths, server_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO workers (name, employee_id, encoding_blob, enrolled_at, photo_count, photo_paths, server_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (normalized_name, payload_blob, enrolled_at, len(photo_paths), photo_paths_json, server_id),
+            (normalized_name, normalized_employee_id, payload_blob, enrolled_at, len(photo_paths), photo_paths_json, server_id),
         )
         worker_id = int(cursor.lastrowid)
 
@@ -207,7 +220,7 @@ def get_worker_by_name(name: str) -> Optional[dict]:
     """Fetch worker by name (case-insensitive)."""
     conn = _get_conn()
     row = conn.execute(
-        "SELECT id, name, encoding_blob, enrolled_at, photo_count, photo_paths, server_id FROM workers WHERE lower(name)=lower(?)",
+        "SELECT id, name, employee_id, encoding_blob, enrolled_at, photo_count, photo_paths, server_id FROM workers WHERE lower(name)=lower(?)",
         (name.strip(),),
     ).fetchone()
     if not row:
@@ -216,8 +229,31 @@ def get_worker_by_name(name: str) -> Optional[dict]:
     return {
         "id": int(row["id"]),
         "name": row["name"],
+        "employee_id": row["employee_id"] or "",
         "encoding_blob": encoding,
         "face_encoding": encoding,  # backward-compatible alias
+        "enrolled_at": row["enrolled_at"],
+        "photo_count": int(row["photo_count"] or 0),
+        "photo_paths": json.loads(row["photo_paths"] or "[]"),
+        "server_id": row["server_id"],
+    }
+
+def get_worker_by_id(worker_id: int) -> Optional[dict]:
+    """Fetch worker by local SQLite id."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id, name, employee_id, encoding_blob, enrolled_at, photo_count, photo_paths, server_id FROM workers WHERE id = ?",
+        (int(worker_id),),
+    ).fetchone()
+    if not row:
+        return None
+    encoding = _deserialize_encoding(row["encoding_blob"])
+    return {
+        "id": int(row["id"]),
+        "name": row["name"],
+        "employee_id": row["employee_id"] or "",
+        "encoding_blob": encoding,
+        "face_encoding": encoding,
         "enrolled_at": row["enrolled_at"],
         "photo_count": int(row["photo_count"] or 0),
         "photo_paths": json.loads(row["photo_paths"] or "[]"),
@@ -229,7 +265,7 @@ def get_all_workers() -> list[dict]:
     """Return all workers with decoded encodings."""
     conn = _get_conn()
     rows = conn.execute(
-        "SELECT id, name, encoding_blob, enrolled_at, photo_count, photo_paths, server_id FROM workers ORDER BY name ASC"
+        "SELECT id, name, employee_id, encoding_blob, enrolled_at, photo_count, photo_paths, server_id FROM workers ORDER BY name ASC"
     ).fetchall()
     workers = []
     for row in rows:
@@ -238,6 +274,7 @@ def get_all_workers() -> list[dict]:
             {
                 "id": int(row["id"]),
                 "name": row["name"],
+                "employee_id": row["employee_id"] or "",
                 "encoding_blob": encoding,
                 "face_encoding": encoding,  # backward-compatible alias
                 "enrolled_at": row["enrolled_at"],
@@ -256,6 +293,7 @@ def list_workers() -> list[dict]:
         {
             "id": worker["id"],
             "name": worker["name"],
+            "employee_id": worker["employee_id"],
             "enrolled_at": worker["enrolled_at"],
             "photo_count": worker["photo_count"],
             "photo_paths": worker["photo_paths"],
@@ -272,6 +310,14 @@ def get_server_id(local_id: int) -> Optional[str]:
     if not row:
         return None
     return row["server_id"]
+
+def has_workers_missing_employee_id() -> bool:
+    """Return True when existing synced workers still need the new employee_id field backfilled."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id FROM workers WHERE server_id IS NOT NULL AND employee_id IS NULL LIMIT 1"
+    ).fetchone()
+    return row is not None
 
 
 def get_worker_encodings() -> tuple[list[np.ndarray], list[int], list[str]]:

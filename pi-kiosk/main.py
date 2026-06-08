@@ -161,6 +161,17 @@ def draw_box(frame_bgr, face_loc, color, label=None):
     return out
 
 
+def format_worker_display_id(worker, local_worker_id=None):
+    """Prefer the portal employee ID; fall back to the kiosk local id if absent."""
+    if worker:
+        employee_id = str(worker.get("employee_id") or "").strip()
+        if employee_id:
+            return employee_id
+    if local_worker_id is not None:
+        return str(local_worker_id)
+    return ""
+
+
 def cosine_sim(a, b):
     na, nb = np.linalg.norm(a), np.linalg.norm(b)
     if na == 0 or nb == 0:
@@ -220,7 +231,7 @@ def run(args):
             if camera_attempts >= 10 and not critical_logged:
                 logger.critical("Camera failed to initialize after %d attempts; continuing to retry every 30 seconds", camera_attempts)
                 critical_logged = True
-            web_app.update_status(state="ERROR", message=f"Camera error: {e}. Retrying in 30s", face_detected=False)
+            web_app.update_status(state="ERROR", message=f"Camera error: {e}. Retrying in 30s", worker_id=None, face_detected=False)
             time.sleep(30)
 
     # Shared state
@@ -330,7 +341,7 @@ def run(args):
     det_thread.start()
 
     web_app.update_status(state="IDLE", message="Step toward camera",
-                          known_workers=recognizer.known_count, face_detected=False)
+                          worker_id=None, known_workers=recognizer.known_count, face_detected=False)
     logger.info("Kiosk ready")
 
     try:
@@ -366,7 +377,7 @@ def run(args):
                     box_loc = None
                     box_label = None
                     web_app.update_status(state="IDLE", message="Step toward camera",
-                                          face_detected=False, known_workers=recognizer.known_count)
+                                          worker_id=None, face_detected=False, known_workers=recognizer.known_count)
                 time.sleep(0.05)
                 continue
 
@@ -379,18 +390,17 @@ def run(args):
                 box_label = None
                 if unknown_streak < config.RECOGNITION_UNKNOWN_STREAK:
                     web_app.update_status(state="IDLE", message="Hold steady...",
-                                          face_detected=True, confidence=confidence,
+                                          worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
                 else:
                     web_app.update_status(state="NOT_RECOGNIZED", message="Face not recognized",
-                                          face_detected=True, confidence=confidence,
+                                          worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
                     display_until[0] = now + config.DISPLAY_TIME_SEC
                 continue
 
             unknown_streak = 0
             box_color = GREEN
-            box_label = name
 
             _, known_ids, known_names = recognizer._snapshot_known_faces()
             worker_id = None
@@ -401,12 +411,23 @@ def run(args):
             if worker_id is None:
                 continue
 
+            worker = database.get_worker_by_id(worker_id)
+            display_id = format_worker_display_id(worker, worker_id)
+            display_name = worker["name"] if worker else name
+            id_suffix = f" | ID: {display_id}" if display_id else ""
+            box_label = f"{display_name}{id_suffix}"
+
             last = last_clocks.get(worker_id)
             if last and datetime.now() - last < timedelta(minutes=config.CLOCK_DEBOUNCE_MINUTES):
                 pct = int(confidence * 100)
+                already_msg = (
+                    f"Already clocked in, {display_name}! ID: {display_id} ({pct}%)"
+                    if display_id
+                    else f"Already clocked in, {display_name}! ({pct}%)"
+                )
                 web_app.update_status(state="ALREADY_CLOCKED",
-                                      message=f"Already clocked in, {name}! ({pct}%)",
-                                      worker_name=name, face_detected=True,
+                                      message=already_msg,
+                                      worker_name=display_name, worker_id=display_id, face_detected=True,
                                       confidence=confidence,
                                       known_workers=recognizer.known_count)
                 display_until[0] = now + config.DISPLAY_TIME_SEC
@@ -421,20 +442,25 @@ def run(args):
                 action = "clock_out" if last_action == "clock_in" else "clock_in"
 
             database.log_attendance(
-                worker_id=worker_id, worker_name=name,
+                worker_id=worker_id, worker_name=display_name,
                 action=action, liveness_confirmed=False, confidence=confidence,
             )
             last_clocks[worker_id] = datetime.now()
 
             time_str = datetime.now().strftime("%I:%M %p")
             pct = int(confidence * 100)
-            msg = f"Welcome, {name}! ({pct}%) - {time_str}" if action == "clock_in" else f"Goodbye, {name}! ({pct}%) - {time_str}"
+            id_text = f" ID: {display_id}" if display_id else ""
+            msg = (
+                f"Welcome, {display_name}!{id_text} ({pct}%) - {time_str}"
+                if action == "clock_in"
+                else f"Goodbye, {display_name}!{id_text} ({pct}%) - {time_str}"
+            )
 
             web_app.update_status(state="CLOCKED_IN", message=msg,
-                                  worker_name=name, action=action,
+                                  worker_name=display_name, worker_id=display_id, action=action,
                                   confidence=confidence, face_detected=True,
                                   known_workers=recognizer.known_count)
-            logger.info("%s: %s (confidence: %.2f)", action.replace("_", " ").title(), name, confidence)
+            logger.info("%s: %s id=%s (confidence: %.2f)", action.replace("_", " ").title(), display_name, display_id or "n/a", confidence)
             display_until[0] = now + config.DISPLAY_TIME_SEC
 
     except KeyboardInterrupt:

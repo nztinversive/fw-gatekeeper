@@ -25,6 +25,7 @@ _status = {
     "state": "IDLE",
     "message": "Step toward camera",
     "worker_name": None,
+    "worker_id": None,
     "action": None,
     "confidence": 0.0,
     "liveness_confirmed": False,
@@ -155,8 +156,9 @@ def manual_clock():
     action_label = "Clocked in" if action == "clock_in" else "Clocked out"
     update_status(
         state="CLOCKED_IN",
-        message=f"{action_label}: {worker['name']}",
+        message=f"{action_label}: {worker['name']} ID: {worker['employee_id'] or worker['id']}",
         worker_name=worker["name"],
+        worker_id=worker["employee_id"] or str(worker["id"]),
         action=action,
         liveness_confirmed=False,
         confidence=1.0,

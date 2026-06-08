@@ -432,6 +432,7 @@
                 <div id="statusText" class="status-text">Step toward camera</div>
                 <div class="status-meta">
                     <span id="stateValue">State: IDLE</span>
+                    <span id="workerIdValue">ID: --</span>
                     <span id="earValue">EAR: 0.00</span>
                     <span id="knownValue">Workers: 0</span>
                     <span id="liveValue">Liveness: No</span>
@@ -466,6 +467,7 @@
         const statusText = document.getElementById("statusText");
         const statusCard = document.querySelector(".status-card");
         const stateValue = document.getElementById("stateValue");
+        const workerIdValue = document.getElementById("workerIdValue");
         const earValue = document.getElementById("earValue");
         const knownValue = document.getElementById("knownValue");
         const liveValue = document.getElementById("liveValue");
@@ -543,6 +545,7 @@
                 statusText.textContent = msg;
                 applyStatusState(data.state);
                 stateValue.textContent = `State: ${data.state || "IDLE"}`;
+                workerIdValue.textContent = `ID: ${data.worker_id || "--"}`;
                 earValue.textContent = `EAR: ${Number(data.ear || 0).toFixed(2)}`;
                 knownValue.textContent = `Workers: ${data.known_workers || 0}`;
                 liveValue.textContent = `Liveness: ${data.liveness_confirmed ? "Yes" : "No"}`;
@@ -564,7 +567,7 @@
                     <div class="worker-row">
                         <span>${worker.name}</span>
                         <span>${worker.photo_count} photos</span>
-                        <span>#${worker.id}</span>
+                        <span>ID: ${worker.employee_id || worker.id}</span>
                     </div>
                 `;
             }).join("");
