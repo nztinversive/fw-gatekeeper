@@ -39,6 +39,37 @@ export default defineSchema({
   }).index("by_timestamp", ["timestamp"])
     .index("by_worker", ["workerId"]),
 
+  recognitionAttempts: defineTable({
+    timestamp: v.string(),
+    kioskId: v.string(),
+    sourceAttemptId: v.optional(v.string()),
+    faceDetected: v.boolean(),
+    candidateWorkerId: v.optional(v.string()),
+    candidateWorkerName: v.optional(v.string()),
+    bestScore: v.optional(v.float64()),
+    secondBestScore: v.optional(v.float64()),
+    scoreMargin: v.optional(v.float64()),
+    decision: v.string(),
+    threshold: v.float64(),
+    livenessConfirmed: v.optional(v.boolean()),
+    modelVersion: v.optional(v.string()),
+    imageQuality: v.optional(v.float64()),
+    faceQuality: v.optional(v.float64()),
+    brightness: v.optional(v.float64()),
+    blur: v.optional(v.float64()),
+    reviewed: v.boolean(),
+    reviewedLabel: v.optional(v.string()),
+    reviewedNote: v.optional(v.string()),
+    reviewedAt: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.optional(v.string()),
+  })
+    .index("by_timestamp", ["timestamp"])
+    .index("by_kiosk_timestamp", ["kioskId", "timestamp"])
+    .index("by_reviewed_timestamp", ["reviewed", "timestamp"])
+    .index("by_kiosk_reviewed_timestamp", ["kioskId", "reviewed", "timestamp"])
+    .index("by_source_attempt_id", ["sourceAttemptId"]),
+
   kiosks: defineTable({
     name: v.string(),
     kioskId: v.optional(v.string()),

@@ -46,6 +46,16 @@ const links = [
     ),
   },
   {
+    href: '/calibration/recognition',
+    label: 'Recognition Lab',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25A2.25 2.25 0 016 3h3.75v3H6v3.75H3.75v-4.5zM14.25 3H18a2.25 2.25 0 012.25 2.25v4.5H18V6h-3.75V3zM3.75 14.25H6V18h3.75v3H6A2.25 2.25 0 013.75 18v-3.75zM18 14.25h2.25V18A2.25 2.25 0 0118 20.25h-3.75v-3H18v-3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15.75 9" />
+      </svg>
+    ),
+  },
+  {
     href: '/onboarding',
     label: 'Onboarding Guide',
     icon: (

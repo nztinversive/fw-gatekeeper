@@ -54,3 +54,45 @@ export interface Schedule {
   active: number;
   created_at: string;
 }
+
+export type RecognitionDecision = string;
+export type RecognitionReviewStatus = 'unreviewed' | 'confirmed' | 'corrected' | 'ignored';
+export type RecognitionConfidenceBand = 'high' | 'medium' | 'low';
+
+export interface RecognitionAttempt {
+  id: string;
+  kiosk_id: string | null;
+  kiosk_name?: string | null;
+  candidate_worker_id?: string | null;
+  candidate_worker_name?: string | null;
+  decision: RecognitionDecision;
+  review_status: RecognitionReviewStatus;
+  confidence_band?: RecognitionConfidenceBand | null;
+  score: number | null;
+  second_score?: number | null;
+  margin: number | null;
+  threshold?: number | null;
+  liveness_passed?: boolean | null;
+  timestamp: string;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  model_version?: string | null;
+}
+
+export interface RecognitionAttemptSummary {
+  accepted: number;
+  rejected: number;
+  unknown: number;
+  near_miss: number;
+  low_margin_accepted: number;
+  median_score: number | null;
+  review_backlog: number;
+  total: number;
+}
+
+export interface RecognitionAttemptsResponse {
+  attempts: RecognitionAttempt[];
+  summary: RecognitionAttemptSummary;
+  backend_unavailable?: boolean;
+  warning?: string;
+}

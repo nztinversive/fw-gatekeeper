@@ -1,0 +1,334 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useToast } from '@/components/Toast';
+import {
+  RecognitionAttempt,
+  RecognitionAttemptsResponse,
+  RecognitionConfidenceBand,
+  RecognitionDecision,
+  RecognitionReviewStatus,
+} from '@/lib/types';
+import { getLocalDateString } from '@/lib/date';
+
+const decisionOptions: Array<{ value: RecognitionDecision | 'all'; label: string }> = [
+  { value: 'all', label: 'All decisions' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'accepted_already_clocked', label: 'Already clocked' },
+  { value: 'near_miss', label: 'Near miss' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'rejected_unknown', label: 'Rejected unknown' },
+  { value: 'rejected_no_embedding', label: 'No embedding' },
+  { value: 'rejected_model_error', label: 'Model error' },
+  { value: 'unknown', label: 'Unknown' },
+];
+
+const reviewOptions: Array<{ value: RecognitionReviewStatus | 'all'; label: string }> = [
+  { value: 'all', label: 'All reviews' },
+  { value: 'unreviewed', label: 'Unreviewed' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'corrected', label: 'Corrected' },
+  { value: 'ignored', label: 'Ignored' },
+];
+
+const confidenceOptions: Array<{ value: RecognitionConfidenceBand | 'all'; label: string }> = [
+  { value: 'all', label: 'All confidence' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+];
+
+const reviewStyles: Record<RecognitionReviewStatus, string> = {
+  unreviewed: 'bg-slate-400/10 text-slate-300 border-slate-400/20',
+  confirmed: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
+  corrected: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
+  ignored: 'bg-navy-700/70 text-slate-400 border-navy-600/50',
+};
+
+function decisionStyle(decision: RecognitionDecision) {
+  if (decision.startsWith('accepted')) return 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20';
+  if (decision === 'near_miss') return 'bg-gold/10 text-gold border-gold/20';
+  if (decision.startsWith('rejected')) return 'bg-red-400/10 text-red-300 border-red-400/20';
+  return 'bg-amber-400/10 text-amber-300 border-amber-400/20';
+}
+
+function formatScore(value: number | null | undefined) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '—';
+  return value.toFixed(3);
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || '—';
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function titleCase(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export default function RecognitionCalibrationLab() {
+  const { toast } = useToast();
+  const [date, setDate] = useState(getLocalDateString());
+  const [decision, setDecision] = useState<RecognitionDecision | 'all'>('all');
+  const [reviewStatus, setReviewStatus] = useState<RecognitionReviewStatus | 'all'>('all');
+  const [confidenceBand, setConfidenceBand] = useState<RecognitionConfidenceBand | 'all'>('all');
+  const [kioskId, setKioskId] = useState('');
+  const [payload, setPayload] = useState<RecognitionAttemptsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
+  const [isReviewPending, startReviewTransition] = useTransition();
+
+  const queryString = useMemo(() => {
+    const params = new URLSearchParams({ date, limit: '150' });
+    if (decision !== 'all') params.set('decision', decision);
+    if (reviewStatus !== 'all') params.set('review_status', reviewStatus);
+    if (confidenceBand !== 'all') params.set('confidence_band', confidenceBand);
+    if (kioskId.trim()) params.set('kiosk_id', kioskId.trim());
+    return params.toString();
+  }, [confidenceBand, date, decision, kioskId, reviewStatus]);
+
+  const fetchAttempts = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/recognition-attempts?${queryString}`, { cache: 'no-store' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to load recognition attempts');
+      setPayload(body);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load recognition attempts';
+      setError(message);
+      setPayload(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [queryString]);
+
+  useEffect(() => {
+    fetchAttempts();
+  }, [fetchAttempts]);
+
+  const attempts = payload?.attempts ?? [];
+  const summary = payload?.summary;
+  const kiosks = useMemo(() => {
+    const ids = attempts.flatMap((attempt) => (attempt.kiosk_id ? [attempt.kiosk_id] : []));
+    return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
+  }, [attempts]);
+
+  function reviewAttempt(attempt: RecognitionAttempt, nextStatus: RecognitionReviewStatus) {
+    setPendingReviewId(attempt.id);
+    startReviewTransition(async () => {
+      try {
+        const res = await fetch('/api/recognition-attempts', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: attempt.id,
+            review_status: nextStatus,
+            decision: attempt.decision,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || 'Failed to update review');
+        toast(`Attempt marked ${titleCase(nextStatus)}`);
+        await fetchAttempts();
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Failed to update review', 'error');
+      } finally {
+        setPendingReviewId(null);
+      }
+    });
+  }
+
+  return (
+    <div className="animate-fade-in space-y-6 pb-24 md:pb-8">
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <p className="section-label mb-2">Calibration</p>
+          <h1 className="page-title text-slate-100">
+            Recognition <span className="text-gold">lab</span>
+          </h1>
+          <p className="text-sm text-slate-400 mt-2 max-w-2xl leading-6">
+            Review kiosk recognition quality, tune confidence thresholds, and clear ambiguous scan attempts before they become attendance issues.
+          </p>
+        </div>
+        <button type="button" onClick={fetchAttempts} className="btn-secondary" disabled={loading}>
+          {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+
+      <section className="glass-card p-5">
+        <div className="grid gap-3 md:grid-cols-5">
+          <label className="space-y-1.5">
+            <span className="section-label block">Date</span>
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input-field" />
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Decision</span>
+            <select value={decision} onChange={(event) => setDecision(event.target.value as RecognitionDecision | 'all')} className="input-field">
+              {decisionOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Review</span>
+            <select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as RecognitionReviewStatus | 'all')} className="input-field">
+              {reviewOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Confidence</span>
+            <select value={confidenceBand} onChange={(event) => setConfidenceBand(event.target.value as RecognitionConfidenceBand | 'all')} className="input-field">
+              {confidenceOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Kiosk</span>
+            <input
+              list="recognition-kiosks"
+              value={kioskId}
+              onChange={(event) => setKioskId(event.target.value)}
+              placeholder="Any kiosk"
+              className="input-field"
+            />
+            <datalist id="recognition-kiosks">
+              {kiosks.map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+          </label>
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+        {[
+          ['Accepted', summary?.accepted ?? 0, 'text-emerald-300'],
+          ['Rejected', summary?.rejected ?? 0, 'text-red-300'],
+          ['Unknown', summary?.unknown ?? 0, 'text-amber-300'],
+          ['Near miss', summary?.near_miss ?? 0, 'text-gold'],
+          ['Low-margin accepted', summary?.low_margin_accepted ?? 0, 'text-gold'],
+          ['Median score', formatScore(summary?.median_score), 'text-slate-100'],
+          ['Review backlog', summary?.review_backlog ?? 0, 'text-blue-300'],
+        ].map(([label, value, tone]) => (
+          <div key={label} className="rounded-xl border border-navy-600/50 bg-navy-900/35 p-4">
+            <p className="text-xs text-slate-500">{label}</p>
+            <p className={`mt-1 font-display text-2xl ${tone}`}>{value}</p>
+          </div>
+        ))}
+      </section>
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      {payload?.backend_unavailable && (
+        <div role="status" className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
+          {payload.warning || 'Recognition attempt storage is not available yet.'}
+        </div>
+      )}
+
+      <section className="glass-card overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-navy-600/50 px-5 py-4">
+          <div>
+            <h2 className="font-display font-semibold text-slate-100">Recognition attempts</h2>
+            <p className="text-xs font-mono text-slate-500">{summary?.total ?? attempts.length} attempts in current view</p>
+          </div>
+          {loading && <span className="text-xs text-slate-500">Loading…</span>}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1060px] text-left">
+            <thead>
+              <tr className="border-b border-navy-600/50 text-[11px] uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-3 font-medium">Time</th>
+                <th className="px-4 py-3 font-medium">Candidate</th>
+                <th className="px-4 py-3 font-medium">Decision</th>
+                <th className="px-4 py-3 font-medium">Score</th>
+                <th className="px-4 py-3 font-medium">Margin</th>
+                <th className="px-4 py-3 font-medium">Liveness</th>
+                <th className="px-4 py-3 font-medium">Kiosk</th>
+                <th className="px-4 py-3 font-medium">Review</th>
+                <th className="px-4 py-3 font-medium">Controls</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-navy-600/35">
+              {attempts.map((attempt) => {
+                const controlsDisabled = isReviewPending && pendingReviewId === attempt.id;
+                return (
+                  <tr key={attempt.id} className="text-sm text-slate-300 hover:bg-navy-800/35">
+                    <td className="px-4 py-3 text-xs text-slate-400">{formatDateTime(attempt.timestamp)}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-100">{attempt.candidate_worker_name || 'No candidate'}</p>
+                      <p className="mt-0.5 text-xs font-mono text-slate-500">{attempt.candidate_worker_id || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`badge border ${decisionStyle(attempt.decision)}`}>{titleCase(attempt.decision)}</span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">{formatScore(attempt.score)}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{formatScore(attempt.margin)}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-mono text-xs">Threshold {formatScore(attempt.threshold)}</p>
+                      <p className={attempt.liveness_passed ? 'text-xs text-emerald-300' : 'text-xs text-slate-500'}>
+                        {attempt.liveness_passed === null || attempt.liveness_passed === undefined
+                          ? 'Not reported'
+                          : attempt.liveness_passed
+                            ? 'Passed'
+                            : 'Failed'}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-xs font-mono text-slate-400">{attempt.kiosk_name || attempt.kiosk_id || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`badge border ${reviewStyles[attempt.review_status]}`}>{titleCase(attempt.review_status)}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => reviewAttempt(attempt, 'confirmed')}
+                          disabled={controlsDisabled}
+                          className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-400/10 disabled:opacity-50"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => reviewAttempt(attempt, 'ignored')}
+                          disabled={controlsDisabled}
+                          className="rounded-lg border border-navy-600/60 bg-navy-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-slate-500 disabled:opacity-50"
+                        >
+                          Ignore
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {!loading && attempts.length === 0 && (
+          <div className="px-5 py-12 text-center text-sm text-slate-500">
+            No recognition attempts match these filters yet.
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
