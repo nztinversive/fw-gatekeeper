@@ -61,6 +61,7 @@ export default function KiosksPage() {
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
+  const [kioskId, setKioskId] = useState('');
   const [type, setType] = useState<'entry' | 'exit'>('entry');
   const [location, setLocation] = useState('');
 
@@ -104,12 +105,18 @@ export default function KiosksPage() {
       const res = await fetch('/api/kiosks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmedName, type, location: location.trim() }),
+        body: JSON.stringify({
+          name: trimmedName,
+          kiosk_id: kioskId.trim() || undefined,
+          type,
+          location: location.trim(),
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || 'Failed to register kiosk');
       toast(`Kiosk "${trimmedName}" registered`);
       setName('');
+      setKioskId('');
       setLocation('');
       setType('entry');
       setShowForm(false);
@@ -178,6 +185,15 @@ export default function KiosksPage() {
           <div>
             <label className="section-label mb-1.5 block">Kiosk Name</label>
             <input placeholder="e.g. Main Entrance Kiosk" value={name} onChange={(e) => setName(e.target.value)} className="input-field" />
+          </div>
+          <div>
+            <label className="section-label mb-1.5 block">Kiosk ID</label>
+            <input
+              placeholder={type === 'entry' ? 'kiosk-entry-1' : 'kiosk-exit-1'}
+              value={kioskId}
+              onChange={(e) => setKioskId(e.target.value)}
+              className="input-field"
+            />
           </div>
           <div>
             <label className="section-label mb-1.5 block">Type</label>

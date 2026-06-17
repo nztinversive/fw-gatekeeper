@@ -11,6 +11,7 @@
 import type * as attendance from "../attendance.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as kioskLookup from "../kioskLookup.js";
 import type * as kiosks from "../kiosks.js";
 import type * as portalMembers from "../portalMembers.js";
 import type * as schedules from "../schedules.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   attendance: typeof attendance;
   auth: typeof auth;
   http: typeof http;
+  kioskLookup: typeof kioskLookup;
   kiosks: typeof kiosks;
   portalMembers: typeof portalMembers;
   schedules: typeof schedules;

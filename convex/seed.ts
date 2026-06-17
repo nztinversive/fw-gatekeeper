@@ -42,12 +42,14 @@ export const run = mutation({
     // Kiosks
     const entryKioskId = await ctx.db.insert("kiosks", {
       name: "Main Entry",
+      kioskId: "kiosk-entry-1",
       type: "entry",
       location: "Building A Front",
       active: true,
     });
     const exitKioskId = await ctx.db.insert("kiosks", {
       name: "Main Exit",
+      kioskId: "kiosk-exit-1",
       type: "exit",
       location: "Building A Rear",
       active: true,

@@ -23,6 +23,7 @@ export interface AttendanceEvent {
 export interface Kiosk {
   id: string;
   name: string;
+  kiosk_id: string | null;
   type: 'entry' | 'exit';
   location: string;
   last_sync: string | null;

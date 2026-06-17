@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { findActiveKioskByIdentifier } from "./kioskLookup";
 
 function getDateKey(timestamp: string): string {
   return timestamp.slice(0, 10);
@@ -41,7 +42,7 @@ export const list = query({
     const result: any[] = [];
     for (const a of records) {
       const worker = a.workerId ? await ctx.db.get(a.workerId as any).catch(() => null) : null;
-      const kiosk = a.kioskId ? await ctx.db.get(a.kioskId as any).catch(() => null) : null;
+      const kiosk = await findActiveKioskByIdentifier(ctx, a.kioskId);
       result.push({
         id: a._id,
         worker_id: a.workerId,
