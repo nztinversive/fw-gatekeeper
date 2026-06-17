@@ -14,6 +14,7 @@ import type * as http from "../http.js";
 import type * as kioskLookup from "../kioskLookup.js";
 import type * as kiosks from "../kiosks.js";
 import type * as portalMembers from "../portalMembers.js";
+import type * as recognitionAttempts from "../recognitionAttempts.js";
 import type * as schedules from "../schedules.js";
 import type * as seed from "../seed.js";
 import type * as stats from "../stats.js";
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   kioskLookup: typeof kioskLookup;
   kiosks: typeof kiosks;
   portalMembers: typeof portalMembers;
+  recognitionAttempts: typeof recognitionAttempts;
   schedules: typeof schedules;
   seed: typeof seed;
   stats: typeof stats;
