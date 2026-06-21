@@ -11,16 +11,27 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const useConvexAuthServerProvider = Boolean(
+    process.env.NEXT_PUBLIC_CONVEX_URL ||
+      process.env.NODE_ENV === 'production' ||
+      process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE !== '1',
+  );
+  const app = (
+    <ConvexAuthProvider>
+      <ToastProvider>
+        <AppShell>{children}</AppShell>
+      </ToastProvider>
+    </ConvexAuthProvider>
+  );
+
   return (
     <html lang="en" className="dark">
       <body className="antialiased">
-        <ConvexAuthNextjsServerProvider apiRoute="/api/convex-auth">
-          <ConvexAuthProvider>
-            <ToastProvider>
-              <AppShell>{children}</AppShell>
-            </ToastProvider>
-          </ConvexAuthProvider>
-        </ConvexAuthNextjsServerProvider>
+        {useConvexAuthServerProvider ? (
+          <ConvexAuthNextjsServerProvider apiRoute="/api/convex-auth">
+            {app}
+          </ConvexAuthNextjsServerProvider>
+        ) : app}
       </body>
     </html>
   );

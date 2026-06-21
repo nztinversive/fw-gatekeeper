@@ -109,7 +109,7 @@ const primaryMobileLinks = ['/', '/workers', '/enroll'];
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { signOut } = useAuthActions();
+  const authActions = useAuthActions();
   const currentMember = useQuery(api.portalMembers.current);
   const visibleLinks = links.filter((link) => !link.adminOnly || currentMember?.role === 'admin');
   const mobilePrimaryLinks = visibleLinks.filter((link) => primaryMobileLinks.includes(link.href));
@@ -126,7 +126,9 @@ export default function Sidebar() {
     try {
       const legacyLogout = await fetch('/api/auth/logout', { method: 'POST' });
       legacyLogoutOk = legacyLogout.ok;
-      await signOut();
+      if (authActions?.signOut) {
+        await authActions.signOut();
+      }
     } catch {
       setLogoutError('Sign out failed. Please try again.');
       router.refresh();

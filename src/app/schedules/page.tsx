@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Schedule } from '@/lib/types';
 import { useToast } from '@/components/Toast';
+import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -20,12 +21,14 @@ export default function SchedulesPage() {
 
   const fetchSchedules = useCallback(async () => {
     const res = await fetch('/api/schedules');
-    setSchedules(await res.json());
+    const body = await res.json().catch(() => []);
+    setSchedules(Array.isArray(body) ? body : []);
   }, []);
 
   const fetchDepartments = useCallback(async () => {
     const res = await fetch('/api/workers');
-    const workers = await res.json();
+    const body = await res.json().catch(() => []);
+    const workers = Array.isArray(body) ? body : [];
     const depts = [...new Set(workers.map((w: { department: string }) => w.department))] as string[];
     setDepartments(depts.filter(Boolean).sort());
   }, []);
@@ -66,25 +69,31 @@ export default function SchedulesPage() {
       const body = { id: editId, name, days, start_time: startTime, end_time: endTime, department: department || null };
 
       if (editId) {
-        await fetch('/api/schedules', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        toast(`Schedule "${name}" updated`);
+        const res = await fetch('/api/schedules', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const responseBody = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(responseBody?.error || 'Failed to update schedule');
+        toast(responseBody?.demo_write ? `Demo schedule "${name}" updated locally` : `Schedule "${name}" updated`);
       } else {
-        await fetch('/api/schedules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        toast(`Schedule "${name}" created`);
+        const res = await fetch('/api/schedules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const responseBody = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(responseBody?.error || 'Failed to create schedule');
+        toast(responseBody?.demo_write ? `Demo schedule "${name}" created locally` : `Schedule "${name}" created`);
       }
 
       resetForm();
       fetchSchedules();
-    } catch {
-      toast('Failed to save schedule', 'error');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to save schedule', 'error');
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this schedule?')) return;
     try {
-      await fetch(`/api/schedules?id=${id}`, { method: 'DELETE' });
-      toast('Schedule deleted');
+      const res = await fetch(`/api/schedules?id=${id}`, { method: 'DELETE' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to delete schedule');
+      toast(body?.demo_write ? 'Demo schedule removed locally' : 'Schedule deleted');
       fetchSchedules();
     } catch {
       toast('Failed to delete schedule', 'error');
@@ -121,6 +130,10 @@ export default function SchedulesPage() {
             </>
           )}
         </button>
+      </div>
+
+      <div className="mb-6">
+        <DemoWriteModeBanner />
       </div>
 
       {showForm && (

@@ -1,0 +1,202 @@
+import { AttendanceCorrection, Schedule } from '@/lib/types';
+
+type DemoKiosk = {
+  id: string;
+  name: string;
+  kiosk_id: string | null;
+  type: 'entry' | 'exit';
+  location: string;
+  last_sync: string | null;
+  active: number;
+};
+
+type DemoCloseout = {
+  date: string;
+  status: 'open' | 'completed' | 'reopened';
+  supervisor_name: string | null;
+  notes: string | null;
+  acknowledged_blockers: boolean;
+  completed_at: string | null;
+  updated_at: string;
+};
+
+const DEMO_WARNING = 'Demo write mode: no production Convex data was changed.';
+
+const store = globalThis as typeof globalThis & {
+  __fwDemoSchedules?: Schedule[];
+  __fwDemoKiosks?: DemoKiosk[];
+  __fwDemoCorrections?: AttendanceCorrection[];
+  __fwDemoCloseouts?: DemoCloseout[];
+};
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function demoId(prefix: string) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function isDemoWriteMode() {
+  return process.env.NODE_ENV !== 'production' && process.env.FW_DEMO_WRITE_MODE === '1';
+}
+
+export function demoWriteMetadata() {
+  return { demo_write: true, warning: DEMO_WARNING };
+}
+
+function schedules() {
+  store.__fwDemoSchedules ||= [];
+  return store.__fwDemoSchedules;
+}
+
+function kiosks() {
+  store.__fwDemoKiosks ||= [];
+  return store.__fwDemoKiosks;
+}
+
+function corrections() {
+  store.__fwDemoCorrections ||= [];
+  return store.__fwDemoCorrections;
+}
+
+function closeouts() {
+  store.__fwDemoCloseouts ||= [];
+  return store.__fwDemoCloseouts;
+}
+
+export function listDemoSchedules() {
+  return [...schedules()];
+}
+
+export function createDemoSchedule(input: {
+  name: string;
+  days: string;
+  start_time: string;
+  end_time: string;
+  department?: string | null;
+}) {
+  const created: Schedule = {
+    id: demoId('demo_schedule'),
+    name: input.name,
+    days: input.days,
+    start_time: input.start_time,
+    end_time: input.end_time,
+    department: input.department || null,
+    active: 1,
+    created_at: nowIso(),
+  };
+  schedules().push(created);
+  return created;
+}
+
+export function updateDemoSchedule(id: string, updates: Partial<Schedule>) {
+  const row = schedules().find((schedule) => schedule.id === id);
+  if (!row) return null;
+  Object.assign(row, updates);
+  return row;
+}
+
+export function deleteDemoSchedule(id: string) {
+  const rows = schedules();
+  const index = rows.findIndex((schedule) => schedule.id === id);
+  if (index === -1) return false;
+  rows.splice(index, 1);
+  return true;
+}
+
+export function listDemoKiosks() {
+  return [...kiosks()];
+}
+
+export function createDemoKiosk(input: {
+  name: string;
+  kiosk_id?: string | null;
+  type: 'entry' | 'exit';
+  location?: string | null;
+}) {
+  const created: DemoKiosk = {
+    id: demoId('demo_kiosk'),
+    name: input.name,
+    kiosk_id: input.kiosk_id || null,
+    type: input.type,
+    location: input.location || '',
+    last_sync: nowIso(),
+    active: 1,
+  };
+  kiosks().push(created);
+  return created;
+}
+
+export function listDemoAttendanceCorrections(date: string, workerId?: string) {
+  return corrections().filter((correction) => {
+    return correction.date === date && (!workerId || correction.worker_id === workerId);
+  });
+}
+
+export function createDemoAttendanceCorrection(input: {
+  date: string;
+  workerId: string;
+  action: 'add_clock_in' | 'add_clock_out' | 'void_event';
+  correctedTimestamp?: string;
+  originalAttendanceId?: string;
+  relatedExceptionKey?: string;
+  reason: string;
+  supervisorName?: string;
+}) {
+  const created: AttendanceCorrection = {
+    id: demoId('demo_correction'),
+    date: input.date,
+    worker_id: input.workerId,
+    worker_name: 'Demo worker',
+    worker_department: 'Demo',
+    action: input.action,
+    event_type: input.action === 'add_clock_in' ? 'clock_in' : input.action === 'add_clock_out' ? 'clock_out' : null,
+    corrected_timestamp: input.correctedTimestamp || null,
+    original_attendance_id: input.originalAttendanceId || null,
+    original_timestamp: null,
+    original_event_type: null,
+    related_exception_key: input.relatedExceptionKey || null,
+    reason: input.reason,
+    supervisor_name: input.supervisorName || null,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  corrections().push(created);
+  return created;
+}
+
+export function getDemoCloseout(date: string) {
+  return closeouts().find((closeout) => closeout.date === date) || null;
+}
+
+export function saveDemoCloseout(input: {
+  date: string;
+  action: 'save' | 'complete' | 'reopen';
+  supervisorName?: string;
+  notes?: string;
+  acknowledgedBlockers?: boolean;
+}) {
+  const rows = closeouts();
+  let row = rows.find((closeout) => closeout.date === input.date);
+  const status = input.action === 'complete' ? 'completed' : input.action === 'reopen' ? 'reopened' : row?.status || 'open';
+  if (!row) {
+    row = {
+      date: input.date,
+      status,
+      supervisor_name: null,
+      notes: null,
+      acknowledged_blockers: false,
+      completed_at: null,
+      updated_at: nowIso(),
+    };
+    rows.push(row);
+  }
+  row.status = status;
+  row.supervisor_name = input.supervisorName || row.supervisor_name;
+  row.notes = input.notes || row.notes;
+  row.acknowledged_blockers = Boolean(input.acknowledgedBlockers);
+  row.completed_at = input.action === 'complete' ? nowIso() : input.action === 'reopen' ? null : row.completed_at;
+  row.updated_at = nowIso();
+  return row;
+}

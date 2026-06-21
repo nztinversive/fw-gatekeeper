@@ -11,7 +11,8 @@
     "test:worker-ui": "node scripts/test-worker-ui-contract.mjs",
     "test:enrollment-permissions": "node scripts/test-enrollment-permissions-contract.mjs",
     "test:kiosk-readiness": "node scripts/test-kiosk-readiness-contract.mjs",
-    "test:recognition-attempts": "node scripts/test-recognition-attempts-contract.mjs"
+    "test:recognition-attempts": "node scripts/test-recognition-attempts-contract.mjs",
+    "test:dashboard-demo-mode": "node scripts/test-dashboard-demo-mode-contract.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.92",

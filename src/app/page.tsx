@@ -17,6 +17,14 @@ interface WorkerWithStatus {
   clockInTime?: string;
 }
 
+type DashboardWorkerPayload = {
+  id: string;
+  name: string;
+  department: string;
+  has_face_encoding?: boolean;
+  encoding_status?: 'valid' | 'missing' | 'invalid';
+};
+
 interface AttendanceEvent {
   id?: string;
   worker_id: string;
@@ -73,6 +81,41 @@ interface SystemHealth {
   warnings: string[];
 }
 
+interface ShiftExceptionsSummary {
+  date: string;
+  summary: {
+    total: number;
+    open: number;
+    critical: number;
+    warning: number;
+    info: number;
+  };
+}
+
+interface ShiftCloseoutSummary {
+  date: string;
+  closeout: {
+    status: 'open' | 'completed' | 'reopened';
+    completed_at: string | null;
+  } | null;
+  summary: {
+    open_exceptions: number;
+    critical_exceptions: number;
+    kiosk_warnings: number;
+  };
+  blockers: Array<{ id: string; label: string }>;
+  can_complete: boolean;
+}
+
+type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-exceptions' | 'shift-closeout';
+
+interface SignalFailure {
+  key: SignalFailureKey;
+  label: string;
+  href: string;
+  message: string;
+}
+
 function formatRelativeTime(value: string | null) {
   if (!value) return 'Never';
   const timestamp = new Date(value).getTime();
@@ -101,13 +144,21 @@ function healthLabel(status: HealthStatus) {
   return status === 'never_synced' ? 'Never synced' : status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+function signalErrorMessage(label: string, error: unknown) {
+  const detail = error instanceof Error ? error.message : 'Request failed';
+  return `${label} could not refresh: ${detail}`;
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null, scheduleWarning: undefined as string | undefined });
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
   const [attendanceEvents, setAttendanceEvents] = useState<AttendanceEvent[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [shiftExceptions, setShiftExceptions] = useState<ShiftExceptionsSummary | null>(null);
+  const [shiftCloseout, setShiftCloseout] = useState<ShiftCloseoutSummary | null>(null);
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [signalFailures, setSignalFailures] = useState<SignalFailure[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -115,58 +166,103 @@ export default function Dashboard() {
     if (isRefresh) setRefreshing(true);
     try {
       const today = getLocalDateString();
-      const [statsRes, workersRes, attendanceRes, systemHealthRes] = await Promise.all([
-        fetch(`/api/stats?date=${today}`),
-        fetch('/api/workers'),
-        fetch(`/api/attendance?date=${today}`),
-        fetch(`/api/system-health?date=${today}`),
-      ]);
+      const signals: Array<{ key: SignalFailureKey; label: string; href: string; request: () => Promise<Response> }> = [
+        { key: 'stats', label: 'Dashboard stats', href: '/reports', request: () => fetch(`/api/stats?date=${today}`) },
+        { key: 'workers', label: 'Worker roster', href: '/workers', request: () => fetch('/api/workers') },
+        { key: 'attendance', label: 'Attendance events', href: '/log', request: () => fetch(`/api/attendance?date=${today}`) },
+        { key: 'system-health', label: 'Kiosk and system health', href: '/kiosks', request: () => fetch(`/api/system-health?date=${today}`) },
+        { key: 'shift-exceptions', label: 'Shift exceptions', href: '/exceptions', request: () => fetch(`/api/shift-exceptions?date=${today}`) },
+        { key: 'shift-closeout', label: 'Shift closeout', href: '/closeout', request: () => fetch(`/api/shift-closeout?date=${today}`) },
+      ];
 
-      const statsData = statsRes.ok ? await statsRes.json() : { totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null };
-      const workersData = workersRes.ok ? await workersRes.json() : [];
-      const attendanceJson = attendanceRes.ok ? await attendanceRes.json() : [];
-      const attendanceData: AttendanceEvent[] = Array.isArray(attendanceJson) ? attendanceJson : [];
-      const systemHealthData = systemHealthRes.ok ? await systemHealthRes.json() : null;
+      const results = await Promise.allSettled(signals.map(async (signal) => {
+        const res = await signal.request();
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(json?.error || `${res.status} ${res.statusText}`);
+        }
+        return { signal, json };
+      }));
 
-      setStats(statsData);
-      setAttendanceEvents(attendanceData);
-      setSystemHealth(systemHealthData);
+      const failures: SignalFailure[] = [];
+      let nextWorkers: DashboardWorkerPayload[] | null = null;
+      let nextAttendance: AttendanceEvent[] | null = null;
+
+      results.forEach((result, index) => {
+        const signal = signals[index];
+        if (result.status === 'rejected') {
+          failures.push({
+            key: signal.key,
+            label: signal.label,
+            href: signal.href,
+            message: signalErrorMessage(signal.label, result.reason),
+          });
+          return;
+        }
+
+        const { json } = result.value;
+        if (signal.key === 'stats') {
+          setStats(json);
+        } else if (signal.key === 'workers') {
+          nextWorkers = Array.isArray(json) ? json : [];
+        } else if (signal.key === 'attendance') {
+          nextAttendance = Array.isArray(json) ? json : [];
+          setAttendanceEvents(nextAttendance);
+        } else if (signal.key === 'system-health') {
+          setSystemHealth(json);
+        } else if (signal.key === 'shift-exceptions') {
+          setShiftExceptions(json);
+        } else if (signal.key === 'shift-closeout') {
+          setShiftCloseout(json);
+        }
+      });
 
       const statusMap = new Map<string, { event_type: string; timestamp: string }>();
-      for (const e of attendanceData) {
+      const attendanceForRoster = nextAttendance || attendanceEvents;
+      for (const e of attendanceForRoster) {
         const existing = statusMap.get(e.worker_id);
         if (!existing || e.timestamp > existing.timestamp) {
           statusMap.set(e.worker_id, { event_type: e.event_type, timestamp: e.timestamp });
         }
       }
 
-      const enriched: WorkerWithStatus[] = workersData.map((w: { id: string; name: string; department: string; has_face_encoding?: boolean; encoding_status?: 'valid' | 'missing' | 'invalid' }) => {
-        const latest = statusMap.get(w.id);
-        let status: 'in' | 'out' | 'absent' = 'absent';
-        let clockInTime: string | undefined;
+      const workersForRoster = nextWorkers as DashboardWorkerPayload[] | null;
+      if (workersForRoster) {
+        const enriched: WorkerWithStatus[] = workersForRoster.map((w) => {
+          const latest = statusMap.get(w.id);
+          let status: 'in' | 'out' | 'absent' = 'absent';
+          let clockInTime: string | undefined;
 
-        if (latest) {
-          status = latest.event_type === 'clock_in' ? 'in' : 'out';
-          clockInTime = new Date(latest.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        }
+          if (latest) {
+            status = latest.event_type === 'clock_in' ? 'in' : 'out';
+            clockInTime = new Date(latest.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+          }
 
-        return { ...w, status, clockInTime };
-      });
+          return { ...w, status, clockInTime };
+        });
 
-      enriched.sort((a, b) => {
-        const order = { in: 0, out: 1, absent: 2 };
-        return order[a.status] - order[b.status];
-      });
+        enriched.sort((a, b) => {
+          const order = { in: 0, out: 1, absent: 2 };
+          return order[a.status] - order[b.status];
+        });
 
-      setWorkers(enriched);
+        setWorkers(enriched);
+      }
+      setSignalFailures(failures);
       setLastUpdated(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } catch (err) {
       console.error('Failed to fetch dashboard data', err);
+      setSignalFailures([{
+        key: 'stats',
+        label: 'Dashboard refresh',
+        href: '/',
+        message: signalErrorMessage('Dashboard refresh', err),
+      }]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [attendanceEvents]);
 
   useEffect(() => {
     fetchData();
@@ -186,7 +282,17 @@ export default function Dashboard() {
   const missingFaceWorkers = workers.filter((w) => w.encoding_status === 'missing' || (!w.encoding_status && !w.has_face_encoding));
   const invalidFaceWorkers = workers.filter((w) => w.encoding_status === 'invalid');
   const absentWorkers = workers.filter((w) => w.status === 'absent');
+  const failedSignalKeys = new Set(signalFailures.map((failure) => failure.key));
   const actionItems = [
+    ...signalFailures.map((failure) => ({
+      key: `signal-failure-${failure.key}`,
+      label: `${failure.label} unavailable`,
+      value: '!',
+      tone: 'amber' as const,
+      description: failure.message,
+      href: failure.href,
+      cta: 'Open source',
+    })),
     ...(missingFaceWorkers.length > 0
       ? [{
           key: 'missing-face',
@@ -229,6 +335,38 @@ export default function Dashboard() {
           cta: 'Review now',
         }]
       : []),
+    ...(shiftExceptions?.summary.open
+      ? [{
+          key: 'shift-exceptions',
+          label: 'Open shift exceptions',
+          value: shiftExceptions.summary.open,
+          tone: shiftExceptions.summary.critical > 0 ? 'red' as const : 'amber' as const,
+          description: `${shiftExceptions.summary.open} exception${shiftExceptions.summary.open === 1 ? '' : 's'} need supervisor review, including ${shiftExceptions.summary.critical} critical.`,
+          href: '/exceptions',
+          cta: 'Open exceptions',
+        }]
+      : []),
+    ...(shiftCloseout?.closeout?.status === 'completed'
+      ? [{
+          key: 'shift-closeout-complete',
+          label: 'Shift closeout complete',
+          value: '✓',
+          tone: 'slate' as const,
+          description: `Today’s supervisor closeout was completed${shiftCloseout.closeout.completed_at ? ` at ${new Date(shiftCloseout.closeout.completed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : ''}.`,
+          href: '/closeout',
+          cta: 'Open closeout',
+        }]
+      : [{
+          key: 'shift-closeout-pending',
+          label: 'Shift closeout pending',
+          value: shiftCloseout?.blockers?.length ?? '!',
+          tone: shiftCloseout?.blockers?.length ? 'amber' as const : 'slate' as const,
+          description: shiftCloseout?.blockers?.length
+            ? `${shiftCloseout.blockers.length} closeout checklist item${shiftCloseout.blockers.length === 1 ? '' : 's'} need acknowledgement.`
+            : 'Complete the supervisor closeout when the shift is ready to sign off.',
+          href: '/closeout',
+          cta: 'Close shift',
+        }]),
     ...(absentWorkers.length > 0
       ? [{
           key: 'not-arrived',
@@ -295,6 +433,7 @@ export default function Dashboard() {
     { label: 'Face service', value: systemHealth ? healthLabel(systemHealth.face_service.status) : 'Unknown', status: systemHealth?.face_service.status || 'offline' as HealthStatus, href: '/enroll' },
     { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/kiosks' },
     { label: 'Workers enrolled', value: systemHealth ? `${systemHealth.sync.ready_worker_count} of ${stats.totalWorkers} enrolled` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length} of ${stats.totalWorkers} enrolled`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/workers' },
+    { label: 'Exceptions', value: shiftExceptions ? `${shiftExceptions.summary.open} open exceptions` : 'Unknown', status: shiftExceptions?.summary.critical ? 'offline' as HealthStatus : shiftExceptions?.summary.open ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/exceptions' },
   ];
 
   const recentEvents: RecentEvent[] = [
@@ -338,7 +477,7 @@ export default function Dashboard() {
             <span className="flex items-center gap-1.5">
               <span className={`status-dot bg-emerald-400 ${refreshing ? 'refresh-pulse' : 'animate-pulse-slow'}`} />
               <span className="text-xs font-mono text-slate-500">
-                {refreshing ? 'Syncing...' : 'Live'}
+                {refreshing ? 'Syncing...' : signalFailures.length > 0 ? 'Partial live data' : 'Live'}
               </span>
             </span>
             {lastUpdated && (
@@ -350,6 +489,28 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {signalFailures.length > 0 && (
+        <section role="status" className="rounded-2xl border border-amber-400/25 bg-amber-400/5 p-4 mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div>
+              <p className="section-label text-amber-200">Live data gaps</p>
+              <h2 className="mt-1 font-display text-lg font-semibold text-amber-100">Some dashboard signals did not refresh</h2>
+              <p className="mt-1 text-sm text-amber-100/75 leading-6">
+                The rest of the dashboard is using the latest successful data. Review the affected source before treating this as all clear.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
+              {signalFailures.map((failure) => (
+                <Link key={failure.key} href={failure.href} className="rounded-xl border border-amber-400/20 bg-navy-950/35 px-3 py-2 text-sm text-amber-100 hover:border-gold/35 transition-colors">
+                  <span className="block font-display font-semibold">{failure.label}</span>
+                  <span className="mt-1 block text-xs leading-5 text-amber-100/65">{failure.message}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Today's Ops */}
       <section className={`rounded-3xl border p-5 mb-6 ${readinessCopy.tone}`}>
@@ -365,8 +526,8 @@ export default function Dashboard() {
               <Link href="/kiosks" className="btn-primary inline-flex px-4 py-2 text-sm">
                 Fix kiosk sync
               </Link>
-              <Link href="/log" className="btn-secondary inline-flex px-4 py-2 text-sm">
-                Review attendance
+              <Link href="/exceptions" className="btn-secondary inline-flex px-4 py-2 text-sm">
+                Review exceptions
               </Link>
             </div>
           </div>
@@ -626,8 +787,14 @@ export default function Dashboard() {
           <svg className="w-16 h-16 text-slate-700 mx-auto mb-4" fill="none" viewBox="0 0 24 24" strokeWidth={0.75} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
           </svg>
-          <p className="font-display text-lg text-slate-400">No workers registered</p>
-          <p className="text-sm text-slate-600 mt-1">Add workers from the Workers page to see them here</p>
+          <p className="font-display text-lg text-slate-400">
+            {failedSignalKeys.has('workers') ? 'Worker roster unavailable' : 'No workers registered'}
+          </p>
+          <p className="text-sm text-slate-600 mt-1">
+            {failedSignalKeys.has('workers')
+              ? 'The roster did not refresh, so this is not a confirmed empty worker list.'
+              : 'Add workers from the Workers page to see them here'}
+          </p>
         </div>
       )}
     </div>

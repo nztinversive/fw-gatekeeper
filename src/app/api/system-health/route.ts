@@ -4,6 +4,7 @@ import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
+import { isDemoWriteMode, listDemoKiosks } from '@/lib/demo-write-mode';
 
 const FACE_SERVICE_FALLBACK = 'https://fw-face-service.onrender.com';
 const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
@@ -109,7 +110,7 @@ export async function GET(req: NextRequest) {
   }
 
   const cached = cache.get(date);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!isDemoWriteMode() && cached && cached.expiresAt > Date.now()) {
     return NextResponse.json(cached.payload);
   }
 
@@ -123,8 +124,9 @@ export async function GET(req: NextRequest) {
       fetchFaceHealth(faceHealthUrl),
     ]);
 
+    const mergedKiosks = isDemoWriteMode() ? [...kiosks, ...listDemoKiosks()] : kiosks;
     const readyWorkerCount = workers.filter((worker: any) => worker.encoding_status === 'valid' || worker.has_face_encoding).length;
-    const kioskRows = kiosks.map((kiosk: any) => {
+    const kioskRows = mergedKiosks.map((kiosk: any) => {
       const status = getKioskStatus(kiosk.last_sync);
       const kioskCandidates = [kiosk.id, kiosk.kiosk_id, kiosk.name]
         .map(normalizeIdentifier)
@@ -159,7 +161,7 @@ export async function GET(req: NextRequest) {
       ...(faceService.status === 'offline' ? ['Face service is offline or not responding. Enrollment may fail.'] : []),
       ...(faceService.status === 'degraded' ? ['Face service is degraded. Enrollment or recognition may be unreliable.'] : []),
       ...(faceService.status !== 'offline' && !faceService.model_ready ? ['Face service models are not ready. Face enrollment may fail.'] : []),
-      ...(kiosks.length === 0 ? ['No kiosks are registered yet. Add kiosks before launch.'] : []),
+      ...(mergedKiosks.length === 0 ? ['No kiosks are registered yet. Add kiosks before launch.'] : []),
       ...(counts.stale > 0 ? [`${counts.stale} kiosk${counts.stale === 1 ? '' : 's'} have not synced in 15+ minutes.`] : []),
       ...(counts.offline + counts.never_synced > 0
         ? [`${counts.offline + counts.never_synced} kiosk${counts.offline + counts.never_synced === 1 ? '' : 's'} are offline or have never synced.`]
@@ -171,7 +173,7 @@ export async function GET(req: NextRequest) {
       portal: { status: 'online', checked_at: now },
       face_service: faceService,
       kiosks: {
-        total: kiosks.length,
+        total: mergedKiosks.length,
         counts,
         stale_threshold_minutes: ONLINE_THRESHOLD_MS / 60000,
         offline_threshold_minutes: STALE_THRESHOLD_MS / 60000,
