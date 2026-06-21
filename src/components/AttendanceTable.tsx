@@ -35,6 +35,11 @@ export default function AttendanceTable({ events }: { events: AttendanceWithWork
               <td className="py-3 px-4">
                 <div className="font-display font-medium text-slate-200 text-sm">{e.worker_name}</div>
                 <div className="text-[11px] font-mono text-slate-500">{e.worker_department}</div>
+                {e.corrected && (
+                  <div className="mt-1 text-[11px] text-gold">
+                    Supervisor correction{e.correction_reason ? `: ${e.correction_reason}` : ''}
+                  </div>
+                )}
               </td>
               <td className="py-3 px-4">
                 <span className={`badge text-[11px] border ${
@@ -59,7 +64,14 @@ export default function AttendanceTable({ events }: { events: AttendanceWithWork
                   )}
                 </span>
               </td>
-              <td className="py-3 px-4 text-xs font-mono text-slate-500">{e.kiosk_name || '—'}</td>
+              <td className="py-3 px-4 text-xs font-mono text-slate-500">
+                {e.kiosk_name || '—'}
+                {e.source === 'correction' && (
+                  <span className="ml-2 rounded-full border border-gold/20 bg-gold/10 px-2 py-0.5 text-[10px] text-gold">
+                    corrected
+                  </span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

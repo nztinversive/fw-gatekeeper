@@ -39,6 +39,23 @@ export default defineSchema({
   }).index("by_timestamp", ["timestamp"])
     .index("by_worker", ["workerId"]),
 
+  attendanceCorrections: defineTable({
+    date: v.string(),
+    workerId: v.string(),
+    action: v.union(v.literal("add_clock_in"), v.literal("add_clock_out"), v.literal("void_event")),
+    eventType: v.optional(v.union(v.literal("clock_in"), v.literal("clock_out"))),
+    correctedTimestamp: v.optional(v.string()),
+    originalAttendanceId: v.optional(v.id("attendance")),
+    relatedExceptionKey: v.optional(v.string()),
+    reason: v.string(),
+    supervisorName: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_date", ["date"])
+    .index("by_worker_date", ["workerId", "date"])
+    .index("by_original_attendance", ["originalAttendanceId"]),
+
   recognitionAttempts: defineTable({
     timestamp: v.string(),
     kioskId: v.string(),
@@ -69,6 +86,39 @@ export default defineSchema({
     .index("by_reviewed_timestamp", ["reviewed", "timestamp"])
     .index("by_kiosk_reviewed_timestamp", ["kioskId", "reviewed", "timestamp"])
     .index("by_source_attempt_id", ["sourceAttemptId"]),
+
+  exceptionReviews: defineTable({
+    exceptionKey: v.string(),
+    date: v.string(),
+    type: v.string(),
+    status: v.union(v.literal("open"), v.literal("reviewed"), v.literal("ignored"), v.literal("resolved")),
+    note: v.optional(v.string()),
+    reviewedAt: v.optional(v.string()),
+    updatedAt: v.string(),
+  })
+    .index("by_key", ["exceptionKey"])
+    .index("by_date", ["date"]),
+
+  shiftCloseouts: defineTable({
+    date: v.string(),
+    status: v.union(v.literal("open"), v.literal("completed"), v.literal("reopened")),
+    supervisorName: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    acknowledgedBlockers: v.boolean(),
+    expected: v.float64(),
+    present: v.float64(),
+    late: v.float64(),
+    missing: v.float64(),
+    openExceptions: v.float64(),
+    criticalExceptions: v.float64(),
+    kioskWarnings: v.float64(),
+    completedAt: v.optional(v.string()),
+    reopenedAt: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_date", ["date"])
+    .index("by_status", ["status"]),
 
   kiosks: defineTable({
     name: v.string(),

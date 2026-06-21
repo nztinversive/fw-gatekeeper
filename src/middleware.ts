@@ -33,6 +33,34 @@ function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
     return ['admin', 'enrollment'];
   }
 
+  if (pathname === '/api/shift-exceptions' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/shift-exceptions' && method === 'PATCH') {
+    return ['admin', 'enrollment'];
+  }
+
+  if (pathname === '/api/attendance-corrections' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/attendance-corrections' && method === 'POST') {
+    return ['admin', 'enrollment'];
+  }
+
+  if (pathname === '/api/shift-briefing' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/shift-closeout' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/shift-closeout' && method === 'PATCH') {
+    return ['admin', 'enrollment'];
+  }
+
   return ['admin'];
 }
 

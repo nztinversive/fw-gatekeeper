@@ -7,9 +7,11 @@ export async function GET(req: NextRequest) {
   try {
     const date = req.nextUrl.searchParams.get('date') || new Date().toISOString().split('T')[0];
     const workerId = req.nextUrl.searchParams.get('worker_id');
+    const includeCorrections = req.nextUrl.searchParams.get('raw') === 'true' ? false : undefined;
     const rows = await convex.query(api.attendance.list, {
       date,
       workerId: workerId || undefined,
+      includeCorrections,
     });
     return NextResponse.json(rows);
   } catch (error) {

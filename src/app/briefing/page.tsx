@@ -1,0 +1,422 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { getLocalDateString } from '@/lib/date';
+import {
+  DepartmentCoverageStatus,
+  ShiftBriefingActionPriority,
+  ShiftBriefingDepartment,
+  ShiftBriefingResponse,
+  ShiftBriefingWorker,
+  WorkerCoverageStatus,
+} from '@/lib/types';
+
+const coverageStyles: Record<DepartmentCoverageStatus, string> = {
+  covered: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
+  short: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+  critical: 'bg-red-400/10 text-red-300 border-red-400/20',
+  unscheduled: 'bg-slate-400/10 text-slate-300 border-slate-400/20',
+};
+
+const workerStyles: Record<WorkerCoverageStatus, string> = {
+  present: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
+  late: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+  missing: 'bg-red-400/10 text-red-300 border-red-400/20',
+  clocked_out: 'bg-slate-400/10 text-slate-300 border-slate-400/20',
+  still_clocked_in: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
+};
+
+const priorityStyles: Record<ShiftBriefingActionPriority, string> = {
+  critical: 'bg-red-400/10 text-red-300 border-red-400/20',
+  warning: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+  info: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
+};
+
+function titleCase(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatTime(value: string | null) {
+  if (!value) return 'No scan';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatGeneratedAt(value?: string) {
+  if (!value) return 'Not generated';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function escapeCsv(value: unknown) {
+  const text = String(value ?? '');
+  if (!/[",\n]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function workerCsv(date: string, workers: ShiftBriefingWorker[]) {
+  const headers = [
+    'Date',
+    'Worker',
+    'Department',
+    'Schedule',
+    'Scheduled Start',
+    'Scheduled End',
+    'Status',
+    'First Seen',
+    'Last Seen',
+    'Event Count',
+  ];
+  const rows = workers.map((worker) => [
+    date,
+    worker.worker_name,
+    worker.department,
+    worker.schedule_name,
+    worker.scheduled_start,
+    worker.scheduled_end,
+    worker.status,
+    worker.first_seen || '',
+    worker.last_seen || '',
+    worker.event_count,
+  ]);
+  return [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+}
+
+function departmentRisk(row: ShiftBriefingDepartment) {
+  if (row.expected === 0) return 0;
+  return Math.round(((row.missing + row.late) / row.expected) * 100);
+}
+
+export default function ShiftBriefingPage() {
+  const [date, setDate] = useState(getLocalDateString());
+  const [payload, setPayload] = useState<ShiftBriefingResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [department, setDepartment] = useState('all');
+  const [status, setStatus] = useState<WorkerCoverageStatus | 'all'>('all');
+
+  const fetchBriefing = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/shift-briefing?date=${date}`, { cache: 'no-store' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to load shift briefing');
+      setPayload(body);
+    } catch (err) {
+      setPayload(null);
+      setError(err instanceof Error ? err.message : 'Failed to load shift briefing');
+    } finally {
+      setLoading(false);
+    }
+  }, [date]);
+
+  useEffect(() => {
+    fetchBriefing();
+  }, [fetchBriefing]);
+
+  const departments = useMemo(() => {
+    const values = payload?.departments.map((row) => row.department) || [];
+    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+  }, [payload]);
+
+  const filteredDepartments = useMemo(() => {
+    const rows = payload?.departments || [];
+    return rows.filter((row) => department === 'all' || row.department === department);
+  }, [department, payload]);
+
+  const filteredWorkers = useMemo(() => {
+    const rows = payload?.workers || [];
+    return rows.filter((worker) => {
+      const departmentMatches = department === 'all' || worker.department === department;
+      const statusMatches = status === 'all' || worker.status === status;
+      return departmentMatches && statusMatches;
+    });
+  }, [department, payload, status]);
+
+  function exportCsv() {
+    const csv = workerCsv(date, filteredWorkers);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gatekeeper-shift-briefing-${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const summary = payload?.summary;
+  const presentPercent = summary?.expected ? Math.round((summary.present / summary.expected) * 100) : 0;
+  const riskLabel = !payload
+    ? 'Loading briefing'
+    : summary?.expected === 0
+      ? 'No scheduled coverage'
+      : summary?.critical_actions
+        ? 'Coverage needs action'
+        : summary?.late || summary?.missing || summary?.kiosk_warnings
+          ? 'Review before shift'
+          : 'Coverage on track';
+
+  return (
+    <div className="animate-fade-in space-y-6 pb-24 md:pb-8">
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <p className="section-label mb-2">Supervisor briefing</p>
+          <h1 className="page-title text-slate-100">
+            Shift <span className="text-gold">Coverage</span>
+          </h1>
+          <p className="text-sm text-slate-400 mt-2 max-w-2xl leading-6">
+            Daily coverage risk, staffing gaps, kiosk trust signals, and the first actions to review.
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button type="button" onClick={fetchBriefing} className="btn-secondary" disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button type="button" onClick={() => window.print()} className="btn-secondary">
+            Print
+          </button>
+          <button type="button" onClick={exportCsv} className="btn-primary" disabled={filteredWorkers.length === 0}>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <section className="glass-card p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="section-label mb-2">Briefing status</p>
+            <h2 className="font-display text-2xl text-slate-100">{riskLabel}</h2>
+            <p className="text-sm text-slate-400 mt-2">
+              Generated {formatGeneratedAt(payload?.generated_at)} for {date}. {payload?.schedules.active_today ?? 0} schedule{payload?.schedules.active_today === 1 ? '' : 's'} active today.
+            </p>
+          </div>
+          <span className="badge bg-gold/10 text-gold border border-gold/20">
+            {presentPercent}% present
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 mt-5">
+          {[
+            ['Expected', summary?.expected ?? 0, 'text-slate-100'],
+            ['Present', summary?.present ?? 0, 'text-emerald-300'],
+            ['Late', summary?.late ?? 0, 'text-amber-300'],
+            ['Missing', summary?.missing ?? 0, 'text-red-300'],
+            ['Open Exceptions', summary?.open_exceptions ?? 0, 'text-gold'],
+            ['Kiosk Warnings', summary?.kiosk_warnings ?? 0, 'text-blue-300'],
+          ].map(([label, value, tone]) => (
+            <div key={label} className="rounded-xl border border-navy-600/50 bg-navy-900/35 p-4">
+              <p className="text-xs text-slate-500">{label}</p>
+              <p className={`mt-1 font-display text-2xl ${tone}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {payload?.warning && (
+        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
+          {payload.warning}
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      <section className="glass-card p-5">
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="space-y-1.5">
+            <span className="section-label block">Date</span>
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input-field" />
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Department</span>
+            <select value={department} onChange={(event) => setDepartment(event.target.value)} className="input-field">
+              <option value="all">All departments</option>
+              {departments.map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Worker Status</span>
+            <select value={status} onChange={(event) => setStatus(event.target.value as WorkerCoverageStatus | 'all')} className="input-field">
+              <option value="all">All statuses</option>
+              <option value="missing">Missing</option>
+              <option value="late">Late</option>
+              <option value="present">Present</option>
+              <option value="clocked_out">Clocked out</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display font-semibold text-slate-100">Coverage by department</h2>
+            <span className="text-xs font-mono text-slate-500">{filteredDepartments.length} groups</span>
+          </div>
+          {loading && !payload ? (
+            <div className="glass-card p-6 text-sm text-slate-400">Loading coverage briefing...</div>
+          ) : filteredDepartments.length ? (
+            filteredDepartments.map((row) => (
+              <article key={`${row.department}-${row.schedule_name}-${row.scheduled_start}`} className="glass-card-hover p-5 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-display font-semibold text-slate-100">{row.department}</h3>
+                    <p className="text-xs font-mono text-slate-500 mt-1">
+                      {row.schedule_name} · {row.scheduled_start}-{row.scheduled_end}
+                    </p>
+                  </div>
+                  <span className={`badge border ${coverageStyles[row.status]}`}>{titleCase(row.status)}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {[
+                    ['Present', row.present, 'text-emerald-300'],
+                    ['Expected', row.expected, 'text-slate-200'],
+                    ['Late', row.late, 'text-amber-300'],
+                    ['Missing', row.missing, 'text-red-300'],
+                  ].map(([label, value, tone]) => (
+                    <div key={label} className="rounded-xl bg-navy-900/40 border border-navy-600/40 p-3">
+                      <p className={`font-display text-xl ${tone}`}>{value}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-1">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="h-2 rounded-full bg-navy-900/70 overflow-hidden">
+                  <div
+                    className={`h-full ${departmentRisk(row) >= 50 ? 'bg-red-400' : departmentRisk(row) > 0 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                    style={{ width: `${Math.min(100, Math.max(0, 100 - departmentRisk(row)))}%` }}
+                  />
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="glass-card p-6 text-sm text-slate-400 leading-6">
+              No scheduled coverage in this view. Check the date or create an active schedule for this day.
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display font-semibold text-slate-100">First actions</h2>
+            <span className="text-xs font-mono text-slate-500">{payload?.action_items.length ?? 0} items</span>
+          </div>
+          {payload?.action_items.length ? (
+            <div className="space-y-3">
+              {payload.action_items.slice(0, 10).map((item) => (
+                <Link key={item.id} href={item.href} className="glass-card-hover p-4 block">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-display font-medium text-slate-100">{item.label}</h3>
+                      <p className="text-sm text-slate-400 mt-1 leading-6">{item.description}</p>
+                    </div>
+                    <span className={`badge border ${priorityStyles[item.priority]}`}>{titleCase(item.priority)}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="glass-card p-6 text-sm text-slate-400 leading-6">
+              No action items. Coverage, exceptions, and kiosk trust signals are clear for this view.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="glass-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-navy-600/50 flex items-center justify-between gap-3">
+          <h2 className="font-display font-semibold text-slate-100">Scheduled workers</h2>
+          <span className="text-xs font-mono text-slate-500">{filteredWorkers.length} workers</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-navy-600/50">
+                <th className="text-left py-3.5 px-5 section-label">Worker</th>
+                <th className="text-left py-3.5 px-5 section-label">Department</th>
+                <th className="text-left py-3.5 px-5 section-label">Schedule</th>
+                <th className="text-left py-3.5 px-5 section-label">First Seen</th>
+                <th className="text-left py-3.5 px-5 section-label">Last Seen</th>
+                <th className="text-left py-3.5 px-5 section-label">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredWorkers.map((worker) => (
+                <tr key={worker.worker_id} className="border-b border-navy-700/30 table-row-hover transition-colors">
+                  <td className="py-3 px-5 font-display font-medium text-slate-200">{worker.worker_name}</td>
+                  <td className="py-3 px-5 text-xs font-mono text-slate-500">{worker.department}</td>
+                  <td className="py-3 px-5 text-xs font-mono text-slate-400">{worker.schedule_name}</td>
+                  <td className="py-3 px-5 text-xs font-mono text-slate-400 tabular-nums">{formatTime(worker.first_seen)}</td>
+                  <td className="py-3 px-5 text-xs font-mono text-slate-400 tabular-nums">{formatTime(worker.last_seen)}</td>
+                  <td className="py-3 px-5">
+                    <span className={`badge text-[11px] border ${workerStyles[worker.status]}`}>{titleCase(worker.status)}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredWorkers.length === 0 && (
+            <div className="p-6 text-sm text-slate-400">No workers match the selected briefing filters.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="glass-card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display font-semibold text-slate-100">Kiosk trust</h2>
+              <p className="text-sm text-slate-400 mt-2">
+                {payload?.kiosks.total ?? 0} registered kiosk{payload?.kiosks.total === 1 ? '' : 's'} contribute to today's briefing confidence.
+              </p>
+            </div>
+            <Link href="/kiosks" className="btn-ghost text-xs">Open</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-5">
+            {[
+              ['Online', payload?.kiosks.counts.online ?? 0, 'text-emerald-300'],
+              ['Stale', payload?.kiosks.counts.stale ?? 0, 'text-amber-300'],
+              ['Offline', payload?.kiosks.counts.offline ?? 0, 'text-red-300'],
+              ['Never Synced', payload?.kiosks.counts.never_synced ?? 0, 'text-slate-300'],
+            ].map(([label, value, tone]) => (
+              <div key={label} className="rounded-xl border border-navy-600/50 bg-navy-900/35 p-4">
+                <p className="text-xs text-slate-500">{label}</p>
+                <p className={`mt-1 font-display text-2xl ${tone}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display font-semibold text-slate-100">Review links</h2>
+              <p className="text-sm text-slate-400 mt-2">Jump to source views when a briefing item needs follow-up.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-5">
+            {[
+              ['Exceptions', '/exceptions'],
+              ['Activity Log', '/log'],
+              ['Workers', '/workers'],
+              ['Schedules', '/schedules'],
+              ['Recognition Lab', '/calibration/recognition'],
+              ['Kiosks', '/kiosks'],
+            ].map(([label, href]) => (
+              <Link key={href} href={href} className="rounded-xl border border-navy-600/50 bg-navy-900/35 px-4 py-3 text-sm text-slate-300 hover:text-gold hover:border-gold/25 transition-all">
+                {label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
