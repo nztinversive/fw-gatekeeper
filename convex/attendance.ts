@@ -31,11 +31,76 @@ export async function listAttendanceByTimestampRange(
   return await query.collect();
 }
 
+export async function listEffectiveAttendanceByTimestampRange(
+  ctx: any,
+  date: string,
+  workerId?: string,
+) {
+  const [rawRecords, corrections] = await Promise.all([
+    listAttendanceByTimestampRange(ctx, date, workerId),
+    workerId
+      ? ctx.db
+          .query("attendanceCorrections")
+          .withIndex("by_worker_date", (q: any) => q.eq("workerId", workerId).eq("date", date))
+          .collect()
+      : ctx.db
+          .query("attendanceCorrections")
+          .withIndex("by_date", (q: any) => q.eq("date", date))
+          .collect(),
+  ]);
+
+  const voidedIds = new Set(
+    corrections
+      .filter((correction: any) => correction.action === "void_event" && correction.originalAttendanceId)
+      .map((correction: any) => String(correction.originalAttendanceId)),
+  );
+
+  const effective = rawRecords
+    .filter((record: any) => !voidedIds.has(String(record._id)))
+    .map((record: any) => ({
+      ...record,
+      correctionId: undefined,
+      corrected: false,
+      source: "kiosk",
+    }));
+
+  for (const correction of corrections) {
+    if (correction.action !== "add_clock_in" && correction.action !== "add_clock_out") continue;
+    if (!correction.correctedTimestamp || !correction.eventType) continue;
+    effective.push({
+      _id: `correction:${String(correction._id)}`,
+      workerId: correction.workerId,
+      eventType: correction.eventType,
+      kioskId: "supervisor_correction",
+      timestamp: correction.correctedTimestamp,
+      idempotencyKey: `correction:${String(correction._id)}`,
+      synced: true,
+      workerName: undefined,
+      confidence: undefined,
+      livenessConfirmed: undefined,
+      correctionId: String(correction._id),
+      correctionReason: correction.reason,
+      correctionSupervisorName: correction.supervisorName,
+      corrected: true,
+      source: "correction",
+    });
+  }
+
+  effective.sort((a: any, b: any) => a.timestamp.localeCompare(b.timestamp));
+  return effective;
+}
+
 export const list = query({
-  args: { date: v.optional(v.string()), workerId: v.optional(v.string()) },
+  args: {
+    date: v.optional(v.string()),
+    workerId: v.optional(v.string()),
+    includeCorrections: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const date = args.date || new Date().toISOString().split("T")[0];
-    const records: any[] = await listAttendanceByTimestampRange(ctx, date, args.workerId);
+    const records: any[] = args.includeCorrections === false
+      ? await listAttendanceByTimestampRange(ctx, date, args.workerId)
+      : await listEffectiveAttendanceByTimestampRange(ctx, date, args.workerId);
     records.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
     // Join worker and kiosk data
@@ -52,9 +117,14 @@ export const list = query({
         synced: a.synced ? 1 : 0,
         worker_name: (worker as any)?.name || a.workerName || "",
         worker_department: (worker as any)?.department || "",
-        kiosk_name: (kiosk as any)?.name || null,
+        kiosk_name: a.source === "correction" ? "Supervisor correction" : (kiosk as any)?.name || null,
         confidence: a.confidence || 0,
         liveness_confirmed: a.livenessConfirmed ? 1 : 0,
+        source: a.source || "kiosk",
+        corrected: Boolean(a.corrected),
+        correction_id: a.correctionId || null,
+        correction_reason: a.correctionReason || null,
+        correction_supervisor_name: a.correctionSupervisorName || null,
       });
     }
     return result;

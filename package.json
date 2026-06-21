@@ -12,7 +12,11 @@
     "test:enrollment-permissions": "node scripts/test-enrollment-permissions-contract.mjs",
     "test:kiosk-readiness": "node scripts/test-kiosk-readiness-contract.mjs",
     "test:recognition-attempts": "node scripts/test-recognition-attempts-contract.mjs",
-    "test:dashboard-demo-mode": "node scripts/test-dashboard-demo-mode-contract.mjs"
+    "test:dashboard-demo-mode": "node scripts/test-dashboard-demo-mode-contract.mjs",
+    "test:shift-exceptions": "node scripts/test-shift-exceptions-contract.mjs",
+    "test:shift-briefing": "node scripts/test-shift-briefing-contract.mjs",
+    "test:shift-closeout": "node scripts/test-shift-closeout-contract.mjs",
+    "test:attendance-corrections": "node scripts/test-attendance-corrections-contract.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.92",

@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
     const [kiosks, workers, attendanceToday, faceService] = await Promise.all([
       convex.query(api.kiosks.list, {}),
       convex.query(api.workers.list, { includeEncodings: false }),
-      convex.query(api.attendance.list, { date }),
+      convex.query(api.attendance.list, { date, includeCorrections: false }),
       fetchFaceHealth(faceHealthUrl),
     ]);
 

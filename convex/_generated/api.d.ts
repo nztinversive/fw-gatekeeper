@@ -9,6 +9,7 @@
  */
 
 import type * as attendance from "../attendance.js";
+import type * as attendanceCorrections from "../attendanceCorrections.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as kioskLookup from "../kioskLookup.js";
@@ -17,6 +18,9 @@ import type * as portalMembers from "../portalMembers.js";
 import type * as recognitionAttempts from "../recognitionAttempts.js";
 import type * as schedules from "../schedules.js";
 import type * as seed from "../seed.js";
+import type * as shiftBriefing from "../shiftBriefing.js";
+import type * as shiftCloseouts from "../shiftCloseouts.js";
+import type * as shiftExceptions from "../shiftExceptions.js";
 import type * as stats from "../stats.js";
 import type * as workers from "../workers.js";
 
@@ -28,6 +32,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   attendance: typeof attendance;
+  attendanceCorrections: typeof attendanceCorrections;
   auth: typeof auth;
   http: typeof http;
   kioskLookup: typeof kioskLookup;
@@ -36,6 +41,9 @@ declare const fullApi: ApiFromModules<{
   recognitionAttempts: typeof recognitionAttempts;
   schedules: typeof schedules;
   seed: typeof seed;
+  shiftBriefing: typeof shiftBriefing;
+  shiftCloseouts: typeof shiftCloseouts;
+  shiftExceptions: typeof shiftExceptions;
   stats: typeof stats;
   workers: typeof workers;
 }>;
