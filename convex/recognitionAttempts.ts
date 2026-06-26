@@ -1,5 +1,9 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import {
+  buildConservativeFactoryLocalTimestampRanges,
+  timestampBelongsToFactoryLocalDate,
+} from "./localDate";
 
 const attemptInput = v.object({
   timestamp: v.string(),
@@ -36,13 +40,6 @@ function normalizeRequiredText(value: string, label: string) {
     throw new Error(`${label} is required`);
   }
   return trimmed;
-}
-
-function getNextDateKey(dateKey: string): string {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  const next = new Date(Date.UTC(year, month - 1, day));
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
 }
 
 function clampLimit(limit?: number) {
@@ -185,6 +182,40 @@ async function listRangeInternal(
   return attempts.map(serializeAttempt);
 }
 
+export async function listRecognitionAttemptsByFactoryDate(
+  ctx: any,
+  args: {
+    date: string;
+    kioskId?: string;
+    reviewed?: boolean;
+    limit?: number;
+  },
+) {
+  const rowsById = new Map<string, any>();
+  const kioskId = normalizeOptionalText(args.kioskId);
+  const limit = clampLimit(args.limit);
+  const conservativeLimit = Math.min(1000, limit * 3);
+
+  for (const range of buildConservativeFactoryLocalTimestampRanges(args.date)) {
+    const rows = await listRangeInternal(ctx, {
+      startTimestamp: range.startTimestamp,
+      endTimestamp: range.endTimestamp,
+      kioskId,
+      reviewed: args.reviewed,
+      limit: conservativeLimit,
+    });
+    for (const row of rows) {
+      if (timestampBelongsToFactoryLocalDate(row.timestamp, args.date)) {
+        rowsById.set(String(row.id), row);
+      }
+    }
+  }
+
+  return Array.from(rowsById.values())
+    .sort((a: any, b: any) => String(b.timestamp).localeCompare(String(a.timestamp)))
+    .slice(0, limit);
+}
+
 export const bulkIngest = mutation({
   args: { attempts: v.array(attemptInput) },
   handler: async (ctx, args) => {
@@ -236,9 +267,8 @@ export const listByDate = query({
   },
   handler: async (ctx, args) => {
     const date = args.date || new Date().toISOString().slice(0, 10);
-    return await listRangeInternal(ctx, {
-      startTimestamp: date,
-      endTimestamp: getNextDateKey(date),
+    return await listRecognitionAttemptsByFactoryDate(ctx, {
+      date,
       kioskId: args.kioskId,
       reviewed: args.reviewed,
       limit: args.limit,

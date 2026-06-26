@@ -1,34 +1,34 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
-
-function getDateKey(timestamp: string): string {
-  return timestamp.slice(0, 10);
-}
-
-function getNextDateKey(dateKey: string): string {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  const next = new Date(Date.UTC(year, month - 1, day));
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
-}
+import {
+  buildConservativeFactoryLocalTimestampRanges,
+  timestampBelongsToFactoryLocalDate,
+} from "./localDate";
 
 export async function listAttendanceByTimestampRange(
   ctx: any,
   date: string,
   workerId?: string,
 ) {
-  const start = date;
-  const end = getNextDateKey(date);
-  const query = workerId
-    ? ctx.db
-        .query("attendance")
-        .withIndex("by_timestamp", (q: any) => q.gte("timestamp", start).lt("timestamp", end))
-        .filter((q: any) => q.eq(q.field("workerId"), workerId))
-    : ctx.db
-        .query("attendance")
-        .withIndex("by_timestamp", (q: any) => q.gte("timestamp", start).lt("timestamp", end));
-  return await query.collect();
+  const rowsById = new Map<string, any>();
+  for (const range of buildConservativeFactoryLocalTimestampRanges(date)) {
+    const query = workerId
+      ? ctx.db
+          .query("attendance")
+          .withIndex("by_timestamp", (q: any) => q.gte("timestamp", range.startTimestamp).lt("timestamp", range.endTimestamp))
+          .filter((q: any) => q.eq(q.field("workerId"), workerId))
+      : ctx.db
+          .query("attendance")
+          .withIndex("by_timestamp", (q: any) => q.gte("timestamp", range.startTimestamp).lt("timestamp", range.endTimestamp));
+    const rows = await query.collect();
+    for (const row of rows) {
+      if (timestampBelongsToFactoryLocalDate(row.timestamp, date)) {
+        rowsById.set(String(row._id), row);
+      }
+    }
+  }
+  return Array.from(rowsById.values());
 }
 
 export async function listEffectiveAttendanceByTimestampRange(

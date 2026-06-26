@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { listEffectiveAttendanceByTimestampRange } from "./attendance";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
+import { listRecognitionAttemptsByFactoryDate } from "./recognitionAttempts";
 
 const LOW_MARGIN_THRESHOLD = 0.08;
 
@@ -37,13 +38,6 @@ type ShiftException = {
     schedules?: string;
   };
 };
-
-function getNextDateKey(dateKey: string): string {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  const next = new Date(Date.UTC(year, month - 1, day));
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
-}
 
 function getDayOfWeek(dateKey: string): number {
   const [year, month, day] = dateKey.split("-").map(Number);
@@ -166,10 +160,7 @@ export async function buildShiftExceptions(ctx: any, date: string) {
       .query("exceptionReviews")
       .withIndex("by_date", (q: any) => q.eq("date", date))
       .collect(),
-    ctx.db
-      .query("recognitionAttempts")
-      .withIndex("by_timestamp", (q: any) => q.gte("timestamp", date).lt("timestamp", getNextDateKey(date)))
-      .collect(),
+    listRecognitionAttemptsByFactoryDate(ctx, { date, limit: 1000 }),
   ]);
 
   const reviewsByKey = new Map(reviews.map((review: any) => [review.exceptionKey, review]));

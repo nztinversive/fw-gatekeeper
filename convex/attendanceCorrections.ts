@@ -1,15 +1,10 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { timestampBelongsToFactoryLocalDate } from "./localDate";
 
 function normalizeText(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed || undefined;
-}
-
-function getDateKey(timestamp?: string | null): string | null {
-  if (!timestamp) return null;
-  const match = timestamp.match(/^(\d{4}-\d{2}-\d{2})T/);
-  return match?.[1] || null;
 }
 
 function getEventTypeForAction(action: "add_clock_in" | "add_clock_out" | "void_event") {
@@ -96,12 +91,12 @@ export const create = mutation({
       if (original.workerId !== args.workerId) {
         throw new Error("Original attendance event belongs to a different worker.");
       }
-      if (getDateKey(original.timestamp) !== args.date) {
+      if (!timestampBelongsToFactoryLocalDate(original.timestamp, args.date)) {
         throw new Error("Original attendance event is not on the correction date.");
       }
     } else if (!args.correctedTimestamp) {
       throw new Error("correctedTimestamp is required when adding an event.");
-    } else if (getDateKey(args.correctedTimestamp) !== args.date) {
+    } else if (!timestampBelongsToFactoryLocalDate(args.correctedTimestamp, args.date)) {
       throw new Error("correctedTimestamp must be on the correction date.");
     }
 
