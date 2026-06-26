@@ -11,6 +11,7 @@ const workersRoute = read('src/app/api/workers/route.ts');
 const dashboardPage = read('src/app/page.tsx');
 const convexWorkers = read('convex/workers.ts');
 const types = read('src/lib/types.ts');
+const proactiveActions = read('src/lib/proactive-actions.ts');
 
 assert.match(
   workersPage,
@@ -44,7 +45,8 @@ assert.match(dashboardPage, /Action Center/, 'Dashboard must include an Action C
 assert.match(dashboardPage, /missingFaceWorkers/, 'Dashboard must compute missing face enrollment action items.');
 assert.match(dashboardPage, /invalidFaceWorkers/, 'Dashboard must compute invalid face data action items.');
 assert.match(dashboardPage, /All clear/, 'Dashboard Action Center must have a positive empty state.');
-assert.match(dashboardPage, /Review now/, 'Dashboard Action Center must provide a clear review CTA.');
+assert.match(dashboardPage, /buildProactiveActions/, 'Dashboard Action Center must use the proactive action engine.');
+assert.match(proactiveActions, /Review now/, 'Dashboard Action Center must provide a clear review CTA.');
 assert.match(dashboardPage, /Fix kiosk sync|Open kiosks/, 'Today\'s Ops hero must include a direct remediation CTA for launch-blocking kiosk issues.');
 assert.match(dashboardPage, /0 of \$\{systemHealth\.kiosks\.total\} kiosks online|\$\{systemHealth\.kiosks\.counts\.online\} of \$\{systemHealth\.kiosks\.total\} kiosks online/, 'Dashboard should use plain-language kiosk online copy instead of ambiguous 0/2 sync shorthand.');
 assert.match(dashboardPage, /Workers enrolled/, 'Dashboard should label recognition-ready workers as enrolled, not generally ready/present.');

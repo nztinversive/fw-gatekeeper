@@ -6,6 +6,7 @@ import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
+import { buildProactiveActions } from '@/lib/proactive-actions';
 
 interface WorkerWithStatus {
   id: string;
@@ -83,6 +84,8 @@ interface SystemHealth {
 
 interface ShiftExceptionsSummary {
   date: string;
+  backend_unavailable?: boolean;
+  warning?: string;
   summary: {
     total: number;
     open: number;
@@ -94,6 +97,8 @@ interface ShiftExceptionsSummary {
 
 interface ShiftCloseoutSummary {
   date: string;
+  backend_unavailable?: boolean;
+  warning?: string;
   closeout: {
     status: 'open' | 'completed' | 'reopened';
     completed_at: string | null;
@@ -283,102 +288,14 @@ export default function Dashboard() {
   const invalidFaceWorkers = workers.filter((w) => w.encoding_status === 'invalid');
   const absentWorkers = workers.filter((w) => w.status === 'absent');
   const failedSignalKeys = new Set(signalFailures.map((failure) => failure.key));
-  const actionItems = [
-    ...signalFailures.map((failure) => ({
-      key: `signal-failure-${failure.key}`,
-      label: `${failure.label} unavailable`,
-      value: '!',
-      tone: 'amber' as const,
-      description: failure.message,
-      href: failure.href,
-      cta: 'Open source',
-    })),
-    ...(missingFaceWorkers.length > 0
-      ? [{
-          key: 'missing-face',
-          label: 'Face enrollment needed',
-          value: missingFaceWorkers.length,
-          tone: 'amber' as const,
-          description: `${missingFaceWorkers.length} worker${missingFaceWorkers.length === 1 ? '' : 's'} missing face data for kiosk recognition.`,
-          href: '/workers',
-          cta: 'Review now',
-        }]
-      : []),
-    ...(invalidFaceWorkers.length > 0
-      ? [{
-          key: 'invalid-face',
-          label: 'Invalid face data',
-          value: invalidFaceWorkers.length,
-          tone: 'red' as const,
-          description: `${invalidFaceWorkers.length} worker${invalidFaceWorkers.length === 1 ? '' : 's'} need re-enrollment because their face data is not kiosk-valid.`,
-          href: '/workers',
-          cta: 'Review now',
-        }]
-      : []),
-    ...(systemHealth?.warnings?.map((warning, index) => ({
-          key: `system-health-${index}`,
-          label: warning.includes('Face service') ? 'Face service warning' : 'Kiosk sync warning',
-          value: '!',
-          tone: warning.includes('offline') || warning.includes('never synced') ? 'red' as const : 'amber' as const,
-          description: warning,
-          href: '/kiosks',
-          cta: 'Open kiosks',
-        })) || []),
-    ...(stats.scheduleWarning
-      ? [{
-          key: 'schedule-warning',
-          label: 'Schedule warning',
-          value: '!',
-          tone: 'red' as const,
-          description: stats.scheduleWarning,
-          href: '/schedules',
-          cta: 'Review now',
-        }]
-      : []),
-    ...(shiftExceptions?.summary.open
-      ? [{
-          key: 'shift-exceptions',
-          label: 'Open shift exceptions',
-          value: shiftExceptions.summary.open,
-          tone: shiftExceptions.summary.critical > 0 ? 'red' as const : 'amber' as const,
-          description: `${shiftExceptions.summary.open} exception${shiftExceptions.summary.open === 1 ? '' : 's'} need supervisor review, including ${shiftExceptions.summary.critical} critical.`,
-          href: '/exceptions',
-          cta: 'Open exceptions',
-        }]
-      : []),
-    ...(shiftCloseout?.closeout?.status === 'completed'
-      ? [{
-          key: 'shift-closeout-complete',
-          label: 'Shift closeout complete',
-          value: '✓',
-          tone: 'slate' as const,
-          description: `Today’s supervisor closeout was completed${shiftCloseout.closeout.completed_at ? ` at ${new Date(shiftCloseout.closeout.completed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : ''}.`,
-          href: '/closeout',
-          cta: 'Open closeout',
-        }]
-      : [{
-          key: 'shift-closeout-pending',
-          label: 'Shift closeout pending',
-          value: shiftCloseout?.blockers?.length ?? '!',
-          tone: shiftCloseout?.blockers?.length ? 'amber' as const : 'slate' as const,
-          description: shiftCloseout?.blockers?.length
-            ? `${shiftCloseout.blockers.length} closeout checklist item${shiftCloseout.blockers.length === 1 ? '' : 's'} need acknowledgement.`
-            : 'Complete the supervisor closeout when the shift is ready to sign off.',
-          href: '/closeout',
-          cta: 'Close shift',
-        }]),
-    ...(absentWorkers.length > 0
-      ? [{
-          key: 'not-arrived',
-          label: 'Not arrived today',
-          value: absentWorkers.length,
-          tone: 'slate' as const,
-          description: `${absentWorkers.length} active worker${absentWorkers.length === 1 ? '' : 's'} have no clock-in scans today.`,
-          href: '/log',
-          cta: 'Review attendance',
-        }]
-      : []),
-  ];
+  const actionItems = buildProactiveActions({
+    signalFailures,
+    workers,
+    systemHealth,
+    stats,
+    shiftExceptions,
+    shiftCloseout,
+  });
 
   const offlineKioskCount = systemHealth
     ? systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced
@@ -657,8 +574,9 @@ export default function Dashboard() {
       <section className="glass-card p-5 mb-6">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <p className="section-label">Action Center</p>
-            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">What needs attention</h2>
+            <p className="section-label">Proactive Action Center</p>
+            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Today’s decisions, ranked</h2>
+            <p className="mt-1 text-xs text-slate-500 font-mono">Sorted by shift risk, readiness blockers, and closeout trust</p>
           </div>
           <span className="badge border bg-navy-900/60 text-slate-400 border-navy-600/50">
             {actionItems.length || 'All clear'}
@@ -681,12 +599,31 @@ export default function Dashboard() {
                 red: 'border-red-400/20 bg-red-400/5 text-red-300',
                 slate: 'border-navy-600/50 bg-navy-900/55 text-slate-300',
               }[item.tone];
+              const priorityTone = {
+                critical: 'border-red-400/20 bg-red-400/10 text-red-300',
+                warning: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+                closeout: 'border-blue-400/20 bg-blue-400/10 text-blue-300',
+                info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
+              }[item.priority];
               return (
                 <div key={item.key} className={`rounded-2xl border p-4 ${tone}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-mono uppercase tracking-wider opacity-80">{item.label}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`badge border text-[10px] ${priorityTone}`}>{item.priority}</span>
+                        <p className="text-xs font-mono uppercase tracking-wider opacity-80">{item.label}</p>
+                      </div>
                       <p className="mt-2 text-sm leading-5 text-slate-400">{item.description}</p>
+                      {(item.blocksReadiness || item.blocksCloseout) && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.blocksReadiness && (
+                            <span className="badge border border-red-400/15 bg-red-400/5 text-[10px] text-red-300">Blocks readiness</span>
+                          )}
+                          {item.blocksCloseout && (
+                            <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">Blocks closeout trust</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <span className="text-3xl font-display font-bold tabular-nums">{item.value}</span>
                   </div>

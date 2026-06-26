@@ -14,6 +14,7 @@ const dashboard = read('src/app/page.tsx');
 const middleware = read('src/middleware.ts');
 const types = read('src/lib/types.ts');
 const packageJson = read('package.json');
+const proactiveActions = read('src/lib/proactive-actions.ts');
 
 assert.match(schema, /shiftCloseouts:\s*defineTable/, 'Schema must define shiftCloseouts.');
 assert.match(schema, /date:\s*v\.string\(\)/, 'Closeouts must be keyed by date.');
@@ -51,8 +52,9 @@ assert.match(page, /Export/, 'Closeout page must support export.');
 
 assert.match(sidebar, /href:\s*'\/closeout'[\s\S]*label:\s*'Closeout'/, 'Sidebar must link to the Closeout page.');
 assert.match(dashboard, /\/api\/shift-closeout/, 'Dashboard must fetch shift closeout state.');
-assert.match(dashboard, /Shift closeout pending/, 'Dashboard Action Center must surface pending closeout.');
-assert.match(dashboard, /Shift closeout complete/, 'Dashboard Action Center must surface completed closeout.');
+assert.match(dashboard, /buildProactiveActions/, 'Dashboard Action Center must use the proactive action engine.');
+assert.match(proactiveActions, /Shift closeout pending/, 'Dashboard Action Center must surface pending closeout.');
+assert.match(proactiveActions, /Shift closeout complete/, 'Dashboard Action Center must surface completed closeout.');
 assert.match(middleware, /pathname === '\/api\/shift-closeout' && method === 'GET'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should permit closeout reads for portal viewers.');
 assert.match(middleware, /pathname === '\/api\/shift-closeout' && method === 'PATCH'[\s\S]*\['admin', 'enrollment'\]/, 'Middleware should restrict closeout writes.');
 assert.match(types, /interface ShiftCloseoutResponse/, 'Shared types must define ShiftCloseoutResponse.');

@@ -12,6 +12,7 @@ const sidebar = read('src/components/Sidebar.tsx');
 const dashboard = read('src/app/page.tsx');
 const middleware = read('src/middleware.ts');
 const types = read('src/lib/types.ts');
+const proactiveActions = read('src/lib/proactive-actions.ts');
 
 assert.match(schema, /exceptionReviews:\s*defineTable/, 'Schema must define exceptionReviews.');
 assert.match(schema, /exceptionKey:\s*v\.string\(\)/, 'Exception reviews must store stable exceptionKey.');
@@ -48,7 +49,8 @@ assert.match(page, /backend_unavailable/, 'Exceptions page should show a deploym
 
 assert.match(sidebar, /href:\s*'\/exceptions'[\s\S]*label:\s*'Exceptions'/, 'Sidebar must link to the Exceptions page.');
 assert.match(dashboard, /\/api\/shift-exceptions/, 'Dashboard must fetch shift exception counts.');
-assert.match(dashboard, /Open shift exceptions/, 'Dashboard Action Center must surface open exceptions.');
+assert.match(dashboard, /buildProactiveActions/, 'Dashboard Action Center must use the proactive action engine.');
+assert.match(proactiveActions, /Open shift exceptions/, 'Dashboard Action Center must surface open exceptions.');
 assert.match(middleware, /pathname === '\/api\/shift-exceptions' && method === 'GET'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should permit exception reads for portal viewers.');
 assert.match(middleware, /pathname === '\/api\/shift-exceptions' && method === 'PATCH'[\s\S]*\['admin', 'enrollment'\]/, 'Middleware should restrict exception review writes.');
 assert.match(types, /interface ShiftException/, 'Shared types must define ShiftException.');

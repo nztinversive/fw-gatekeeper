@@ -16,6 +16,7 @@
     "test:shift-exceptions": "node scripts/test-shift-exceptions-contract.mjs",
     "test:shift-briefing": "node scripts/test-shift-briefing-contract.mjs",
     "test:shift-closeout": "node scripts/test-shift-closeout-contract.mjs",
+    "test:proactive-actions": "node scripts/test-proactive-actions-contract.mjs",
     "test:attendance-corrections": "node scripts/test-attendance-corrections-contract.mjs"
   },
   "dependencies": {
