@@ -24,8 +24,13 @@ assert.match(briefing, /action_items/, 'Shift briefing response must include pri
 assert.match(briefing, /kiosks/, 'Shift briefing response must include kiosk trust data.');
 assert.match(briefing, /No schedule is active today/, 'Shift briefing should explain missing schedule coverage.');
 assert.match(briefing, /getCoverageActionStatus/, 'Briefing coverage actions must choose a precise worker status filter.');
+assert.match(briefing, /function getExceptionIntent/, 'Briefing exception actions should classify direct correction intents.');
+assert.match(briefing, /if \(!exception\.worker_id\) return undefined/, 'Briefing correction intents should require a worker-backed exception.');
+assert.match(briefing, /exception\.type === "scan_sequence"[\s\S]*exception\.attendance_id \? "correct" : undefined/, 'Briefing scan-sequence correction intents should require a source attendance row.');
 assert.match(briefing, /buildHref\("\/briefing",\s*\{\s*date,\s*department:\s*row\.department,\s*status:\s*getCoverageActionStatus\(row\)/, 'Briefing coverage actions must deep-link to date, department, and worker status filters.');
 assert.match(briefing, /buildHref\("\/exceptions",\s*\{\s*date,\s*status:\s*"open",\s*department:\s*exception\.department,\s*type:\s*exception\.type,\s*severity:\s*exception\.severity/, 'Briefing exception actions must deep-link to filtered open exception views.');
+assert.match(briefing, /exception_key:\s*exception\.key/, 'Briefing exception actions must preserve the exact exception row key.');
+assert.match(briefing, /intent:\s*getExceptionIntent\(exception\)/, 'Briefing correctable exception actions should carry correction intent.');
 assert.match(briefing, /encodeURIComponent/, 'Shift briefing action links must encode filter query params.');
 
 assert.match(apiRoute, /shiftBriefing\.summary/, 'GET /api/shift-briefing must call the Convex briefing query.');

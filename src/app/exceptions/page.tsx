@@ -44,6 +44,8 @@ type CorrectionDraft = {
   supervisorName: string;
 };
 
+type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+
 function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -67,7 +69,9 @@ function escapeCsv(value: unknown) {
 }
 
 function canCorrectException(exception: ShiftException) {
-  return Boolean(exception.worker_id) && ['missing_arrival', 'missing_clock_out', 'scan_sequence'].includes(exception.type);
+  if (!exception.worker_id) return false;
+  if (exception.type === 'scan_sequence') return Boolean(exception.attendance_id);
+  return exception.type === 'missing_arrival' || exception.type === 'missing_clock_out';
 }
 
 function timeFromTimestamp(value?: string | null) {
@@ -156,6 +160,14 @@ function validStatusParam(value: string | null): ShiftExceptionStatus | 'all' {
   return value === 'open' || value === 'reviewed' || value === 'resolved' || value === 'ignored' || value === 'all' ? value : 'open';
 }
 
+function canOperateExceptions(role: PortalRole | undefined) {
+  return role === 'admin' || role === 'enrollment';
+}
+
+function exceptionRowId(key: string) {
+  return `exception-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
 function ExceptionsPageContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -164,6 +176,9 @@ function ExceptionsPageContent() {
   const queryType = searchParams.get('type') || 'all';
   const querySeverity = validSeverityParam(searchParams.get('severity'));
   const queryStatus = validStatusParam(searchParams.get('status'));
+  const queryExceptionKey = searchParams.get('exception_key') || '';
+  const queryIntent = searchParams.get('intent') || '';
+  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftExceptionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -175,8 +190,27 @@ function ExceptionsPageContent() {
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [correctionDraft, setCorrectionDraft] = useState<CorrectionDraft | null>(null);
+  const [handledIntentKey, setHandledIntentKey] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const canOperate = canOperateExceptions(currentRole);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-role', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && typeof payload?.role === 'string') {
+          setCurrentRole(payload.role);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setDate(queryDate);
@@ -279,7 +313,24 @@ function ExceptionsPageContent() {
     });
   }
 
+  useEffect(() => {
+    if (!canOperate || !queryExceptionKey || queryIntent !== 'correct' || handledIntentKey === queryExceptionKey || correctionDraft) return;
+    const target = filtered.find((exception) => exception.key === queryExceptionKey);
+    if (!target || !canCorrectException(target) || target.status !== 'open') return;
+    openCorrection(target);
+    setHandledIntentKey(queryExceptionKey);
+  }, [canOperate, correctionDraft, filtered, handledIntentKey, queryExceptionKey, queryIntent]);
+
+  useEffect(() => {
+    if (!queryExceptionKey || !filtered.some((exception) => exception.key === queryExceptionKey)) return;
+    document.getElementById(exceptionRowId(queryExceptionKey))?.scrollIntoView({ block: 'center' });
+  }, [filtered, queryExceptionKey]);
+
   async function submitCorrection() {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can save attendance corrections.', 'error');
+      return;
+    }
     if (!correctionDraft?.exception.worker_id) return;
     if (!correctionDraft.reason.trim()) {
       toast('Correction reason required', 'error');
@@ -461,8 +512,13 @@ function ExceptionsPageContent() {
               <tbody className="divide-y divide-navy-600/35">
                 {filtered.map((exception) => {
                   const controlsDisabled = isPending && pendingKey === exception.key;
+                  const targeted = queryExceptionKey === exception.key;
                   return (
-                    <tr key={exception.key} className="align-top text-sm text-slate-300 hover:bg-navy-800/35">
+                    <tr
+                      id={exceptionRowId(exception.key)}
+                      key={exception.key}
+                      className={`align-top text-sm text-slate-300 hover:bg-navy-800/35 ${targeted ? 'bg-gold/5 ring-1 ring-inset ring-gold/30' : ''}`}
+                    >
                       <td className="px-4 py-4">
                         <p className="font-medium text-slate-100">{exception.title}</p>
                         <p className="mt-1 max-w-lg text-xs leading-5 text-slate-500">{exception.description}</p>
@@ -521,7 +577,7 @@ function ExceptionsPageContent() {
                           <button type="button" className="btn-primary text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'resolved')}>
                             Resolved
                           </button>
-                          {canCorrectException(exception) && (
+                          {canOperate && canCorrectException(exception) && (
                             <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => openCorrection(exception)}>
                               Correct attendance
                             </button>

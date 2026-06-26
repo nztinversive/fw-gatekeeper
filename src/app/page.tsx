@@ -88,6 +88,7 @@ interface ShiftExceptionsSummary {
   backend_unavailable?: boolean;
   warning?: string;
   exceptions?: Array<{
+    key?: string;
     type?: string;
     status?: string;
   }>;

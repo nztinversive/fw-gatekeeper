@@ -55,6 +55,7 @@ assert.match(middleware, /pathname === '\/api\/attendance-corrections' && method
 assert.match(exceptionsPage, /Correct attendance/, 'Exceptions page must expose correction actions.');
 assert.match(exceptionsPage, /Save correction/, 'Exceptions page must submit corrections.');
 assert.match(exceptionsPage, /Correction reason/, 'Exceptions page must require a correction reason field.');
+assert.match(exceptionsPage, /exception\.type === 'scan_sequence'\) return Boolean\(exception\.attendance_id\)/, 'Scan-sequence corrections must only be offered when a source attendance row can be voided.');
 assert.match(exceptionsPage, /function suggestedCorrectionReason/, 'Exceptions page should generate deterministic correction reason suggestions from exception evidence.');
 assert.match(exceptionsPage, /existingReason \|\| suggestedCorrectionReason\(exception, suggestion\)/, 'Correction drafts should prefill blank reasons while preserving existing supervisor notes.');
 assert.match(exceptionsPage, /reasonWasSuggested:\s*!existingReason/, 'Correction drafts should track whether the reason came from a suggestion.');

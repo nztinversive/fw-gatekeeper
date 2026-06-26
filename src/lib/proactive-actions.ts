@@ -64,6 +64,7 @@ export interface ProactiveShiftExceptions {
   backend_unavailable?: boolean;
   warning?: string;
   exceptions?: Array<{
+    key?: string;
     type?: string;
     status?: string;
   }>;
@@ -193,17 +194,27 @@ function getCriticalExceptionCount(shiftExceptions: ProactiveShiftExceptions | n
 }
 
 function getOpenExceptionTypeCount(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
-  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
-  if (exceptions.length > 0) {
-    return exceptions.filter((exception) => exception?.status === 'open' && exception?.type === type).length;
-  }
+  return getOpenExceptionTypeEntries(shiftExceptions, type).length || getOpenExceptionTypeFallbackCount(shiftExceptions, type);
+}
 
+function getOpenExceptionTypeEntries(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
+  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
+  return exceptions.filter((exception) => exception?.status === 'open' && exception?.type === type);
+}
+
+function getOpenExceptionTypeFallbackCount(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
+  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
+  if (exceptions.length > 0) return 0;
   const summary = shiftExceptions?.summary;
   const totalExceptions = Number(summary?.total || 0);
   const openExceptions = Number(summary?.open || summary?.by_status?.open || 0);
   const typeCount = Number(summary?.by_type?.[type] || 0);
 
   return totalExceptions > 0 && openExceptions === totalExceptions ? typeCount : 0;
+}
+
+function getFirstOpenExceptionKey(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
+  return getOpenExceptionTypeEntries(shiftExceptions, type).find((exception) => exception.key)?.key || null;
 }
 
 function isCriticalSystemWarning(warning: string) {
@@ -294,6 +305,20 @@ function buildHref(path: string, params: Record<string, string | number | null |
   return query ? `${path}?${query}` : path;
 }
 
+function stripHrefParams(href: string, keysToStrip: string[]) {
+  const [path, query = ''] = href.split('?');
+  if (!query) return href;
+  const blocked = new Set(keysToStrip);
+  const nextQuery = query
+    .split('&')
+    .filter((entry) => {
+      const key = decodeURIComponent(entry.split('=')[0] || '');
+      return !blocked.has(key);
+    })
+    .join('&');
+  return nextQuery ? `${path}?${nextQuery}` : path;
+}
+
 function getSeverityForPriority(priority: ProactiveActionPriority): ProactiveActionSeverity {
   return priority === CRITICAL_PRIORITY ? 'critical' : priority === WARNING_PRIORITY ? 'warning' : 'info';
 }
@@ -316,7 +341,7 @@ function canRoleOperate(role: string | null, source: ProactiveActionSource) {
 }
 
 function getReviewHref(action: ProactiveAction) {
-  if (action.source === 'exceptions') return action.href;
+  if (action.source === 'exceptions') return stripHrefParams(action.href, ['intent']);
   if (action.source === 'closeout') return action.href;
   if (action.source === 'schedule') return '/briefing';
   if (action.source === 'attendance') return '/briefing';
@@ -587,6 +612,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     const criticalExceptions = getCriticalExceptionCount(shiftExceptions);
     const missingClockOuts = getOpenExceptionTypeCount(shiftExceptions, 'missing_clock_out');
     const recognitionReviews = getOpenExceptionTypeCount(shiftExceptions, 'recognition_review');
+    const firstMissingClockOutKey = getFirstOpenExceptionKey(shiftExceptions, 'missing_clock_out');
     const priority = criticalExceptions > 0 ? CRITICAL_PRIORITY : WARNING_PRIORITY;
     if (missingClockOuts > 0) {
       actions.push({
@@ -600,12 +626,15 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           date: actionDate,
           status: 'open',
           type: 'missing_clock_out',
+          exception_key: firstMissingClockOutKey,
+          intent: firstMissingClockOutKey ? 'correct' : undefined,
         }),
         cta: 'Review clock-outs',
         source: 'exceptions',
         evidence: {
           type: 'missing_clock_out',
           count: missingClockOuts,
+          firstExceptionKey: firstMissingClockOutKey,
           byType: shiftExceptions?.summary?.by_type || null,
         },
         freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),

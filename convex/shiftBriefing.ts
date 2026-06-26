@@ -75,6 +75,12 @@ function getCoverageActionStatus(row: any): WorkerCoverageStatus {
   return "clocked_out";
 }
 
+function getExceptionIntent(exception: any) {
+  if (!exception.worker_id) return undefined;
+  if (exception.type === "scan_sequence") return exception.attendance_id ? "correct" : undefined;
+  return exception.type === "missing_arrival" || exception.type === "missing_clock_out" ? "correct" : undefined;
+}
+
 function buildHref(path: string, params: Record<string, string | null | undefined>) {
   const query = Object.entries(params)
     .filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -252,6 +258,8 @@ export async function buildShiftBriefing(ctx: any, date: string) {
           department: exception.department,
           type: exception.type,
           severity: exception.severity,
+          exception_key: exception.key,
+          intent: getExceptionIntent(exception),
         }),
       })),
       ...kioskRows
