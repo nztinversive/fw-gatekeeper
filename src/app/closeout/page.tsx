@@ -122,13 +122,23 @@ function ShiftCloseoutPageContent() {
   const status = payload?.closeout?.status || 'open';
   const completed = status === 'completed';
   const blockerCount = payload?.blockers.length || 0;
-  const canComplete = Boolean(payload?.can_complete || (acknowledgedBlockers && notes.trim()));
+  const sourceBlockerCount = Number(payload?.summary.critical_exceptions || 0) +
+    Number(payload?.summary.missing_clock_outs || 0) +
+    Number(payload?.summary.recognition_reviews || 0) +
+    Number(payload?.summary.kiosk_warnings || 0);
+  const canComplete = Boolean(payload && (
+    sourceBlockerCount > 0
+      ? acknowledgedBlockers && notes.trim()
+      : payload.can_complete
+  ));
   const closeoutLabel = completed ? 'Shift closeout complete' : blockerCount ? 'Closeout needs acknowledgement' : 'Ready to close shift';
   const closeoutDescription = completed
     ? `Completed ${formatDateTime(payload?.closeout?.completed_at)}. Reopen if a supervisor needs to correct the record.`
     : blockerCount
       ? 'Review the blocked checklist items or add an acknowledgement note before completing the closeout.'
       : 'Checklist is clear. Add supervisor notes and complete the daily record.';
+  const suggestedNote = payload?.suggested_note || '';
+  const suggestedNoteApplied = Boolean(suggestedNote) && notes.trim() === suggestedNote.trim();
 
   const summaryRows = useMemo(() => {
     const summary = payload?.summary;
@@ -275,6 +285,29 @@ function ShiftCloseoutPageContent() {
               <span className="section-label block">Supervisor</span>
               <input value={supervisorName} onChange={(event) => setSupervisorName(event.target.value)} placeholder="Supervisor name" className="input-field" />
             </label>
+            {suggestedNote && !completed && !payload?.backend_unavailable && (
+              <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="section-label text-gold">Suggested note</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{suggestedNote}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary shrink-0 text-xs"
+                    onClick={() => setNotes(suggestedNote)}
+                    disabled={suggestedNoteApplied}
+                  >
+                    {suggestedNoteApplied ? 'Applied' : 'Use note'}
+                  </button>
+                </div>
+                {sourceBlockerCount > 0 && (
+                  <p className="mt-3 text-xs leading-5 text-amber-200/80">
+                    Applying this note does not complete closeout. The blocker acknowledgement remains explicit.
+                  </p>
+                )}
+              </div>
+            )}
             <label className="space-y-1.5 block">
               <span className="section-label block">Closeout notes</span>
               <textarea

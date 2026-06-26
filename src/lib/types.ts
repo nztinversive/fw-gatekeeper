@@ -310,6 +310,7 @@ export interface ShiftCloseoutResponse {
   checklist: ShiftCloseoutChecklistItem[];
   blockers: ShiftCloseoutChecklistItem[];
   can_complete: boolean;
+  suggested_note: string;
   action_links: Array<{ label: string; href: string }>;
   backend_unavailable?: boolean;
   warning?: string;

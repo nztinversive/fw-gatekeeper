@@ -44,6 +44,7 @@ function emptyResponse(date: string) {
     checklist: [],
     blockers: [],
     can_complete: false,
+    suggested_note: '',
     action_links: [],
     backend_unavailable: true,
     warning: 'Shift closeout is waiting for the Convex functions to deploy.',

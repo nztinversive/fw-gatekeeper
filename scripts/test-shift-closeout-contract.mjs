@@ -32,6 +32,18 @@ assert.match(closeouts, /missing_clock_outs/, 'Closeout payload must track missi
 assert.match(closeouts, /recognition_reviews/, 'Closeout payload must track recognition review blockers.');
 assert.match(closeouts, /kiosk_warnings/, 'Closeout payload must track kiosk warning blockers.');
 assert.match(closeouts, /Closeout has blockers\. Add an acknowledgement note before completing\./, 'Closeout mutation must enforce acknowledgement notes for blockers.');
+assert.match(closeouts, /function buildSuggestedNote/, 'Closeout payload should include a deterministic suggested supervisor note.');
+assert.match(closeouts, /suggested_note:\s*suggestedNote/, 'Closeout response must expose the suggested supervisor note.');
+assert.match(closeouts, /const sourceBlockers = buildChecklist/, 'Suggested closeout notes must be based on raw source blockers, not acknowledgement-cleared checklist rows.');
+assert.match(closeouts, /acknowledgedBlockers:\s*false/, 'Suggested closeout notes should continue naming unresolved source blockers after acknowledgement.');
+assert.match(closeouts, /const hasSourceBlockers = Boolean/, 'Closeout save/complete guards must check raw source blockers.');
+assert.match(closeouts, /acknowledgedBlockers && !nextNotes/, 'Closeout must not persist blocker acknowledgement without a note.');
+assert.match(closeouts, /Add an acknowledgement note before acknowledging blockers/, 'Closeout acknowledgement guard should explain note requirements.');
+assert.match(closeouts, /args\.action === "complete" && hasSourceBlockers/, 'Closeout completion must require notes when raw blockers remain.');
+assert.match(closeouts, /blockers remain/, 'Suggested notes should make unresolved closeout blockers explicit.');
+assert.match(closeouts, /missing clock-outs/, 'Suggested notes should include missing clock-out counts.');
+assert.match(closeouts, /recognition reviews/, 'Suggested notes should include recognition review counts.');
+assert.match(closeouts, /attendance corrections/, 'Suggested notes should include correction counts.');
 assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date:\s*input\.date,\s*status:\s*"open",\s*severity:\s*"critical"\s*\}\)/, 'Critical closeout blockers must deep-link to open critical exceptions for the date.');
 assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date:\s*input\.date,\s*status:\s*"open",\s*type:\s*"missing_clock_out"\s*\}\)/, 'Missing clock-out blockers must deep-link to matching open exceptions for the date.');
 assert.match(closeouts, /buildHref\("\/calibration\/recognition",\s*\{\s*date:\s*input\.date,\s*review_status:\s*"unreviewed"\s*\}\)/, 'Recognition blockers must deep-link to the dated unreviewed recognition queue.');
@@ -41,6 +53,7 @@ assert.match(closeouts, /buildHref\("\/calibration\/recognition",\s*\{\s*date,\s
 assert.match(apiRoute, /shiftCloseouts\.get/, 'GET /api/shift-closeout must call the Convex closeout query.');
 assert.match(apiRoute, /shiftCloseouts\.save/, 'PATCH /api/shift-closeout must call the Convex closeout mutation.');
 assert.match(apiRoute, /FunctionPathNotFound/, 'Closeout route should degrade gracefully while Convex functions deploy.');
+assert.match(apiRoute, /suggested_note:\s*''/, 'Closeout route fallback should not expose a copyable suggested note while storage is unavailable.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'GET route should allow portal viewers.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment'\]\)/, 'PATCH route should restrict closeout writes.');
 assert.match(apiRoute, /action must be save, complete, or reopen/, 'PATCH route must validate closeout actions.');
@@ -51,6 +64,12 @@ assert.match(page, /useSearchParams/, 'Closeout page must honor action-link quer
 assert.match(page, /searchParams\.get\('date'\)/, 'Closeout page should initialize the closeout date from query params.');
 assert.match(page, /Closeout checklist/, 'Closeout page must show the checklist.');
 assert.match(page, /Supervisor signoff/, 'Closeout page must include supervisor signoff.');
+assert.match(page, /Suggested note/, 'Closeout page must surface the generated suggested note.');
+assert.match(page, /setNotes\(suggestedNote\)/, 'Closeout page should let supervisors apply the suggested note without retyping.');
+assert.match(page, /sourceBlockerCount/, 'Closeout page should gate completion using raw blocker counts, not only acknowledgement-cleared checklist state.');
+assert.match(page, /sourceBlockerCount > 0[\s\S]*acknowledgedBlockers && notes\.trim\(\)/, 'Closeout page should require both acknowledgement and notes when source blockers exist.');
+assert.match(page, /!payload\?\.backend_unavailable/, 'Closeout page should hide suggested-note copy controls when storage is unavailable.');
+assert.match(page, /The blocker acknowledgement remains explicit/, 'Suggested notes must not silently acknowledge blockers.');
 assert.match(page, /acknowledgement note/, 'Closeout page must require acknowledgement notes for blockers.');
 assert.match(page, /Complete closeout/, 'Closeout page must support completion.');
 assert.match(page, /Reopen/, 'Closeout page must support reopening.');
@@ -66,6 +85,7 @@ assert.match(middleware, /pathname === '\/api\/shift-closeout' && method === 'GE
 assert.match(middleware, /pathname === '\/api\/shift-closeout' && method === 'PATCH'[\s\S]*\['admin', 'enrollment'\]/, 'Middleware should restrict closeout writes.');
 assert.match(types, /interface ShiftCloseoutResponse/, 'Shared types must define ShiftCloseoutResponse.');
 assert.match(types, /interface ShiftCloseoutChecklistItem/, 'Shared types must define ShiftCloseoutChecklistItem.');
+assert.match(types, /suggested_note:\s*string/, 'Shared closeout types must expose the suggested supervisor note.');
 assert.match(packageJson, /"test:shift-closeout":\s*"node scripts\/test-shift-closeout-contract\.mjs"/, 'package.json must expose test:shift-closeout.');
 
 const recognitionLab = read('src/components/RecognitionCalibrationLab.tsx');

@@ -76,6 +76,45 @@ function buildChecklist(input: {
   ];
 }
 
+function buildSuggestedNote(input: {
+  date: string;
+  summary: {
+    expected: number;
+    present: number;
+    late: number;
+    missing: number;
+    open_exceptions: number;
+    critical_exceptions: number;
+    missing_clock_outs: number;
+    recognition_reviews: number;
+    kiosk_warnings: number;
+    attendance_corrections: number;
+  };
+  blockers: Array<{ label: string; count: number }>;
+}) {
+  const summaryCounts = [
+    `${input.summary.expected} expected`,
+    `${input.summary.present} present`,
+    `${input.summary.late} late`,
+    `${input.summary.missing} missing`,
+    `${input.summary.open_exceptions} open exceptions`,
+    `${input.summary.critical_exceptions} critical exceptions`,
+    `${input.summary.missing_clock_outs} missing clock-outs`,
+    `${input.summary.recognition_reviews} recognition reviews`,
+    `${input.summary.kiosk_warnings} kiosk warnings`,
+    `${input.summary.attendance_corrections} attendance corrections`,
+  ].join(", ");
+
+  if (input.blockers.length) {
+    const blockerCounts = input.blockers
+      .map((blocker) => `${blocker.label}: ${blocker.count}`)
+      .join("; ");
+    return `${input.date} closeout: blockers remain (${blockerCounts}). Summary: ${summaryCounts}.`;
+  }
+
+  return `${input.date} closeout: checklist clear. Summary: ${summaryCounts}.`;
+}
+
 async function buildCloseoutPayload(ctx: any, date: string) {
   const [briefing, exceptions, closeout] = await Promise.all([
     buildShiftBriefing(ctx, date),
@@ -105,8 +144,34 @@ async function buildCloseoutPayload(ctx: any, date: string) {
     kioskWarnings,
     acknowledgedBlockers,
   });
+  const sourceBlockers = buildChecklist({
+    date,
+    openExceptions,
+    criticalExceptions,
+    missingClockOuts,
+    recognitionReviews,
+    kioskWarnings,
+    acknowledgedBlockers: false,
+  }).filter((item) => item.status === "blocked");
   const blockers = checklist.filter((item) => item.status === "blocked");
   const canComplete = blockers.length === 0;
+  const summary = {
+    expected: briefing.summary.expected,
+    present: briefing.summary.present,
+    late: briefing.summary.late,
+    missing: briefing.summary.missing,
+    open_exceptions: openExceptions.length,
+    critical_exceptions: criticalExceptions.length,
+    missing_clock_outs: missingClockOuts.length,
+    recognition_reviews: recognitionReviews.length,
+    kiosk_warnings: kioskWarnings,
+    attendance_corrections: attendanceCorrections.length,
+  };
+  const suggestedNote = buildSuggestedNote({
+    date,
+    summary,
+    blockers: sourceBlockers,
+  });
 
   return {
     date,
@@ -133,21 +198,11 @@ async function buildCloseoutPayload(ctx: any, date: string) {
           },
         }
       : null,
-    summary: {
-      expected: briefing.summary.expected,
-      present: briefing.summary.present,
-      late: briefing.summary.late,
-      missing: briefing.summary.missing,
-      open_exceptions: openExceptions.length,
-      critical_exceptions: criticalExceptions.length,
-      missing_clock_outs: missingClockOuts.length,
-      recognition_reviews: recognitionReviews.length,
-      kiosk_warnings: kioskWarnings,
-      attendance_corrections: attendanceCorrections.length,
-    },
+    summary,
     checklist,
     blockers,
     can_complete: canComplete,
+    suggested_note: suggestedNote,
     action_links: [
       { label: "Briefing", href: `/briefing?date=${date}` },
       { label: "Exceptions", href: buildHref("/exceptions", { date, status: "open" }) },
@@ -184,8 +239,19 @@ export const save = mutation({
     const supervisorName = normalizeText(args.supervisorName);
     const notes = normalizeText(args.notes);
     const acknowledgedBlockers = args.acknowledgedBlockers ?? existing?.acknowledgedBlockers ?? false;
+    const nextNotes = notes || normalizeText(existing?.notes);
+    const hasSourceBlockers = Boolean(
+      current.summary.critical_exceptions ||
+      current.summary.missing_clock_outs ||
+      current.summary.recognition_reviews ||
+      current.summary.kiosk_warnings
+    );
 
-    if (args.action === "complete" && !current.can_complete && (!acknowledgedBlockers || !notes)) {
+    if (hasSourceBlockers && acknowledgedBlockers && !nextNotes) {
+      throw new Error("Closeout has blockers. Add an acknowledgement note before acknowledging blockers.");
+    }
+
+    if (args.action === "complete" && hasSourceBlockers && (!acknowledgedBlockers || !nextNotes)) {
       throw new Error("Closeout has blockers. Add an acknowledgement note before completing.");
     }
 
