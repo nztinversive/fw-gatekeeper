@@ -4,11 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { unauthorizedApiResponse } from '@/lib/auth';
 import { hasValidPortalSession } from '@/lib/portal-auth';
+import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
 
 function getDate(req: NextRequest) {
-  const date = req.nextUrl.searchParams.get('date') || new Date().toISOString().slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  const date = resolveRequestDate(req.nextUrl.searchParams);
+  return isValidLocalDateString(date) ? date : null;
 }
 
 function isMissingConvexFunction(error: unknown) {

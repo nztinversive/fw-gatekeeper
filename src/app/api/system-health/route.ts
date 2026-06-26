@@ -5,6 +5,7 @@ import { api } from '../../../../convex/_generated/api';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
 import { isDemoWriteMode, listDemoKiosks } from '@/lib/demo-write-mode';
+import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 
 const FACE_SERVICE_FALLBACK = 'https://fw-face-service.onrender.com';
 const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
@@ -91,11 +92,11 @@ function normalizeIdentifier(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
-function getDate(req: NextRequest, now: string) {
+function getDate(req: NextRequest, now: Date) {
   const rawDate = req.nextUrl.searchParams.get('date');
-  if (!rawDate) return now.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return null;
-  return rawDate;
+  const date = resolveRequestDate(req.nextUrl.searchParams, { now });
+  if (rawDate && !isValidLocalDateString(rawDate)) return null;
+  return isValidLocalDateString(date) ? date : null;
 }
 
 export async function GET(req: NextRequest) {
@@ -103,8 +104,9 @@ export async function GET(req: NextRequest) {
     return unauthorizedApiResponse();
   }
 
-  const now = new Date().toISOString();
-  const date = getDate(req, now);
+  const checkedAt = new Date();
+  const now = checkedAt.toISOString();
+  const date = getDate(req, checkedAt);
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }

@@ -10,6 +10,7 @@ import {
   RecognitionAttemptSummary,
   RecognitionReviewStatus,
 } from '@/lib/types';
+import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
 
 const LOW_MARGIN_THRESHOLD = 0.08;
@@ -146,8 +147,12 @@ export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const reviewStatus = optionalString(searchParams.get('review_status'));
+    const date = resolveRequestDate(searchParams);
+    if (!isValidLocalDateString(date)) {
+      return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
+    }
     const result = await convex.query((api as any).recognitionAttempts.listByDate, {
-      date: optionalString(searchParams.get('date')),
+      date,
       kioskId: optionalString(searchParams.get('kiosk_id')),
       reviewed: reviewStatus === 'unreviewed' ? false : reviewStatus && reviewStatus !== 'all' ? true : undefined,
       limit: Number(searchParams.get('limit') || 100),

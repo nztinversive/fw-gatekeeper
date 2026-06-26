@@ -5,6 +5,7 @@ import convex from '@/lib/convex';
 import { unauthorizedApiResponse } from '@/lib/auth';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { api } from '../../../../convex/_generated/api';
+import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import {
   createDemoAttendanceCorrection,
   demoWriteMetadata,
@@ -19,8 +20,8 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function getDate(req: NextRequest) {
-  const date = req.nextUrl.searchParams.get('date') || new Date().toISOString().slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  const date = resolveRequestDate(req.nextUrl.searchParams);
+  return isValidLocalDateString(date) ? date : null;
 }
 
 function isMissingConvexFunction(error: unknown) {
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     const reason = optionalString(body.reason);
     const supervisorName = optionalString(body.supervisor_name) || optionalString(body.supervisorName);
 
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!date || !isValidLocalDateString(date)) {
       return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
     }
     if (!workerId || !action || !reason) {

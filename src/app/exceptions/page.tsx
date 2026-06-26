@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link';
 import { useToast } from '@/components/Toast';
 import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
-import { getLocalDateString } from '@/lib/date';
+import { createLocalIsoTimestamp, getLocalDateString } from '@/lib/date';
 import {
   AttendanceCorrectionAction,
   ShiftException,
@@ -87,7 +87,7 @@ function suggestedCorrection(exception: ShiftException): Pick<CorrectionDraft, '
 }
 
 function timestampFor(date: string, time: string) {
-  return `${date}T${time.length === 5 ? `${time}:00` : time}.000Z`;
+  return createLocalIsoTimestamp(date, time);
 }
 
 function csvFor(exceptions: ShiftException[]) {
