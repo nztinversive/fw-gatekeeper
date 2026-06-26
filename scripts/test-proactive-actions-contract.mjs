@@ -29,6 +29,24 @@ const { buildProactiveActions, PROACTIVE_ACTION_PRIORITY_RANK } = module.exports
 
 const actionKeys = (actions) => JSON.parse(JSON.stringify(actions.map((action) => action.key)));
 const plain = (value) => JSON.parse(JSON.stringify(value));
+const findAction = (actions, key) => actions.find((action) => action.key === key);
+
+function assertCurrentSignalFailure(action, sourceKeys, message) {
+  assert.deepEqual(
+    plain(action.freshness),
+    {
+      lastSuccessAt: '2026-06-26T13:50:00.000Z',
+      failed: true,
+      current: true,
+      message,
+      status: 'stale',
+      reason: 'current-signal-failure',
+      unavailable: true,
+      sourceKeys,
+    },
+    `${action.key} should expose stale freshness for the failed current signal.`,
+  );
+}
 
 assert.deepEqual(JSON.parse(JSON.stringify(PROACTIVE_ACTION_PRIORITY_RANK)), {
   critical: 0,
@@ -98,74 +116,142 @@ assert.equal(offlineKiosk.blocksReadiness, true, 'Offline kiosks block readiness
 assert.equal(offlineKiosk.blocksCloseout, true, 'Kiosk warnings should block closeout until acknowledged.');
 assert.deepEqual(plain(offlineKiosk.actionability), { access: 'operate', canOperate: true, role: null }, 'Missing currentRole should preserve the legacy operate contract.');
 assert.deepEqual(offlineKiosk.evidence.kioskCounts, { online: 1, stale: 0, offline: 1, never_synced: 0 }, 'Kiosk evidence must include fleet counts.');
+assert.deepEqual(plain(offlineKiosk.freshness), {
+  status: 'unknown',
+  reason: 'not-provided',
+  sourceKeys: ['system-health', 'kiosk'],
+}, 'Missing signal freshness should preserve existing behavior while marking evidence freshness unknown.');
 
-const invalidEnrollment = rankedActions.find((action) => action.key === 'invalid-face');
+const statsSignalFailure = findAction(rankedActions, 'signal-failure-stats');
+assert.deepEqual(plain(statsSignalFailure.freshness), {
+  status: 'stale',
+  reason: 'current-signal-failure',
+  sourceKeys: ['stats', 'signal'],
+  failed: true,
+  current: true,
+  unavailable: true,
+  message: 'Dashboard stats could not refresh: upstream timeout',
+}, 'Signal failure actions must be stale and unavailable even when freshness metadata is absent.');
+
+const invalidEnrollment = findAction(rankedActions, 'invalid-face');
 assert.equal(invalidEnrollment.description, '1 worker needs re-enrollment because their face data is not kiosk-valid.');
 assert.equal(invalidEnrollment.blocksReadiness, true, 'Invalid enrollment blocks readiness.');
 assert.deepEqual(invalidEnrollment.evidence.workerIds, ['w2'], 'Invalid enrollment evidence should name affected workers.');
 
-const missingEnrollment = rankedActions.find((action) => action.key === 'missing-face');
+const missingEnrollment = findAction(rankedActions, 'missing-face');
 assert.equal(missingEnrollment.description, '1 worker is missing face data for kiosk recognition.');
 assert.equal(missingEnrollment.priority, 'warning', 'Missing enrollment remains a warning action.');
 
-const exceptions = rankedActions.find((action) => action.key === 'shift-exceptions');
+const exceptions = findAction(rankedActions, 'shift-exceptions');
 assert.equal(exceptions.description, '3 exceptions need supervisor review, including 1 critical.');
 assert.equal(exceptions.blocksCloseout, true, 'Open exceptions block closeout.');
 assert.equal(exceptions.blocksReadiness, true, 'Critical exceptions block readiness.');
 
-const closeout = rankedActions.find((action) => action.key === 'shift-closeout-pending');
+const closeout = findAction(rankedActions, 'shift-closeout-pending');
 assert.equal(closeout.priority, 'closeout', 'Closeout should rank after warning actions.');
 assert.equal(closeout.severity, 'warning', 'Closeout with blockers should still show warning severity.');
 assert.equal(closeout.description, '1 closeout checklist item needs acknowledgement.');
 assert.equal(closeout.cta, 'Close shift', 'Legacy closeout CTA should remain operational when no role is supplied.');
 
-const notArrived = rankedActions.find((action) => action.key === 'not-arrived');
+const notArrived = findAction(rankedActions, 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
 assert.equal(notArrived.description, '2 active workers have no clock-in scans today.');
 
+const staleFreshnessPayload = {
+  stats: {
+    lastSuccessAt: '2026-06-26T13:50:00.000Z',
+    failed: true,
+    current: true,
+    message: 'Stats signal failed now',
+  },
+  workers: {
+    lastSuccessAt: '2026-06-26T13:50:00.000Z',
+    failed: true,
+    current: true,
+    message: 'Worker roster signal failed now',
+  },
+  attendance: {
+    lastSuccessAt: '2026-06-26T13:50:00.000Z',
+    failed: true,
+    current: true,
+    message: 'Attendance signal failed now',
+  },
+  'system-health': {
+    lastSuccessAt: '2026-06-26T13:50:00.000Z',
+    failed: true,
+    current: true,
+    message: 'System health signal failed now',
+  },
+  'shift-exceptions': {
+    lastSuccessAt: '2026-06-26T13:50:00.000Z',
+    failed: true,
+    current: true,
+    message: 'Shift exceptions signal failed now',
+  },
+  'shift-closeout': {
+    lastSuccessAt: '2026-06-26T13:50:00.000Z',
+    failed: true,
+    current: true,
+    message: 'Shift closeout signal failed now',
+  },
+};
+
+const staleFreshnessActions = buildProactiveActions({
+  ...mixedRiskPayload,
+  signalFreshness: staleFreshnessPayload,
+});
+
+assert.deepEqual(actionKeys(staleFreshnessActions), actionKeys(rankedActions), 'Freshness metadata must not change proactive action ranking.');
+assertCurrentSignalFailure(findAction(staleFreshnessActions, 'system-health-0'), ['system-health', 'kiosk'], 'System health signal failed now');
+assertCurrentSignalFailure(findAction(staleFreshnessActions, 'shift-exceptions'), ['shift-exceptions', 'exceptions'], 'Shift exceptions signal failed now');
+assertCurrentSignalFailure(findAction(staleFreshnessActions, 'shift-closeout-pending'), ['shift-closeout', 'closeout'], 'Shift closeout signal failed now');
+assertCurrentSignalFailure(findAction(staleFreshnessActions, 'invalid-face'), ['workers', 'enrollment'], 'Worker roster signal failed now');
+assertCurrentSignalFailure(findAction(staleFreshnessActions, 'not-arrived'), ['attendance'], 'Attendance signal failed now');
+assertCurrentSignalFailure(findAction(staleFreshnessActions, 'schedule-warning'), ['stats', 'schedule'], 'Stats signal failed now');
+
 const adminActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'admin' });
 assert.deepEqual(actionKeys(adminActions), actionKeys(rankedActions), 'Admin role must not change proactive action ranking.');
-assert.equal(adminActions.find((action) => action.key === 'shift-closeout-pending').cta, 'Review closeout', 'Admins should review closeout until the shift can complete.');
+assert.equal(findAction(adminActions, 'shift-closeout-pending').cta, 'Review closeout', 'Admins should review closeout until the shift can complete.');
 assert.deepEqual(
-  plain(adminActions.find((action) => action.key === 'system-health-0').actionability),
+  plain(findAction(adminActions, 'system-health-0').actionability),
   { access: 'operate', canOperate: true, role: 'admin' },
   'Admin actionability should allow operations across proactive sources.',
 );
 
 const enrollmentActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'enrollment' });
 assert.deepEqual(actionKeys(enrollmentActions), actionKeys(rankedActions), 'Enrollment role must not change proactive action ranking.');
-assert.equal(enrollmentActions.find((action) => action.key === 'shift-closeout-pending').cta, 'Review closeout', 'Enrollment users should review closeout until the shift can complete.');
+assert.equal(findAction(enrollmentActions, 'shift-closeout-pending').cta, 'Review closeout', 'Enrollment users should review closeout until the shift can complete.');
 assert.deepEqual(
-  plain(enrollmentActions.find((action) => action.key === 'shift-exceptions').actionability),
+  plain(findAction(enrollmentActions, 'shift-exceptions').actionability),
   { access: 'operate', canOperate: true, role: 'enrollment' },
   'Enrollment users should retain exception-review actionability.',
 );
 assert.deepEqual(
-  plain(enrollmentActions.find((action) => action.key === 'invalid-face').actionability),
+  plain(findAction(enrollmentActions, 'invalid-face').actionability),
   { access: 'operate', canOperate: true, role: 'enrollment' },
   'Enrollment users should retain face-enrollment actionability.',
 );
-assert.equal(enrollmentActions.find((action) => action.key === 'invalid-face').cta, 'Enroll face', 'Enrollment users should be sent to the enrollment workflow.');
-assert.equal(enrollmentActions.find((action) => action.key === 'invalid-face').href, '/enroll', 'Enrollment users should not be sent to the admin-heavy workers page.');
-assert.equal(enrollmentActions.find((action) => action.key === 'system-health-0').cta, 'Inspect readiness', 'Enrollment users should inspect admin-only kiosk readiness instead of being sent to operate it.');
-assert.equal(enrollmentActions.find((action) => action.key === 'system-health-0').href, '/', 'Enrollment users should not be sent to the admin-only kiosk page.');
+assert.equal(findAction(enrollmentActions, 'invalid-face').cta, 'Enroll face', 'Enrollment users should be sent to the enrollment workflow.');
+assert.equal(findAction(enrollmentActions, 'invalid-face').href, '/enroll', 'Enrollment users should not be sent to the admin-heavy workers page.');
+assert.equal(findAction(enrollmentActions, 'system-health-0').cta, 'Inspect readiness', 'Enrollment users should inspect admin-only kiosk readiness instead of being sent to operate it.');
+assert.equal(findAction(enrollmentActions, 'system-health-0').href, '/', 'Enrollment users should not be sent to the admin-only kiosk page.');
 assert.deepEqual(
-  plain(enrollmentActions.find((action) => action.key === 'system-health-0').actionability),
+  plain(findAction(enrollmentActions, 'system-health-0').actionability),
   { access: 'review', canOperate: false, role: 'enrollment' },
   'Enrollment actionability should mark kiosk actions as review-only.',
 );
 
 const viewerActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'viewer' });
 assert.deepEqual(actionKeys(viewerActions), actionKeys(rankedActions), 'Viewer role must not change proactive action ranking.');
-assert.equal(viewerActions.find((action) => action.key === 'shift-closeout-pending').cta, 'Review closeout', 'Viewers should review closeout state instead of being told to close the shift.');
-assert.equal(viewerActions.find((action) => action.key === 'shift-closeout-pending').href, '/closeout', 'Viewers can inspect closeout state on the read route.');
-assert.equal(viewerActions.find((action) => action.key === 'shift-exceptions').cta, 'Review exceptions', 'Viewers should review exceptions instead of operating them.');
-assert.equal(viewerActions.find((action) => action.key === 'invalid-face').cta, 'Inspect briefing', 'Viewers should inspect enrollment issues from a read-oriented surface.');
-assert.equal(viewerActions.find((action) => action.key === 'invalid-face').href, '/briefing', 'Viewers should not be sent to worker operations for enrollment issues.');
-assert.equal(viewerActions.find((action) => action.key === 'system-health-0').cta, 'Inspect readiness', 'Viewers should inspect kiosk readiness instead of operating it.');
-assert.equal(viewerActions.find((action) => action.key === 'system-health-0').href, '/', 'Viewers should not be sent to the admin-only kiosk page.');
+assert.equal(findAction(viewerActions, 'shift-closeout-pending').cta, 'Review closeout', 'Viewers should review closeout state instead of being told to close the shift.');
+assert.equal(findAction(viewerActions, 'shift-closeout-pending').href, '/closeout', 'Viewers can inspect closeout state on the read route.');
+assert.equal(findAction(viewerActions, 'shift-exceptions').cta, 'Review exceptions', 'Viewers should review exceptions instead of operating them.');
+assert.equal(findAction(viewerActions, 'invalid-face').cta, 'Inspect briefing', 'Viewers should inspect enrollment issues from a read-oriented surface.');
+assert.equal(findAction(viewerActions, 'invalid-face').href, '/briefing', 'Viewers should not be sent to worker operations for enrollment issues.');
+assert.equal(findAction(viewerActions, 'system-health-0').cta, 'Inspect readiness', 'Viewers should inspect kiosk readiness instead of operating it.');
+assert.equal(findAction(viewerActions, 'system-health-0').href, '/', 'Viewers should not be sent to the admin-only kiosk page.');
 assert.deepEqual(
-  plain(viewerActions.find((action) => action.key === 'shift-closeout-pending').actionability),
+  plain(findAction(viewerActions, 'shift-closeout-pending').actionability),
   { access: 'review', canOperate: false, role: 'viewer' },
   'Viewer actionability should mark write workflows as review-only.',
 );

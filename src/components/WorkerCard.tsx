@@ -5,9 +5,11 @@ interface WorkerCardProps {
   department: string;
   status: 'in' | 'out' | 'absent';
   clockInTime?: string;
+  freshnessLabel?: string | null;
+  isStale?: boolean;
 }
 
-export default function WorkerCard({ name, department, status, clockInTime }: WorkerCardProps) {
+export default function WorkerCard({ name, department, status, clockInTime, freshnessLabel, isStale = false }: WorkerCardProps) {
   const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2);
 
   const statusConfig = {
@@ -56,8 +58,14 @@ export default function WorkerCard({ name, department, status, clockInTime }: Wo
           <span className={`status-dot ${cfg.dot} ${cfg.pulse ? 'animate-pulse-slow' : ''}`} />
           {cfg.text}
         </span>
+        {isStale && (
+          <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">Cached</span>
+        )}
         {clockInTime && (
           <span className="text-[10px] font-mono text-slate-500 tabular-nums">{clockInTime}</span>
+        )}
+        {freshnessLabel && (
+          <span className="max-w-32 truncate text-[10px] font-mono text-amber-300/80">{freshnessLabel}</span>
         )}
       </div>
     </div>

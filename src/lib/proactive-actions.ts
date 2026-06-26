@@ -3,8 +3,24 @@ export type ProactiveActionSeverity = 'critical' | 'warning' | 'info';
 export type ProactiveActionTone = 'red' | 'amber' | 'slate';
 export type ProactiveActionSource = 'service' | 'kiosk' | 'enrollment' | 'exceptions' | 'schedule' | 'signal' | 'closeout' | 'attendance';
 export type ProactiveActionAccess = 'operate' | 'review';
+export type ProactiveActionFreshnessStatus = 'fresh' | 'stale' | 'unknown';
+export type ProactiveActionFreshnessReason = 'current-signal-failure' | 'signal-unavailable' | 'signal-stale' | 'signal-current' | 'not-provided';
 
 export type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-exceptions' | 'shift-closeout' | string;
+
+export interface ProactiveSignalFreshness {
+  lastSuccessAt?: string | null;
+  failed?: boolean;
+  current?: boolean;
+  unavailable?: boolean;
+  message?: string | null;
+}
+
+export interface ProactiveActionFreshness extends ProactiveSignalFreshness {
+  status: ProactiveActionFreshnessStatus;
+  reason: ProactiveActionFreshnessReason;
+  sourceKeys: string[];
+}
 
 export interface ProactiveSignalFailure {
   key: SignalFailureKey;
@@ -71,6 +87,7 @@ export interface ProactiveShiftCloseout {
 
 export interface BuildProactiveActionsInput {
   signalFailures?: ProactiveSignalFailure[];
+  signalFreshness?: Record<string, ProactiveSignalFreshness | null | undefined>;
   workers?: ProactiveWorker[];
   systemHealth?: ProactiveSystemHealth | null;
   stats?: ProactiveStats;
@@ -97,16 +114,18 @@ export interface ProactiveAction {
   cta: string;
   source: ProactiveActionSource;
   evidence: Record<string, unknown>;
+  freshness: ProactiveActionFreshness;
   blocksReadiness: boolean;
   blocksCloseout: boolean;
   actionability: ProactiveActionActionability;
 }
 
-type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
+type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'freshness' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
   priority?: ProactiveActionPriority;
   severity?: ProactiveActionSeverity;
   tone?: ProactiveActionTone;
   source?: ProactiveActionSource;
+  freshness?: ProactiveActionFreshness;
   blocksReadiness?: boolean;
   blocksCloseout?: boolean;
   actionability?: ProactiveActionActionability;
@@ -154,7 +173,7 @@ function verb(count: number, singular: string, pluralValue: string) {
   return count === 1 ? singular : pluralValue;
 }
 
-function hasOwn(input: BuildProactiveActionsInput, key: keyof BuildProactiveActionsInput) {
+function hasOwn(input: object | null | undefined, key: PropertyKey) {
   return Object.prototype.hasOwnProperty.call(input, key);
 }
 
@@ -187,6 +206,63 @@ function getSignalSource(failure: ProactiveSignalFailure): ProactiveActionSource
   if (failure?.key === 'shift-closeout') return 'closeout';
   if (failure?.key === 'attendance') return 'attendance';
   return 'signal';
+}
+
+function uniqueKeys(keys: Array<string | null | undefined>) {
+  return [...new Set(keys.filter((key): key is string => Boolean(key)))];
+}
+
+function getUnknownFreshness(sourceKeys: string[]): ProactiveActionFreshness {
+  return {
+    status: 'unknown',
+    reason: 'not-provided',
+    sourceKeys,
+  };
+}
+
+function normalizeFreshness(
+  sourceKeys: string[],
+  freshness?: ProactiveSignalFreshness | null,
+  fallback?: Partial<ProactiveActionFreshness>,
+): ProactiveActionFreshness {
+  if (!freshness) {
+    return fallback
+      ? { ...getUnknownFreshness(sourceKeys), ...fallback, sourceKeys }
+      : getUnknownFreshness(sourceKeys);
+  }
+
+  const staleBecauseCurrentFailure = freshness.failed === true && freshness.current === true;
+  const unavailable = freshness.unavailable === true || staleBecauseCurrentFailure || freshness.failed === true;
+  const status: ProactiveActionFreshnessStatus = unavailable
+    ? 'stale'
+    : freshness.current === true || Boolean(freshness.lastSuccessAt)
+      ? 'fresh'
+      : 'unknown';
+  const reason: ProactiveActionFreshnessReason = staleBecauseCurrentFailure
+    ? 'current-signal-failure'
+    : unavailable
+      ? 'signal-unavailable'
+      : status === 'fresh'
+        ? 'signal-current'
+        : 'signal-stale';
+
+  return {
+    ...freshness,
+    status,
+    reason,
+    unavailable,
+    sourceKeys,
+  };
+}
+
+function getFreshness(
+  signalFreshness: BuildProactiveActionsInput['signalFreshness'],
+  sourceKeys: Array<string | null | undefined>,
+  fallback?: Partial<ProactiveActionFreshness>,
+) {
+  const keys = uniqueKeys(sourceKeys);
+  const matchedKey = keys.find((key) => signalFreshness && hasOwn(signalFreshness, key));
+  return normalizeFreshness(keys, matchedKey ? signalFreshness?.[matchedKey] : null, fallback);
 }
 
 function getSeverityForPriority(priority: ProactiveActionPriority): ProactiveActionSeverity {
@@ -286,6 +362,7 @@ function normalizeAction(action: DraftProactiveAction, index: number): RankedPro
     severity,
     tone,
     source,
+    freshness: action.freshness || getUnknownFreshness([source]),
     blocksReadiness: Boolean(action.blocksReadiness),
     blocksCloseout: Boolean(action.blocksCloseout),
     actionability: action.actionability || {
@@ -322,10 +399,12 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
   const stats = input.stats || {};
   const shiftExceptions = input.shiftExceptions || null;
   const shiftCloseout = input.shiftCloseout || null;
+  const signalFreshness = input.signalFreshness || {};
 
   for (const failure of signalFailures) {
     const priority = getSignalPriority(failure);
     const source = getSignalSource(failure);
+    const fallbackMessage = failure.message || null;
     actions.push({
       key: `signal-failure-${failure.key}`,
       priority,
@@ -340,6 +419,14 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         signal: failure.key,
         message: failure.message,
       },
+      freshness: getFreshness(signalFreshness, [failure.key, source], {
+        status: 'stale',
+        reason: 'current-signal-failure',
+        failed: true,
+        current: true,
+        unavailable: true,
+        message: fallbackMessage,
+      }),
       blocksReadiness: priority === CRITICAL_PRIORITY,
       blocksCloseout: failure.key === 'shift-exceptions' || failure.key === 'shift-closeout',
     });
@@ -363,6 +450,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         count: invalidFaceWorkers.length,
         workerIds: invalidFaceWorkers.map((worker) => worker.id),
       },
+      freshness: getFreshness(signalFreshness, ['workers', 'enrollment']),
       blocksReadiness: true,
       blocksCloseout: false,
     });
@@ -383,6 +471,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         count: missingFaceWorkers.length,
         workerIds: missingFaceWorkers.map((worker) => worker.id),
       },
+      freshness: getFreshness(signalFreshness, ['workers', 'enrollment']),
       blocksReadiness: true,
       blocksCloseout: false,
     });
@@ -406,6 +495,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         kioskCounts: systemHealth?.kiosks?.counts || null,
         checkedAt: systemHealth?.checked_at || null,
       },
+      freshness: getFreshness(signalFreshness, ['system-health', source]),
       blocksReadiness: true,
       blocksCloseout: source === 'kiosk',
     });
@@ -425,6 +515,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       evidence: {
         scheduleWarning: stats.scheduleWarning,
       },
+      freshness: getFreshness(signalFreshness, ['stats', 'schedule']),
       blocksReadiness: true,
       blocksCloseout: false,
     });
@@ -446,6 +537,14 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         warning: shiftExceptions.warning || null,
         date: shiftExceptions.date || null,
       },
+      freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions'], {
+        status: 'stale',
+        reason: 'signal-unavailable',
+        failed: true,
+        current: true,
+        unavailable: true,
+        message: shiftExceptions.warning || null,
+      }),
       blocksReadiness: false,
       blocksCloseout: true,
     });
@@ -471,6 +570,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         warning: Number(shiftExceptions?.summary?.warning || 0),
         info: Number(shiftExceptions?.summary?.info || 0),
       },
+      freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
       blocksReadiness: criticalExceptions > 0,
       blocksCloseout: true,
     });
@@ -493,6 +593,14 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           warning: shiftCloseout.warning || null,
           date: shiftCloseout.date || null,
         },
+        freshness: getFreshness(signalFreshness, ['shift-closeout', 'closeout'], {
+          status: 'stale',
+          reason: 'signal-unavailable',
+          failed: true,
+          current: true,
+          unavailable: true,
+          message: shiftCloseout.warning || null,
+        }),
         blocksReadiness: false,
         blocksCloseout: true,
       });
@@ -513,6 +621,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           status: shiftCloseout.closeout.status,
           completedAt: shiftCloseout.closeout.completed_at || null,
         },
+        freshness: getFreshness(signalFreshness, ['shift-closeout', 'closeout']),
         blocksReadiness: false,
         blocksCloseout: false,
       });
@@ -535,6 +644,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           canComplete: Boolean(shiftCloseout?.can_complete),
           summary: shiftCloseout?.summary || null,
         },
+        freshness: getFreshness(signalFreshness, ['shift-closeout', 'closeout']),
         blocksReadiness: false,
         blocksCloseout: blockerCount > 0,
       });
@@ -558,6 +668,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         count: notArrived,
         workerIds: absentWorkers.map((worker) => worker.id),
       },
+      freshness: getFreshness(signalFreshness, ['attendance']),
       blocksReadiness: false,
       blocksCloseout: false,
     });

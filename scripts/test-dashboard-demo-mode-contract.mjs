@@ -14,8 +14,14 @@ assert.match(dashboard, /Promise\.allSettled/, 'Dashboard should fetch live sign
 assert.match(dashboard, /SignalFailure/, 'Dashboard should model individual signal failures');
 assert.match(dashboard, /Live data gaps/, 'Dashboard should show a visible partial-data warning');
 assert.match(dashboard, /Partial live data/, 'Dashboard live indicator should call out partial data');
+assert.match(dashboard, /signalFreshness/, 'Dashboard should track freshness for each live signal');
+assert.match(dashboard, /Refresh attempted/, 'Dashboard should not imply a partial refresh made every slice fresh');
+assert.match(dashboard, /Stale data/, 'Dashboard action cards should visibly flag stale source data');
+assert.match(dashboard, /System health cached/, 'Dashboard readiness should visibly flag cached system health');
+assert.match(dashboard, /Attendance status cached/, 'Dashboard worker statuses should visibly flag cached attendance');
 assert.match(dashboard, /Worker roster unavailable/, 'Dashboard should not label a failed roster fetch as an empty worker list');
 assert.match(dashboard, /signalFailures\.map/, 'Dashboard failures should become operator-visible action items or links');
+assert.match(read('src/components/WorkerCard.tsx'), /Cached/, 'Worker cards should have a compact stale-data marker');
 
 const demoMode = read('src/lib/demo-write-mode.ts');
 assert.match(demoMode, /FW_DEMO_WRITE_MODE/, 'Demo write mode should require an explicit server env flag');

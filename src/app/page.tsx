@@ -7,6 +7,7 @@ import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
 import { buildProactiveActions } from '@/lib/proactive-actions';
+import type { ProactiveSignalFreshness } from '@/lib/proactive-actions';
 
 interface WorkerWithStatus {
   id: string;
@@ -114,6 +115,7 @@ interface ShiftCloseoutSummary {
 
 type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-exceptions' | 'shift-closeout';
 type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+type SignalFreshnessMap = Partial<Record<SignalFailureKey, ProactiveSignalFreshness>>;
 
 interface SignalFailure {
   key: SignalFailureKey;
@@ -155,6 +157,31 @@ function signalErrorMessage(label: string, error: unknown) {
   return `${label} could not refresh: ${detail}`;
 }
 
+function formatFreshnessTime(value: string | null | undefined) {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function isSignalStale(freshness: SignalFreshnessMap, key: SignalFailureKey) {
+  const signal = freshness[key];
+  return Boolean(signal?.failed || signal?.unavailable);
+}
+
+function getSignalFreshnessCopy(freshness: SignalFreshnessMap, key: SignalFailureKey, fallback: string) {
+  const signal = freshness[key];
+  if (!signal?.failed && !signal?.unavailable) return null;
+  const lastSuccess = formatFreshnessTime(signal.lastSuccessAt);
+  return lastSuccess ? `${fallback} from ${lastSuccess}` : `${fallback}; no confirmed refresh`;
+}
+
+function getActionFreshnessCopy(freshness: { status: string; lastSuccessAt?: string | null; failed?: boolean; unavailable?: boolean }) {
+  if (freshness.status !== 'stale' && !freshness.failed && !freshness.unavailable) return null;
+  const lastSuccess = formatFreshnessTime(freshness.lastSuccessAt);
+  return lastSuccess ? `Using cached data from ${lastSuccess}` : 'Source unavailable';
+}
+
 export default function Dashboard() {
   const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null, scheduleWarning: undefined as string | undefined });
@@ -166,12 +193,15 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [signalFailures, setSignalFailures] = useState<SignalFailure[]>([]);
+  const [signalFreshness, setSignalFreshness] = useState<SignalFreshnessMap>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
+      const attemptedAt = new Date();
+      const attemptedAtIso = attemptedAt.toISOString();
       const today = getLocalDateString();
       const signals: Array<{ key: SignalFailureKey; label: string; href: string; request: () => Promise<Response> }> = [
         { key: 'stats', label: 'Dashboard stats', href: '/reports', request: () => fetch(`/api/stats?date=${today}`) },
@@ -192,6 +222,7 @@ export default function Dashboard() {
       }));
 
       const failures: SignalFailure[] = [];
+      const successfulKeys = new Set<SignalFailureKey>();
       let nextWorkers: DashboardWorkerPayload[] | null = null;
       let nextAttendance: AttendanceEvent[] | null = null;
 
@@ -209,17 +240,23 @@ export default function Dashboard() {
 
         const { json } = result.value;
         if (signal.key === 'stats') {
+          successfulKeys.add(signal.key);
           setStats(json);
         } else if (signal.key === 'workers') {
+          successfulKeys.add(signal.key);
           nextWorkers = Array.isArray(json) ? json : [];
         } else if (signal.key === 'attendance') {
+          successfulKeys.add(signal.key);
           nextAttendance = Array.isArray(json) ? json : [];
           setAttendanceEvents(nextAttendance);
         } else if (signal.key === 'system-health') {
+          successfulKeys.add(signal.key);
           setSystemHealth(json);
         } else if (signal.key === 'shift-exceptions') {
+          successfulKeys.add(signal.key);
           setShiftExceptions(json);
         } else if (signal.key === 'shift-closeout') {
+          successfulKeys.add(signal.key);
           setShiftCloseout(json);
         }
       });
@@ -256,15 +293,51 @@ export default function Dashboard() {
         setWorkers(enriched);
       }
       setSignalFailures(failures);
-      setLastUpdated(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setSignalFreshness((previous) => {
+        const next: SignalFreshnessMap = { ...previous };
+        for (const signal of signals) {
+          const failure = failures.find((item) => item.key === signal.key);
+          if (failure) {
+            next[signal.key] = {
+              ...next[signal.key],
+              failed: true,
+              current: true,
+              unavailable: true,
+              message: failure.message,
+            };
+          } else if (successfulKeys.has(signal.key)) {
+            next[signal.key] = {
+              lastSuccessAt: attemptedAtIso,
+              failed: false,
+              current: true,
+              unavailable: false,
+              message: null,
+            };
+          }
+        }
+        return next;
+      });
+      setLastUpdated(attemptedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } catch (err) {
       console.error('Failed to fetch dashboard data', err);
+      const failedAt = new Date().toISOString();
       setSignalFailures([{
         key: 'stats',
         label: 'Dashboard refresh',
         href: '/',
         message: signalErrorMessage('Dashboard refresh', err),
       }]);
+      setSignalFreshness((previous) => ({
+        ...previous,
+        stats: {
+          ...previous.stats,
+          failed: true,
+          current: true,
+          unavailable: true,
+          message: signalErrorMessage('Dashboard refresh', err),
+        },
+      }));
+      setLastUpdated(new Date(failedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -307,8 +380,22 @@ export default function Dashboard() {
   const invalidFaceWorkers = workers.filter((w) => w.encoding_status === 'invalid');
   const absentWorkers = workers.filter((w) => w.status === 'absent');
   const failedSignalKeys = new Set(signalFailures.map((failure) => failure.key));
+  const staleSignalSummaries = [
+    getSignalFreshnessCopy(signalFreshness, 'stats', 'Stats cached'),
+    getSignalFreshnessCopy(signalFreshness, 'workers', 'Roster cached'),
+    getSignalFreshnessCopy(signalFreshness, 'attendance', 'Attendance cached'),
+    getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached'),
+    getSignalFreshnessCopy(signalFreshness, 'shift-exceptions', 'Exceptions cached'),
+    getSignalFreshnessCopy(signalFreshness, 'shift-closeout', 'Closeout cached'),
+  ].filter((item): item is string => Boolean(item));
+  const rosterStaleCopy = getSignalFreshnessCopy(signalFreshness, 'workers', 'Roster cached');
+  const attendanceStaleCopy = getSignalFreshnessCopy(signalFreshness, 'attendance', 'Attendance status cached');
+  const workerCardFreshnessCopy = attendanceStaleCopy || rosterStaleCopy;
+  const workerCardsAreStale = isSignalStale(signalFreshness, 'workers') || isSignalStale(signalFreshness, 'attendance');
+  const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
   const actionItems = buildProactiveActions({
     signalFailures,
+    signalFreshness,
     workers,
     systemHealth,
     stats,
@@ -418,7 +505,7 @@ export default function Dashboard() {
               </span>
             </span>
             {lastUpdated && (
-              <span className="text-xs font-mono text-slate-600">Updated {lastUpdated}</span>
+              <span className="text-xs font-mono text-slate-600">Refresh attempted {lastUpdated}</span>
             )}
             {stats.avgArrival && (
               <span className="text-xs font-mono text-slate-600">Avg arrival {stats.avgArrival}</span>
@@ -436,6 +523,13 @@ export default function Dashboard() {
               <p className="mt-1 text-sm text-amber-100/75 leading-6">
                 The rest of the dashboard is using the latest successful data. Review the affected source before treating this as all clear.
               </p>
+              {staleSignalSummaries.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {staleSignalSummaries.map((summary) => (
+                    <span key={summary} className="badge border border-amber-400/20 bg-amber-400/10 text-[10px] text-amber-200">{summary}</span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
               {signalFailures.map((failure) => (
@@ -457,6 +551,9 @@ export default function Dashboard() {
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <h2 className="font-display text-2xl font-semibold text-slate-100">{readinessCopy.title}</h2>
               <span className="badge border border-current/20 bg-black/10 text-current">{readinessCopy.label}</span>
+              {systemHealthStaleCopy && (
+                <span className="badge border border-amber-400/20 bg-amber-400/10 text-amber-200">{systemHealthStaleCopy}</span>
+              )}
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-300">{readinessCopy.description}</p>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -515,6 +612,9 @@ export default function Dashboard() {
             <p className="mt-1 text-xs text-slate-500 font-mono">
               {systemHealth ? `Checked ${formatRelativeTime(systemHealth.checked_at)}` : 'Health check unavailable'}
             </p>
+            {systemHealthStaleCopy && (
+              <p className="mt-1 text-xs text-amber-300 font-mono">{systemHealthStaleCopy}</p>
+            )}
           </div>
           <Link href="/kiosks" className="btn-secondary text-xs">Manage kiosks</Link>
         </div>
@@ -625,18 +725,25 @@ export default function Dashboard() {
                 closeout: 'border-blue-400/20 bg-blue-400/10 text-blue-300',
                 info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
               }[item.priority];
+              const actionFreshnessCopy = getActionFreshnessCopy(item.freshness);
               return (
                 <div key={item.key} className={`rounded-2xl border p-4 ${tone}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`badge border text-[10px] ${priorityTone}`}>{item.priority}</span>
+                        {actionFreshnessCopy && (
+                          <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">Stale data</span>
+                        )}
                         {!item.actionability.canOperate && (
                           <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
                         )}
                         <p className="text-xs font-mono uppercase tracking-wider opacity-80">{item.label}</p>
                       </div>
                       <p className="mt-2 text-sm leading-5 text-slate-400">{item.description}</p>
+                      {actionFreshnessCopy && (
+                        <p className="mt-2 text-xs font-mono text-amber-300/80">{actionFreshnessCopy}</p>
+                      )}
                       {(item.blocksReadiness || item.blocksCloseout) && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {item.blocksReadiness && (
@@ -708,7 +815,9 @@ export default function Dashboard() {
           <div>
             <p className="section-label">Attendance roster</p>
             <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Today’s workers</h2>
-            <p className="mt-1 text-xs text-slate-500 font-mono">Search active workers by name or department</p>
+            <p className="mt-1 text-xs text-slate-500 font-mono">
+              {workerCardFreshnessCopy || 'Search active workers by name or department'}
+            </p>
           </div>
           <div className="relative w-full md:w-96">
             <svg className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -728,7 +837,15 @@ export default function Dashboard() {
       {/* Worker grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {filtered.map((w) => (
-          <WorkerCard key={w.id} name={w.name} department={w.department} status={w.status} clockInTime={w.clockInTime} />
+          <WorkerCard
+            key={w.id}
+            name={w.name}
+            department={w.department}
+            status={w.status}
+            clockInTime={w.clockInTime}
+            freshnessLabel={workerCardFreshnessCopy}
+            isStale={workerCardsAreStale}
+          />
         ))}
       </div>
 
