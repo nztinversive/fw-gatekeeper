@@ -40,6 +40,7 @@ type CorrectionDraft = {
   action: AttendanceCorrectionAction;
   correctedTime: string;
   reason: string;
+  reasonWasSuggested: boolean;
   supervisorName: string;
 };
 
@@ -85,6 +86,24 @@ function suggestedCorrection(exception: ShiftException): Pick<CorrectionDraft, '
     return { action: 'void_event', correctedTime: timeFromTimestamp(exception.last_seen || exception.first_seen) };
   }
   return { action: 'add_clock_in', correctedTime: timeFromTimestamp(exception.last_seen || exception.first_seen) || exception.scheduled_start || '06:00' };
+}
+
+function suggestedCorrectionReason(exception: ShiftException, suggestion: Pick<CorrectionDraft, 'action' | 'correctedTime'>) {
+  const worker = exception.worker_name || 'Unknown worker';
+  const issue = typeLabels[exception.type] || titleCase(exception.type);
+  const schedule = exception.schedule_name ? ` on ${exception.schedule_name}` : '';
+  const source = `Source exception ${exception.key}.`;
+
+  if (suggestion.action === 'add_clock_in') {
+    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-in at ${suggestion.correctedTime}. ${source}`;
+  }
+
+  if (suggestion.action === 'add_clock_out') {
+    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-out at ${suggestion.correctedTime}. ${source}`;
+  }
+
+  const sourceEvent = exception.attendance_id ? ` source event ${exception.attendance_id}` : ' selected source scan event';
+  return `${issue}: supervisor verified ${worker}'s${sourceEvent} should be voided from effective attendance. ${source}`;
 }
 
 function timestampFor(date: string, time: string) {
@@ -236,12 +255,27 @@ function ExceptionsPageContent() {
 
   function openCorrection(exception: ShiftException) {
     const suggestion = suggestedCorrection(exception);
+    const existingReason = noteDrafts[exception.key] || exception.review_note || '';
     setCorrectionDraft({
       exception,
       action: suggestion.action,
       correctedTime: suggestion.correctedTime,
-      reason: noteDrafts[exception.key] || exception.review_note || '',
+      reason: existingReason || suggestedCorrectionReason(exception, suggestion),
+      reasonWasSuggested: !existingReason,
       supervisorName: '',
+    });
+  }
+
+  function updateCorrectionDraft(next: Partial<Pick<CorrectionDraft, 'action' | 'correctedTime'>>) {
+    setCorrectionDraft((current) => {
+      if (!current) return current;
+      const updated = { ...current, ...next };
+      return {
+        ...updated,
+        reason: current.reasonWasSuggested
+          ? suggestedCorrectionReason(updated.exception, updated)
+          : updated.reason,
+      };
     });
   }
 
@@ -534,7 +568,7 @@ function ExceptionsPageContent() {
                 <span className="section-label block">Action</span>
                 <select
                   value={correctionDraft.action}
-                  onChange={(event) => setCorrectionDraft((current) => current ? { ...current, action: event.target.value as AttendanceCorrectionAction } : current)}
+                  onChange={(event) => updateCorrectionDraft({ action: event.target.value as AttendanceCorrectionAction })}
                   className="input-field"
                 >
                   <option value="add_clock_in">Add clock-in</option>
@@ -548,7 +582,7 @@ function ExceptionsPageContent() {
                   <input
                     type="time"
                     value={correctionDraft.correctedTime}
-                    onChange={(event) => setCorrectionDraft((current) => current ? { ...current, correctedTime: event.target.value } : current)}
+                    onChange={(event) => updateCorrectionDraft({ correctedTime: event.target.value })}
                     className="input-field font-mono"
                   />
                 </label>
@@ -573,7 +607,7 @@ function ExceptionsPageContent() {
               <textarea
                 rows={4}
                 value={correctionDraft.reason}
-                onChange={(event) => setCorrectionDraft((current) => current ? { ...current, reason: event.target.value } : current)}
+                onChange={(event) => setCorrectionDraft((current) => current ? { ...current, reason: event.target.value, reasonWasSuggested: false } : current)}
                 placeholder="Required: document what the supervisor verified."
                 className="input-field resize-y"
               />

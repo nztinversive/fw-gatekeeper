@@ -55,6 +55,15 @@ assert.match(middleware, /pathname === '\/api\/attendance-corrections' && method
 assert.match(exceptionsPage, /Correct attendance/, 'Exceptions page must expose correction actions.');
 assert.match(exceptionsPage, /Save correction/, 'Exceptions page must submit corrections.');
 assert.match(exceptionsPage, /Correction reason/, 'Exceptions page must require a correction reason field.');
+assert.match(exceptionsPage, /function suggestedCorrectionReason/, 'Exceptions page should generate deterministic correction reason suggestions from exception evidence.');
+assert.match(exceptionsPage, /existingReason \|\| suggestedCorrectionReason\(exception, suggestion\)/, 'Correction drafts should prefill blank reasons while preserving existing supervisor notes.');
+assert.match(exceptionsPage, /reasonWasSuggested:\s*!existingReason/, 'Correction drafts should track whether the reason came from a suggestion.');
+assert.match(exceptionsPage, /function updateCorrectionDraft/, 'Correction drafts should refresh suggested reasons when action or corrected time changes.');
+assert.match(exceptionsPage, /current\.reasonWasSuggested[\s\S]*suggestedCorrectionReason\(updated\.exception, updated\)/, 'Suggested correction reasons should stay aligned until the supervisor edits the reason.');
+assert.match(exceptionsPage, /reasonWasSuggested:\s*false/, 'Manual reason edits should stop automatic suggestion updates.');
+assert.doesNotMatch(exceptionsPage, /event_count\} scan event/, 'Void correction suggestions should not imply all day scan events are voided.');
+assert.match(exceptionsPage, /selected source scan event/, 'Void correction suggestions should describe one selected source event.');
+assert.match(exceptionsPage, /Source exception \$\{exception\.key\}/, 'Suggested correction reasons should preserve the source exception key for auditability.');
 assert.match(logPage, /Correction history/, 'Activity log must show correction history.');
 assert.match(logPage, /\/api\/attendance-corrections\?date=\$\{date\}/, 'Activity log must fetch correction history.');
 assert.match(closeoutPage, /Attendance corrections/, 'Closeout export must include correction context.');
