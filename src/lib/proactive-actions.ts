@@ -63,12 +63,18 @@ export interface ProactiveShiftExceptions {
   date?: string;
   backend_unavailable?: boolean;
   warning?: string;
+  exceptions?: Array<{
+    type?: string;
+    status?: string;
+  }>;
   summary?: {
     total?: number;
     open?: number;
     critical?: number;
     warning?: number;
     info?: number;
+    by_type?: Record<string, number>;
+    by_status?: Record<string, number>;
   };
 }
 
@@ -184,6 +190,20 @@ function getOpenExceptionCount(shiftExceptions: ProactiveShiftExceptions | null)
 
 function getCriticalExceptionCount(shiftExceptions: ProactiveShiftExceptions | null) {
   return Number(shiftExceptions?.summary?.critical || 0);
+}
+
+function getOpenExceptionTypeCount(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
+  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
+  if (exceptions.length > 0) {
+    return exceptions.filter((exception) => exception?.status === 'open' && exception?.type === type).length;
+  }
+
+  const summary = shiftExceptions?.summary;
+  const totalExceptions = Number(summary?.total || 0);
+  const openExceptions = Number(summary?.open || summary?.by_status?.open || 0);
+  const typeCount = Number(summary?.by_type?.[type] || 0);
+
+  return totalExceptions > 0 && openExceptions === totalExceptions ? typeCount : 0;
 }
 
 function isCriticalSystemWarning(warning: string) {
@@ -306,6 +326,8 @@ function getReviewHref(action: ProactiveAction) {
 }
 
 function getReviewCta(action: ProactiveAction) {
+  if (action.key === 'missing-clock-outs') return 'Review clock-outs';
+  if (action.key === 'recognition-review') return 'Review recognition';
   if (action.source === 'exceptions') return 'Review exceptions';
   if (action.source === 'closeout') return 'Review closeout';
   if (action.source === 'schedule') return 'Inspect briefing';
@@ -563,7 +585,61 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
   const openExceptions = getOpenExceptionCount(shiftExceptions);
   if (openExceptions > 0) {
     const criticalExceptions = getCriticalExceptionCount(shiftExceptions);
+    const missingClockOuts = getOpenExceptionTypeCount(shiftExceptions, 'missing_clock_out');
+    const recognitionReviews = getOpenExceptionTypeCount(shiftExceptions, 'recognition_review');
     const priority = criticalExceptions > 0 ? CRITICAL_PRIORITY : WARNING_PRIORITY;
+    if (missingClockOuts > 0) {
+      actions.push({
+        key: 'missing-clock-outs',
+        priority: WARNING_PRIORITY,
+        severity: 'warning',
+        label: 'Clock-out follow-up',
+        value: missingClockOuts,
+        description: `${plural(missingClockOuts, 'worker')} ${verb(missingClockOuts, 'is', 'are')} still clocked in after the scheduled shift end.`,
+        href: buildHref('/exceptions', {
+          date: actionDate,
+          status: 'open',
+          type: 'missing_clock_out',
+        }),
+        cta: 'Review clock-outs',
+        source: 'exceptions',
+        evidence: {
+          type: 'missing_clock_out',
+          count: missingClockOuts,
+          byType: shiftExceptions?.summary?.by_type || null,
+        },
+        freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
+        blocksReadiness: false,
+        blocksCloseout: true,
+      });
+    }
+
+    if (recognitionReviews > 0) {
+      actions.push({
+        key: 'recognition-review',
+        priority: WARNING_PRIORITY,
+        severity: 'warning',
+        label: 'Recognition review',
+        value: recognitionReviews,
+        description: `${plural(recognitionReviews, 'recognition exception')} ${verb(recognitionReviews, 'needs', 'need')} supervisor review before closeout.`,
+        href: buildHref('/exceptions', {
+          date: actionDate,
+          status: 'open',
+          type: 'recognition_review',
+        }),
+        cta: 'Review recognition',
+        source: 'exceptions',
+        evidence: {
+          type: 'recognition_review',
+          count: recognitionReviews,
+          byType: shiftExceptions?.summary?.by_type || null,
+        },
+        freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
+        blocksReadiness: false,
+        blocksCloseout: true,
+      });
+    }
+
     actions.push({
       key: 'shift-exceptions',
       priority,

@@ -160,6 +160,120 @@ assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is information
 assert.equal(notArrived.description, '2 active workers have no clock-in scans today.');
 assert.equal(notArrived.href, '/log?date=2026-06-26', 'Attendance actions should deep-link to the dated activity log.');
 
+const focusedExceptionActions = buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    exceptions: [
+      { type: 'missing_clock_out', status: 'open' },
+      { type: 'missing_clock_out', status: 'open' },
+      { type: 'recognition_review', status: 'open' },
+      { type: 'recognition_review', status: 'resolved' },
+    ],
+    summary: {
+      total: 4,
+      open: 3,
+      critical: 0,
+      warning: 3,
+      info: 0,
+      by_type: { missing_clock_out: 2, recognition_review: 2 },
+      by_status: { open: 3, resolved: 1 },
+    },
+  },
+});
+
+assert.deepEqual(actionKeys(focusedExceptionActions), [
+  'missing-clock-outs',
+  'recognition-review',
+  'shift-exceptions',
+], 'Open exception type rows should create focused action cards before the generic exception action.');
+const clockOutAction = findAction(focusedExceptionActions, 'missing-clock-outs');
+assert.equal(clockOutAction.description, '2 workers are still clocked in after the scheduled shift end.');
+assert.equal(clockOutAction.href, '/exceptions?date=2026-06-26&status=open&type=missing_clock_out', 'Missing clock-out actions should deep-link to the filtered exception queue.');
+assert.equal(clockOutAction.blocksCloseout, true, 'Missing clock-outs should keep closeout attention visible.');
+assert.equal(clockOutAction.blocksReadiness, false, 'Missing clock-outs should not block start-of-shift readiness.');
+assert.deepEqual(plain(clockOutAction.evidence), {
+  type: 'missing_clock_out',
+  count: 2,
+  byType: { missing_clock_out: 2, recognition_review: 2 },
+}, 'Missing clock-out evidence should preserve the exception type mix.');
+const recognitionReviewAction = findAction(focusedExceptionActions, 'recognition-review');
+assert.equal(recognitionReviewAction.description, '1 recognition exception needs supervisor review before closeout.');
+assert.equal(recognitionReviewAction.href, '/exceptions?date=2026-06-26&status=open&type=recognition_review', 'Recognition review actions should deep-link to the filtered open exception queue.');
+assert.equal(recognitionReviewAction.cta, 'Review recognition');
+assert.equal(recognitionReviewAction.blocksCloseout, true, 'Recognition review should remain closeout work.');
+
+const focusedViewerActions = buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    exceptions: [
+      { type: 'missing_clock_out', status: 'open' },
+      { type: 'recognition_review', status: 'open' },
+    ],
+    summary: {
+      total: 2,
+      open: 2,
+      critical: 0,
+      warning: 2,
+      info: 0,
+      by_type: { missing_clock_out: 1, recognition_review: 1 },
+      by_status: { open: 2 },
+    },
+  },
+  currentRole: 'viewer',
+});
+assert.equal(findAction(focusedViewerActions, 'missing-clock-outs').cta, 'Review clock-outs', 'Viewer clock-out actions should keep the focused CTA.');
+assert.equal(findAction(focusedViewerActions, 'recognition-review').cta, 'Review recognition', 'Viewer recognition actions should keep the focused CTA.');
+assert.equal(findAction(focusedViewerActions, 'recognition-review').href, '/exceptions?date=2026-06-26&status=open&type=recognition_review', 'Viewer recognition actions should keep the precise recognition queue filter.');
+
+const resolvedTypeOnlyActions = buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    exceptions: [
+      { type: 'missing_clock_out', status: 'resolved' },
+      { type: 'recognition_review', status: 'ignored' },
+      { type: 'scan_sequence', status: 'open' },
+    ],
+    summary: {
+      total: 3,
+      open: 1,
+      critical: 0,
+      warning: 1,
+      info: 0,
+      by_type: { missing_clock_out: 1, recognition_review: 1, scan_sequence: 1 },
+      by_status: { open: 1, resolved: 1, ignored: 1 },
+    },
+  },
+});
+
+assert.deepEqual(actionKeys(resolvedTypeOnlyActions), [
+  'shift-exceptions',
+], 'Resolved or ignored exception types must not keep focused proactive actions alive.');
+
+const allOpenTypeSummaryActions = buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    summary: {
+      total: 2,
+      open: 2,
+      critical: 0,
+      warning: 2,
+      info: 0,
+      by_type: { missing_clock_out: 1, recognition_review: 1 },
+      by_status: { open: 2 },
+    },
+  },
+});
+
+assert.deepEqual(actionKeys(allOpenTypeSummaryActions), [
+  'missing-clock-outs',
+  'recognition-review',
+  'shift-exceptions',
+], 'When every summarized exception is open, by_type should be safe to use as the fallback focused action source.');
+
 const staleFreshnessPayload = {
   stats: {
     lastSuccessAt: '2026-06-26T13:50:00.000Z',

@@ -87,12 +87,18 @@ interface ShiftExceptionsSummary {
   date: string;
   backend_unavailable?: boolean;
   warning?: string;
+  exceptions?: Array<{
+    type?: string;
+    status?: string;
+  }>;
   summary: {
     total: number;
     open: number;
     critical: number;
     warning: number;
     info: number;
+    by_type?: Record<string, number>;
+    by_status?: Record<string, number>;
   };
 }
 
