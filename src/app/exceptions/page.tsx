@@ -110,6 +110,46 @@ function suggestedCorrectionReason(exception: ShiftException, suggestion: Pick<C
   return `${issue}: supervisor verified ${worker}'s${sourceEvent} should be voided from effective attendance. ${source}`;
 }
 
+function suggestedReviewNotes(exception: ShiftException) {
+  const worker = exception.worker_name || 'Unknown worker';
+  const issue = typeLabels[exception.type] || titleCase(exception.type);
+  const source = `Source exception ${exception.key}.`;
+  const notes = [
+    {
+      label: 'Source reviewed',
+      note: `${issue}: supervisor reviewed source evidence for ${worker}. ${source}`,
+    },
+  ];
+
+  if (canCorrectException(exception)) {
+    notes.push({
+      label: 'Correction reviewed',
+      note: `${issue}: supervisor reviewed attendance correction path for ${worker}. ${source}`,
+    });
+  }
+
+  if (exception.type === 'recognition_review') {
+    notes.push({
+      label: 'Recognition reviewed',
+      note: `${issue}: supervisor reviewed the recognition attempt context. ${source}`,
+    });
+  }
+
+  notes.push({
+    label: 'No correction needed',
+    note: `${issue}: no attendance correction needed after supervisor review for ${worker}. ${source}`,
+  });
+
+  return notes;
+}
+
+function appendReviewNote(existingNote: string, suggestion: string) {
+  const current = existingNote.trim();
+  if (!current) return suggestion;
+  if (current.includes(suggestion)) return current;
+  return `${current}\n${suggestion}`;
+}
+
 function timestampFor(date: string, time: string) {
   return createLocalIsoTimestamp(date, time);
 }
@@ -261,6 +301,10 @@ function ExceptionsPageContent() {
   }, [department, exceptions, severity, status, type]);
 
   function updateReview(exception: ShiftException, nextStatus: ShiftExceptionStatus) {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can update exception reviews.', 'error');
+      return;
+    }
     setPendingKey(exception.key);
     startTransition(async () => {
       try {
@@ -288,6 +332,10 @@ function ExceptionsPageContent() {
   }
 
   function openCorrection(exception: ShiftException) {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can correct attendance.', 'error');
+      return;
+    }
     const suggestion = suggestedCorrection(exception);
     const existingReason = noteDrafts[exception.key] || exception.review_note || '';
     setCorrectionDraft({
@@ -311,6 +359,13 @@ function ExceptionsPageContent() {
           : updated.reason,
       };
     });
+  }
+
+  function applySuggestedReviewNote(exception: ShiftException, note: string) {
+    setNoteDrafts((current) => ({
+      ...current,
+      [exception.key]: appendReviewNote(current[exception.key] ?? exception.review_note ?? '', note),
+    }));
   }
 
   useEffect(() => {
@@ -564,30 +619,56 @@ function ExceptionsPageContent() {
                         <textarea
                           rows={2}
                           value={noteDrafts[exception.key] ?? exception.review_note ?? ''}
-                          onChange={(event) => setNoteDrafts((current) => ({ ...current, [exception.key]: event.target.value }))}
-                          placeholder="Optional note"
+                          onChange={(event) => {
+                            if (!canOperate) return;
+                            setNoteDrafts((current) => ({ ...current, [exception.key]: event.target.value }));
+                          }}
+                          placeholder={canOperate ? 'Optional note' : 'Review note'}
+                          readOnly={!canOperate}
                           className="input-field min-h-[72px] min-w-[190px] resize-y text-xs"
                         />
+                        {canOperate && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {suggestedReviewNotes(exception).map((suggestion) => (
+                              <button
+                                key={suggestion.label}
+                                type="button"
+                                className="rounded-full border border-navy-600/60 bg-navy-900/70 px-2.5 py-1 text-[10px] text-slate-300 hover:border-gold/40 hover:text-gold"
+                                onClick={() => applySuggestedReviewNote(exception, suggestion.note)}
+                              >
+                                {suggestion.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-col gap-2">
-                          <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'reviewed')}>
-                            Reviewed
-                          </button>
-                          <button type="button" className="btn-primary text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'resolved')}>
-                            Resolved
-                          </button>
-                          {canOperate && canCorrectException(exception) && (
-                            <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => openCorrection(exception)}>
-                              Correct attendance
-                            </button>
-                          )}
-                          <button type="button" className="btn-ghost text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'ignored')}>
-                            Ignore
-                          </button>
-                          {exception.status !== 'open' && (
-                            <button type="button" className="btn-ghost text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'open')}>
-                              Reopen
+                          {canOperate ? (
+                            <>
+                              <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'reviewed')}>
+                                Reviewed
+                              </button>
+                              <button type="button" className="btn-primary text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'resolved')}>
+                                Resolved
+                              </button>
+                              {canCorrectException(exception) && (
+                                <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => openCorrection(exception)}>
+                                  Correct attendance
+                                </button>
+                              )}
+                              <button type="button" className="btn-ghost text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'ignored')}>
+                                Ignore
+                              </button>
+                              {exception.status !== 'open' && (
+                                <button type="button" className="btn-ghost text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'open')}>
+                                  Reopen
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <button type="button" className="btn-secondary text-xs" disabled>
+                              Review-only
                             </button>
                           )}
                         </div>

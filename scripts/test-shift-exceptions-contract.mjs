@@ -48,6 +48,11 @@ assert.match(page, /searchParams\.get\('exception_key'\)/, 'Exceptions page shou
 assert.match(page, /searchParams\.get\('intent'\)/, 'Exceptions page should read action intent query params.');
 assert.match(page, /\/api\/portal-role/, 'Exceptions page should resolve the current portal role before exposing direct write intent.');
 assert.match(page, /function canOperateExceptions/, 'Exceptions page should centralize write-role checks.');
+assert.match(page, /function suggestedReviewNotes/, 'Exceptions page should provide deterministic review-note suggestions.');
+assert.match(page, /function applySuggestedReviewNote/, 'Exceptions page should let operators apply suggested review notes without typing them from scratch.');
+assert.match(page, /function appendReviewNote/, 'Suggested review notes should preserve existing note text instead of overwriting it.');
+assert.match(page, /current\.includes\(suggestion\)/, 'Suggested review notes should not duplicate the same generated note.');
+assert.match(page, /appendReviewNote\(current\[exception\.key\] \?\? exception\.review_note \?\? '', note\)/, 'Suggested review note chips should append to saved or draft notes.');
 assert.match(page, /queryIntent !== 'correct'/, 'Exceptions page should only auto-open correction flow for explicit correction intents.');
 assert.match(page, /handledIntentKey === queryExceptionKey/, 'Exceptions page should avoid repeatedly opening the same correction intent after refreshes.');
 assert.match(page, /!canOperate \|\| !queryExceptionKey/, 'Exceptions page should not auto-open correction intent for read-only roles.');
@@ -57,7 +62,13 @@ assert.match(page, /exception\.type === 'scan_sequence'\) return Boolean\(except
 assert.match(page, /queryExceptionKey === exception\.key/, 'Exceptions page should highlight the targeted exception row.');
 assert.match(page, /id=\{exceptionRowId\(exception\.key\)\}/, 'Targeted exception rows should have stable ids for direct-link scrolling.');
 assert.match(page, /scrollIntoView/, 'Exceptions page should scroll direct links to the targeted row.');
-assert.match(page, /canOperate && canCorrectException\(exception\)/, 'Correction buttons should only render for operating roles and correctable rows.');
+assert.match(page, /canOperate \?[\s\S]*canCorrectException\(exception\)[\s\S]*Correct attendance[\s\S]*Review-only/, 'Correction buttons should only render for operating roles and correctable rows.');
+assert.match(page, /if \(!canOperate\)[\s\S]*Only admin or enrollment roles can update exception reviews/, 'Exception review mutations should be guarded client-side for read-only roles.');
+assert.match(page, /canOperate \?[\s\S]*Reviewed[\s\S]*Resolved[\s\S]*Ignore[\s\S]*Review-only/, 'Exceptions page should hide write controls behind role-aware rendering.');
+assert.match(page, /suggestedReviewNotes\(exception\)\.map/, 'Operators should see suggested note chips for exception review rows.');
+assert.match(page, /readOnly=\{!canOperate\}/, 'Viewer note fields should be read-only.');
+assert.match(page, /if \(!canOperate\) return;[\s\S]*setNoteDrafts/, 'Viewer note edits should not update local draft state.');
+assert.match(page, /Source exception \$\{exception\.key\}/, 'Suggested review notes should preserve source exception keys.');
 assert.match(page, /Export CSV/, 'Exceptions page must provide CSV export.');
 assert.match(page, /All departments/, 'Exceptions page must provide department filtering.');
 assert.match(page, /All types/, 'Exceptions page must provide type filtering.');
