@@ -44,6 +44,16 @@ assert.match(page, /useSearchParams/, 'Briefing page must honor action-link quer
 assert.match(page, /searchParams\.get\('date'\)/, 'Briefing page should initialize the briefing date from query params.');
 assert.match(page, /searchParams\.get\('department'\)/, 'Briefing page should initialize department filtering from query params.');
 assert.match(page, /searchParams\.get\('status'\)/, 'Briefing page should initialize worker status filtering from query params.');
+assert.match(page, /\/api\/portal-role/, 'Briefing page should resolve portal role before exposing direct action intent.');
+assert.match(page, /function canOperateBriefingAction/, 'Briefing page should centralize per-action role checks.');
+assert.match(page, /role === 'admin'[\s\S]*role !== 'enrollment'[\s\S]*href\.startsWith\('\/exceptions'\) \|\| href\.startsWith\('\/briefing'\)/, 'Enrollment briefing actions should be limited to exceptions and briefing filters.');
+assert.match(page, /function stripHrefParams/, 'Briefing page should be able to strip write intent from review links.');
+assert.match(page, /href\.startsWith\('\/exceptions'\)[\s\S]*stripHrefParams\(href, \['intent'\]\)/, 'Viewer exception briefing actions should preserve row context but remove correction intent.');
+assert.match(page, /href === '\/kiosks' \|\| href === '\/schedules'[\s\S]*`\/briefing\?date=\$\{date\}`/, 'Review-only admin-heavy briefing actions should remain in the dated briefing context.');
+assert.match(page, /const canOperateAction = canOperateBriefingAction\(currentRole, item\.href\)/, 'Briefing action cards should decide operate/review state per item.');
+assert.match(page, /href=\{canOperateAction \? item\.href : getReviewHref\(item\.href, date\)\}/, 'Briefing action cards should downgrade hrefs for read-only roles.');
+assert.match(page, /Review-only/, 'Briefing action cards should label read-only action handoffs.');
+assert.match(page, /canOperateAction \? 'Open action' : 'Review source'/, 'Briefing action card copy should distinguish operate and review handoffs.');
 assert.match(page, /Coverage by department/, 'Briefing page must show department coverage.');
 assert.match(page, /First actions/, 'Briefing page must show prioritized actions.');
 assert.match(page, /Kiosk trust/, 'Briefing page must show kiosk trust signals.');

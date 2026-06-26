@@ -34,6 +34,8 @@ const priorityStyles: Record<ShiftBriefingActionPriority, string> = {
   info: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
 };
 
+type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+
 function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -101,11 +103,38 @@ function validWorkerStatusParam(value: string | null): WorkerCoverageStatus | 'a
     : 'all';
 }
 
+function stripHrefParams(href: string, keysToStrip: string[]) {
+  const [path, query = ''] = href.split('?');
+  if (!query) return href;
+  const blocked = new Set(keysToStrip);
+  const nextQuery = query
+    .split('&')
+    .filter((entry) => {
+      const key = decodeURIComponent(entry.split('=')[0] || '');
+      return !blocked.has(key);
+    })
+    .join('&');
+  return nextQuery ? `${path}?${nextQuery}` : path;
+}
+
+function canOperateBriefingAction(role: PortalRole | undefined, href: string) {
+  if (role === 'admin') return true;
+  if (role !== 'enrollment') return false;
+  return href.startsWith('/exceptions') || href.startsWith('/briefing');
+}
+
+function getReviewHref(href: string, date: string) {
+  if (href.startsWith('/exceptions')) return stripHrefParams(href, ['intent']);
+  if (href === '/kiosks' || href === '/schedules') return `/briefing?date=${date}`;
+  return href;
+}
+
 function ShiftBriefingPageContent() {
   const searchParams = useSearchParams();
   const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
   const queryDepartment = searchParams.get('department') || 'all';
   const queryStatus = validWorkerStatusParam(searchParams.get('status'));
+  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftBriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,6 +147,23 @@ function ShiftBriefingPageContent() {
     setDepartment(queryDepartment);
     setStatus(queryStatus);
   }, [queryDate, queryDepartment, queryStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-role', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && typeof payload?.role === 'string') {
+          setCurrentRole(payload.role);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchBriefing = useCallback(async () => {
     setLoading(true);
@@ -331,17 +377,34 @@ function ShiftBriefingPageContent() {
           </div>
           {payload?.action_items.length ? (
             <div className="space-y-3">
-              {payload.action_items.slice(0, 10).map((item) => (
-                <Link key={item.id} href={item.href} className="glass-card-hover p-4 block">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-display font-medium text-slate-100">{item.label}</h3>
-                      <p className="text-sm text-slate-400 mt-1 leading-6">{item.description}</p>
+              {payload.action_items.slice(0, 10).map((item) => {
+                const canOperateAction = canOperateBriefingAction(currentRole, item.href);
+                return (
+                  <Link
+                    key={item.id}
+                    href={canOperateAction ? item.href : getReviewHref(item.href, date)}
+                    className="glass-card-hover p-4 block"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-display font-medium text-slate-100">{item.label}</h3>
+                        <p className="text-sm text-slate-400 mt-1 leading-6">{item.description}</p>
+                      </div>
+                      <span className={`badge border ${priorityStyles[item.priority]}`}>{titleCase(item.priority)}</span>
                     </div>
-                    <span className={`badge border ${priorityStyles[item.priority]}`}>{titleCase(item.priority)}</span>
-                  </div>
-                </Link>
-              ))}
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      {!canOperateAction && (
+                        <span className="rounded-full border border-slate-500/25 bg-slate-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                          Review-only
+                        </span>
+                      )}
+                      <span className="ml-auto text-xs font-semibold text-gold">
+                        {canOperateAction ? 'Open action' : 'Review source'}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           ) : (
             <div className="glass-card p-6 text-sm text-slate-400 leading-6">
