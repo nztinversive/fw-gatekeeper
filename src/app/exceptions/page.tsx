@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/Toast';
 import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 import { createLocalIsoTimestamp, getLocalDateString } from '@/lib/date';
@@ -124,21 +125,47 @@ function csvFor(exceptions: ShiftException[]) {
   return [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
 }
 
-export default function ExceptionsPage() {
+function validDateParam(value: string | null) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function validSeverityParam(value: string | null): ShiftExceptionSeverity | 'all' {
+  return value === 'critical' || value === 'warning' || value === 'info' ? value : 'all';
+}
+
+function validStatusParam(value: string | null): ShiftExceptionStatus | 'all' {
+  return value === 'open' || value === 'reviewed' || value === 'resolved' || value === 'ignored' || value === 'all' ? value : 'open';
+}
+
+function ExceptionsPageContent() {
   const { toast } = useToast();
-  const [date, setDate] = useState(getLocalDateString());
+  const searchParams = useSearchParams();
+  const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const queryDepartment = searchParams.get('department') || 'all';
+  const queryType = searchParams.get('type') || 'all';
+  const querySeverity = validSeverityParam(searchParams.get('severity'));
+  const queryStatus = validStatusParam(searchParams.get('status'));
+  const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftExceptionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [department, setDepartment] = useState('all');
-  const [type, setType] = useState('all');
-  const [severity, setSeverity] = useState<ShiftExceptionSeverity | 'all'>('all');
-  const [status, setStatus] = useState<ShiftExceptionStatus | 'all'>('open');
+  const [department, setDepartment] = useState(queryDepartment);
+  const [type, setType] = useState(queryType);
+  const [severity, setSeverity] = useState<ShiftExceptionSeverity | 'all'>(querySeverity);
+  const [status, setStatus] = useState<ShiftExceptionStatus | 'all'>(queryStatus);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [correctionDraft, setCorrectionDraft] = useState<CorrectionDraft | null>(null);
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setDate(queryDate);
+    setDepartment(queryDepartment);
+    setType(queryType);
+    setSeverity(querySeverity);
+    setStatus(queryStatus);
+  }, [queryDate, queryDepartment, querySeverity, queryStatus, queryType]);
 
   const fetchExceptions = useCallback(async () => {
     setLoading(true);
@@ -564,5 +591,13 @@ export default function ExceptionsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ExceptionsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ExceptionsPageContent />
+    </Suspense>
   );
 }

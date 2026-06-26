@@ -32,6 +32,11 @@ assert.match(closeouts, /missing_clock_outs/, 'Closeout payload must track missi
 assert.match(closeouts, /recognition_reviews/, 'Closeout payload must track recognition review blockers.');
 assert.match(closeouts, /kiosk_warnings/, 'Closeout payload must track kiosk warning blockers.');
 assert.match(closeouts, /Closeout has blockers\. Add an acknowledgement note before completing\./, 'Closeout mutation must enforce acknowledgement notes for blockers.');
+assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date:\s*input\.date,\s*status:\s*"open",\s*severity:\s*"critical"\s*\}\)/, 'Critical closeout blockers must deep-link to open critical exceptions for the date.');
+assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date:\s*input\.date,\s*status:\s*"open",\s*type:\s*"missing_clock_out"\s*\}\)/, 'Missing clock-out blockers must deep-link to matching open exceptions for the date.');
+assert.match(closeouts, /buildHref\("\/calibration\/recognition",\s*\{\s*date:\s*input\.date,\s*review_status:\s*"unreviewed"\s*\}\)/, 'Recognition blockers must deep-link to the dated unreviewed recognition queue.');
+assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date,\s*status:\s*"open"\s*\}\)/, 'Closeout action links must preserve the selected date on filtered exception links.');
+assert.match(closeouts, /buildHref\("\/calibration\/recognition",\s*\{\s*date,\s*review_status:\s*"unreviewed"\s*\}\)/, 'Closeout action links must preserve the selected date on recognition links.');
 
 assert.match(apiRoute, /shiftCloseouts\.get/, 'GET /api/shift-closeout must call the Convex closeout query.');
 assert.match(apiRoute, /shiftCloseouts\.save/, 'PATCH /api/shift-closeout must call the Convex closeout mutation.');
@@ -42,6 +47,8 @@ assert.match(apiRoute, /action must be save, complete, or reopen/, 'PATCH route 
 
 assert.match(page, /\/api\/shift-closeout\?date=\$\{date\}/, 'Closeout page must fetch the closeout API.');
 assert.match(page, /Shift <span className="text-gold">Closeout<\/span>/, 'Closeout page must render the Shift Closeout surface.');
+assert.match(page, /useSearchParams/, 'Closeout page must honor action-link query params.');
+assert.match(page, /searchParams\.get\('date'\)/, 'Closeout page should initialize the closeout date from query params.');
 assert.match(page, /Closeout checklist/, 'Closeout page must show the checklist.');
 assert.match(page, /Supervisor signoff/, 'Closeout page must include supervisor signoff.');
 assert.match(page, /acknowledgement note/, 'Closeout page must require acknowledgement notes for blockers.');
@@ -60,5 +67,14 @@ assert.match(middleware, /pathname === '\/api\/shift-closeout' && method === 'PA
 assert.match(types, /interface ShiftCloseoutResponse/, 'Shared types must define ShiftCloseoutResponse.');
 assert.match(types, /interface ShiftCloseoutChecklistItem/, 'Shared types must define ShiftCloseoutChecklistItem.');
 assert.match(packageJson, /"test:shift-closeout":\s*"node scripts\/test-shift-closeout-contract\.mjs"/, 'package.json must expose test:shift-closeout.');
+
+const recognitionLab = read('src/components/RecognitionCalibrationLab.tsx');
+assert.match(recognitionLab, /useSearchParams/, 'Recognition Lab must honor action-link query params.');
+assert.match(recognitionLab, /searchParams\.get\('date'\)/, 'Recognition Lab should initialize date filtering from query params.');
+assert.match(recognitionLab, /searchParams\.get\('review_status'\)/, 'Recognition Lab should initialize review filtering from query params.');
+
+const activityLog = read('src/app/log/page.tsx');
+assert.match(activityLog, /useSearchParams/, 'Activity Log must honor dated closeout/source links.');
+assert.match(activityLog, /searchParams\.get\('date'\)/, 'Activity Log should initialize date filtering from query params.');
 
 console.log('Shift closeout contract passed');

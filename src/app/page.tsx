@@ -206,10 +206,10 @@ export default function Dashboard() {
       const signals: Array<{ key: SignalFailureKey; label: string; href: string; request: () => Promise<Response> }> = [
         { key: 'stats', label: 'Dashboard stats', href: '/reports', request: () => fetch(`/api/stats?date=${today}`) },
         { key: 'workers', label: 'Worker roster', href: '/workers', request: () => fetch('/api/workers') },
-        { key: 'attendance', label: 'Attendance events', href: '/log', request: () => fetch(`/api/attendance?date=${today}`) },
+        { key: 'attendance', label: 'Attendance events', href: `/log?date=${today}`, request: () => fetch(`/api/attendance?date=${today}`) },
         { key: 'system-health', label: 'Kiosk and system health', href: '/kiosks', request: () => fetch(`/api/system-health?date=${today}`) },
-        { key: 'shift-exceptions', label: 'Shift exceptions', href: '/exceptions', request: () => fetch(`/api/shift-exceptions?date=${today}`) },
-        { key: 'shift-closeout', label: 'Shift closeout', href: '/closeout', request: () => fetch(`/api/shift-closeout?date=${today}`) },
+        { key: 'shift-exceptions', label: 'Shift exceptions', href: `/exceptions?date=${today}&status=open`, request: () => fetch(`/api/shift-exceptions?date=${today}`) },
+        { key: 'shift-closeout', label: 'Shift closeout', href: `/closeout?date=${today}`, request: () => fetch(`/api/shift-closeout?date=${today}`) },
       ];
 
       const results = await Promise.allSettled(signals.map(async (signal) => {
@@ -393,7 +393,9 @@ export default function Dashboard() {
   const workerCardFreshnessCopy = attendanceStaleCopy || rosterStaleCopy;
   const workerCardsAreStale = isSignalStale(signalFreshness, 'workers') || isSignalStale(signalFreshness, 'attendance');
   const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
+  const actionDate = getLocalDateString();
   const actionItems = buildProactiveActions({
+    date: actionDate,
     signalFailures,
     signalFreshness,
     workers,
@@ -457,7 +459,7 @@ export default function Dashboard() {
     { label: 'Face service', value: systemHealth ? healthLabel(systemHealth.face_service.status) : 'Unknown', status: systemHealth?.face_service.status || 'offline' as HealthStatus, href: '/enroll' },
     { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/kiosks' },
     { label: 'Workers enrolled', value: systemHealth ? `${systemHealth.sync.ready_worker_count} of ${stats.totalWorkers} enrolled` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length} of ${stats.totalWorkers} enrolled`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/workers' },
-    { label: 'Exceptions', value: shiftExceptions ? `${shiftExceptions.summary.open} open exceptions` : 'Unknown', status: shiftExceptions?.summary.critical ? 'offline' as HealthStatus : shiftExceptions?.summary.open ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/exceptions' },
+    { label: 'Exceptions', value: shiftExceptions ? `${shiftExceptions.summary.open} open exceptions` : 'Unknown', status: shiftExceptions?.summary.critical ? 'offline' as HealthStatus : shiftExceptions?.summary.open ? 'stale' as HealthStatus : 'online' as HealthStatus, href: `/exceptions?date=${actionDate}&status=open` },
   ];
 
   const recentEvents: RecentEvent[] = [
@@ -479,7 +481,7 @@ export default function Dashboard() {
       title: `${event.worker_name || 'Worker'} ${event.event_type === 'clock_in' ? 'clocked in' : event.event_type === 'clock_out' ? 'clocked out' : 'recorded an event'}`,
       description: `${event.worker_department || 'No department'}${event.kiosk_name ? ` · ${event.kiosk_name}` : event.kiosk_id ? ` · ${event.kiosk_id}` : ''}`,
       timestamp: event.timestamp,
-      href: '/log',
+      href: `/log?date=${actionDate}`,
     })),
   ]
     .sort((a, b) => {

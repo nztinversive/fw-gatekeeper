@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import AttendanceTable from '@/components/AttendanceTable';
 import { AttendanceCorrection, AttendanceCorrectionsResponse, AttendanceWithWorker } from '@/lib/types';
 import { getLocalDateString } from '@/lib/date';
@@ -13,10 +14,20 @@ function correctionTimestamp(correction: AttendanceCorrection) {
   return correction.corrected_timestamp || correction.original_timestamp || correction.created_at;
 }
 
-export default function LogPage() {
-  const [date, setDate] = useState(getLocalDateString());
+function validDateParam(value: string | null) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function LogPageContent() {
+  const searchParams = useSearchParams();
+  const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const [date, setDate] = useState(queryDate);
   const [events, setEvents] = useState<AttendanceWithWorker[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+
+  useEffect(() => {
+    setDate(queryDate);
+  }, [queryDate]);
 
   useEffect(() => {
     Promise.all([
@@ -115,5 +126,13 @@ export default function LogPage() {
         )}
       </section>
     </div>
+  );
+}
+
+export default function LogPage() {
+  return (
+    <Suspense fallback={null}>
+      <LogPageContent />
+    </Suspense>
   );
 }

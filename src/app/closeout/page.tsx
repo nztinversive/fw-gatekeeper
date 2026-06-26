@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/Toast';
 import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 import { getLocalDateString } from '@/lib/date';
@@ -74,9 +75,15 @@ function checklistTone(item: ShiftCloseoutChecklistItem) {
   return checklistStyles[item.status] || checklistStyles.blocked;
 }
 
-export default function ShiftCloseoutPage() {
+function validDateParam(value: string | null) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function ShiftCloseoutPageContent() {
   const { toast } = useToast();
-  const [date, setDate] = useState(getLocalDateString());
+  const searchParams = useSearchParams();
+  const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftCloseoutResponse | null>(null);
   const [supervisorName, setSupervisorName] = useState('');
   const [notes, setNotes] = useState('');
@@ -84,6 +91,10 @@ export default function ShiftCloseoutPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setDate(queryDate);
+  }, [queryDate]);
 
   const fetchCloseout = useCallback(async () => {
     setLoading(true);
@@ -319,5 +330,13 @@ export default function ShiftCloseoutPage() {
         </aside>
       </section>
     </div>
+  );
+}
+
+export default function ShiftCloseoutPage() {
+  return (
+    <Suspense fallback={null}>
+      <ShiftCloseoutPageContent />
+    </Suspense>
   );
 }

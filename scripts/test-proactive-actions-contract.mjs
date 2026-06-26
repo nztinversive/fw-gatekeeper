@@ -146,16 +146,19 @@ const exceptions = findAction(rankedActions, 'shift-exceptions');
 assert.equal(exceptions.description, '3 exceptions need supervisor review, including 1 critical.');
 assert.equal(exceptions.blocksCloseout, true, 'Open exceptions block closeout.');
 assert.equal(exceptions.blocksReadiness, true, 'Critical exceptions block readiness.');
+assert.equal(exceptions.href, '/exceptions?date=2026-06-26&status=open&severity=critical', 'Open exception actions should deep-link to the dated critical exception queue.');
 
 const closeout = findAction(rankedActions, 'shift-closeout-pending');
 assert.equal(closeout.priority, 'closeout', 'Closeout should rank after warning actions.');
 assert.equal(closeout.severity, 'warning', 'Closeout with blockers should still show warning severity.');
 assert.equal(closeout.description, '1 closeout checklist item needs acknowledgement.');
 assert.equal(closeout.cta, 'Close shift', 'Legacy closeout CTA should remain operational when no role is supplied.');
+assert.equal(closeout.href, '/closeout?date=2026-06-26', 'Closeout actions should preserve the selected date.');
 
 const notArrived = findAction(rankedActions, 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
 assert.equal(notArrived.description, '2 active workers have no clock-in scans today.');
+assert.equal(notArrived.href, '/log?date=2026-06-26', 'Attendance actions should deep-link to the dated activity log.');
 
 const staleFreshnessPayload = {
   stats: {
@@ -244,8 +247,9 @@ assert.deepEqual(
 const viewerActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'viewer' });
 assert.deepEqual(actionKeys(viewerActions), actionKeys(rankedActions), 'Viewer role must not change proactive action ranking.');
 assert.equal(findAction(viewerActions, 'shift-closeout-pending').cta, 'Review closeout', 'Viewers should review closeout state instead of being told to close the shift.');
-assert.equal(findAction(viewerActions, 'shift-closeout-pending').href, '/closeout', 'Viewers can inspect closeout state on the read route.');
+assert.equal(findAction(viewerActions, 'shift-closeout-pending').href, '/closeout?date=2026-06-26', 'Viewers can inspect closeout state on the dated read route.');
 assert.equal(findAction(viewerActions, 'shift-exceptions').cta, 'Review exceptions', 'Viewers should review exceptions instead of operating them.');
+assert.equal(findAction(viewerActions, 'shift-exceptions').href, '/exceptions?date=2026-06-26&status=open&severity=critical', 'Viewers should keep the exact exception filter context.');
 assert.equal(findAction(viewerActions, 'invalid-face').cta, 'Inspect briefing', 'Viewers should inspect enrollment issues from a read-oriented surface.');
 assert.equal(findAction(viewerActions, 'invalid-face').href, '/briefing', 'Viewers should not be sent to worker operations for enrollment issues.');
 assert.equal(findAction(viewerActions, 'system-health-0').cta, 'Inspect readiness', 'Viewers should inspect kiosk readiness instead of operating it.');
@@ -288,7 +292,9 @@ assert.deepEqual(actionKeys(backendUnavailableActions), [
   'shift-closeout-pending',
 ], 'Deployment-pending shift storage must be visible instead of looking all clear.');
 assert.equal(backendUnavailableActions[0].blocksCloseout, true, 'Unavailable exception storage blocks closeout trust.');
+assert.equal(backendUnavailableActions[0].href, '/exceptions?date=2026-06-26&status=open', 'Unavailable exception storage should still link to the dated exception view.');
 assert.equal(backendUnavailableActions[1].description, 'Shift closeout is waiting for the Convex functions to deploy.');
+assert.equal(backendUnavailableActions[1].href, '/closeout?date=2026-06-26', 'Unavailable closeout storage should still link to the dated closeout view.');
 
 const completedCloseout = buildProactiveActions({
   workers: [],

@@ -10,7 +10,16 @@ function normalizeText(value?: string | null) {
   return trimmed || undefined;
 }
 
+function buildHref(path: string, params: Record<string, string | null | undefined>) {
+  const query = Object.entries(params)
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+  return query ? `${path}?${query}` : path;
+}
+
 function buildChecklist(input: {
+  date: string;
   openExceptions: any[];
   criticalExceptions: any[];
   missingClockOuts: any[];
@@ -29,7 +38,7 @@ function buildChecklist(input: {
       label: "Critical exceptions reviewed",
       status: criticalClear ? "clear" : "blocked",
       count: input.criticalExceptions.length,
-      href: "/exceptions",
+      href: buildHref("/exceptions", { date: input.date, status: "open", severity: "critical" }),
       description: input.criticalExceptions.length
         ? `${input.criticalExceptions.length} critical exception${input.criticalExceptions.length === 1 ? "" : "s"} still need supervisor review.`
         : "No open critical exceptions.",
@@ -39,7 +48,7 @@ function buildChecklist(input: {
       label: "Missing clock-outs reviewed",
       status: missingClockOutsClear ? "clear" : "blocked",
       count: input.missingClockOuts.length,
-      href: "/exceptions",
+      href: buildHref("/exceptions", { date: input.date, status: "open", type: "missing_clock_out" }),
       description: input.missingClockOuts.length
         ? `${input.missingClockOuts.length} missing clock-out exception${input.missingClockOuts.length === 1 ? "" : "s"} still need acknowledgement.`
         : "No missing clock-out exceptions are open.",
@@ -59,7 +68,7 @@ function buildChecklist(input: {
       label: "Recognition review issues acknowledged",
       status: recognitionReviewsClear ? "clear" : "blocked",
       count: input.recognitionReviews.length,
-      href: "/calibration/recognition",
+      href: buildHref("/calibration/recognition", { date: input.date, review_status: "unreviewed" }),
       description: input.recognitionReviews.length
         ? `${input.recognitionReviews.length} recognition review item${input.recognitionReviews.length === 1 ? "" : "s"} remain open.`
         : "No recognition review exceptions are open.",
@@ -88,6 +97,7 @@ async function buildCloseoutPayload(ctx: any, date: string) {
   const kioskWarnings = briefing.summary.kiosk_warnings || 0;
   const acknowledgedBlockers = closeout?.acknowledgedBlockers ?? false;
   const checklist = buildChecklist({
+    date,
     openExceptions,
     criticalExceptions,
     missingClockOuts,
@@ -140,10 +150,10 @@ async function buildCloseoutPayload(ctx: any, date: string) {
     can_complete: canComplete,
     action_links: [
       { label: "Briefing", href: `/briefing?date=${date}` },
-      { label: "Exceptions", href: `/exceptions?date=${date}` },
+      { label: "Exceptions", href: buildHref("/exceptions", { date, status: "open" }) },
       { label: "Activity Log", href: `/log?date=${date}` },
       { label: "Kiosks", href: "/kiosks" },
-      { label: "Recognition Lab", href: `/calibration/recognition?date=${date}` },
+      { label: "Recognition Lab", href: buildHref("/calibration/recognition", { date, review_status: "unreviewed" }) },
     ],
   };
 }

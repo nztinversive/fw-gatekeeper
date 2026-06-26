@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { getLocalDateString } from '@/lib/date';
 import {
   DepartmentCoverageStatus,
@@ -90,13 +91,33 @@ function departmentRisk(row: ShiftBriefingDepartment) {
   return Math.round(((row.missing + row.late) / row.expected) * 100);
 }
 
-export default function ShiftBriefingPage() {
-  const [date, setDate] = useState(getLocalDateString());
+function validDateParam(value: string | null) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function validWorkerStatusParam(value: string | null): WorkerCoverageStatus | 'all' {
+  return value === 'missing' || value === 'late' || value === 'present' || value === 'clocked_out' || value === 'still_clocked_in'
+    ? value
+    : 'all';
+}
+
+function ShiftBriefingPageContent() {
+  const searchParams = useSearchParams();
+  const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const queryDepartment = searchParams.get('department') || 'all';
+  const queryStatus = validWorkerStatusParam(searchParams.get('status'));
+  const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftBriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [department, setDepartment] = useState('all');
-  const [status, setStatus] = useState<WorkerCoverageStatus | 'all'>('all');
+  const [department, setDepartment] = useState(queryDepartment);
+  const [status, setStatus] = useState<WorkerCoverageStatus | 'all'>(queryStatus);
+
+  useEffect(() => {
+    setDate(queryDate);
+    setDepartment(queryDepartment);
+    setStatus(queryStatus);
+  }, [queryDate, queryDepartment, queryStatus]);
 
   const fetchBriefing = useCallback(async () => {
     setLoading(true);
@@ -418,5 +439,13 @@ export default function ShiftBriefingPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function ShiftBriefingPage() {
+  return (
+    <Suspense fallback={null}>
+      <ShiftBriefingPageContent />
+    </Suspense>
   );
 }

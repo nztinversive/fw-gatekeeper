@@ -69,6 +69,20 @@ function actionRank(priority: ActionPriority) {
   return { critical: 0, warning: 1, info: 2 }[priority];
 }
 
+function getCoverageActionStatus(row: any): WorkerCoverageStatus {
+  if (row.missing > 0) return "missing";
+  if (row.late > 0) return "late";
+  return "clocked_out";
+}
+
+function buildHref(path: string, params: Record<string, string | null | undefined>) {
+  const query = Object.entries(params)
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+  return query ? `${path}?${query}` : path;
+}
+
 function getWorkerStatus(input: {
   schedule: any;
   firstIn: any | null;
@@ -221,14 +235,24 @@ export async function buildShiftBriefing(ctx: any, date: string) {
           priority: row.status === "critical" ? "critical" as ActionPriority : "warning" as ActionPriority,
           label: `${row.department} coverage ${row.status === "critical" ? "critical" : "short"}`,
           description: `${row.present}/${row.expected} expected workers are currently present; ${row.missing} missing and ${row.late} late.`,
-          href: `/briefing?date=${date}`,
+          href: buildHref("/briefing", {
+            date,
+            department: row.department,
+            status: getCoverageActionStatus(row),
+          }),
         })),
       ...openExceptions.slice(0, 8).map((exception) => ({
         id: exception.key,
         priority: exception.severity as ActionPriority,
         label: exception.title,
         description: exception.description,
-        href: "/exceptions",
+        href: buildHref("/exceptions", {
+          date,
+          status: "open",
+          department: exception.department,
+          type: exception.type,
+          severity: exception.severity,
+        }),
       })),
       ...kioskRows
         .filter((kiosk) => kiosk.status === "offline" || kiosk.status === "never_synced" || kiosk.status === "stale")

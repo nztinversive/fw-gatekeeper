@@ -86,6 +86,7 @@ export interface ProactiveShiftCloseout {
 }
 
 export interface BuildProactiveActionsInput {
+  date?: string | null;
   signalFailures?: ProactiveSignalFailure[];
   signalFreshness?: Record<string, ProactiveSignalFreshness | null | undefined>;
   workers?: ProactiveWorker[];
@@ -265,6 +266,14 @@ function getFreshness(
   return normalizeFreshness(keys, matchedKey ? signalFreshness?.[matchedKey] : null, fallback);
 }
 
+function buildHref(path: string, params: Record<string, string | number | null | undefined>) {
+  const query = Object.entries(params)
+    .filter((entry): entry is [string, string | number] => entry[1] !== null && entry[1] !== undefined && entry[1] !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return query ? `${path}?${query}` : path;
+}
+
 function getSeverityForPriority(priority: ProactiveActionPriority): ProactiveActionSeverity {
   return priority === CRITICAL_PRIORITY ? 'critical' : priority === WARNING_PRIORITY ? 'warning' : 'info';
 }
@@ -287,8 +296,8 @@ function canRoleOperate(role: string | null, source: ProactiveActionSource) {
 }
 
 function getReviewHref(action: ProactiveAction) {
-  if (action.source === 'exceptions') return '/exceptions';
-  if (action.source === 'closeout') return '/closeout';
+  if (action.source === 'exceptions') return action.href;
+  if (action.source === 'closeout') return action.href;
   if (action.source === 'schedule') return '/briefing';
   if (action.source === 'attendance') return '/briefing';
   if (action.source === 'enrollment') return '/briefing';
@@ -400,6 +409,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
   const shiftExceptions = input.shiftExceptions || null;
   const shiftCloseout = input.shiftCloseout || null;
   const signalFreshness = input.signalFreshness || {};
+  const actionDate = input.date || shiftExceptions?.date || shiftCloseout?.date || null;
 
   for (const failure of signalFailures) {
     const priority = getSignalPriority(failure);
@@ -529,7 +539,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       label: 'Shift exception storage unavailable',
       value: '!',
       description: shiftExceptions.warning || 'Shift exceptions are waiting for backend storage, so today cannot be treated as all clear yet.',
-      href: '/exceptions',
+      href: buildHref('/exceptions', { date: actionDate, status: 'open' }),
       cta: 'Open exceptions',
       source: 'exceptions',
       evidence: {
@@ -561,7 +571,11 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       label: 'Open shift exceptions',
       value: openExceptions,
       description: `${plural(openExceptions, 'exception')} ${verb(openExceptions, 'needs', 'need')} supervisor review, including ${criticalExceptions} critical.`,
-      href: '/exceptions',
+      href: buildHref('/exceptions', {
+        date: actionDate,
+        status: 'open',
+        severity: criticalExceptions > 0 ? 'critical' : undefined,
+      }),
       cta: 'Open exceptions',
       source: 'exceptions',
       evidence: {
@@ -585,7 +599,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         label: 'Shift closeout storage unavailable',
         value: '!',
         description: shiftCloseout.warning || 'Shift closeout is waiting for backend storage, so the signoff state cannot be trusted yet.',
-        href: '/closeout',
+        href: buildHref('/closeout', { date: actionDate }),
         cta: 'Open closeout',
         source: 'closeout',
         evidence: {
@@ -614,7 +628,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         label: 'Shift closeout complete',
         value: '✓',
         description: `Today's supervisor closeout was completed${shiftCloseout.closeout.completed_at ? ` at ${new Date(shiftCloseout.closeout.completed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : ''}.`,
-        href: '/closeout',
+        href: buildHref('/closeout', { date: actionDate }),
         cta: 'Open closeout',
         source: 'closeout',
         evidence: {
@@ -636,7 +650,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         description: blockerCount > 0
           ? `${plural(blockerCount, 'closeout checklist item')} ${verb(blockerCount, 'needs', 'need')} acknowledgement.`
           : 'Complete the supervisor closeout when the shift is ready to sign off.',
-        href: '/closeout',
+        href: buildHref('/closeout', { date: actionDate }),
         cta: 'Close shift',
         source: 'closeout',
         evidence: {
@@ -661,7 +675,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       label: 'Not arrived today',
       value: notArrived,
       description: `${plural(notArrived, 'active worker')} ${verb(notArrived, 'has', 'have')} no clock-in scans today.`,
-      href: '/log',
+      href: buildHref('/log', { date: actionDate }),
       cta: 'Review attendance',
       source: 'attendance',
       evidence: {

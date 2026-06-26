@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/Toast';
 import {
   RecognitionAttempt,
@@ -72,18 +73,48 @@ function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export default function RecognitionCalibrationLab() {
+function validDateParam(value: string | null) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function validDecisionParam(value: string | null): RecognitionDecision | 'all' {
+  return decisionOptions.some((option) => option.value === value) ? value as RecognitionDecision | 'all' : 'all';
+}
+
+function validReviewParam(value: string | null): RecognitionReviewStatus | 'all' {
+  return value === 'unreviewed' || value === 'confirmed' || value === 'corrected' || value === 'ignored' || value === 'all' ? value : 'all';
+}
+
+function validConfidenceParam(value: string | null): RecognitionConfidenceBand | 'all' {
+  return value === 'high' || value === 'medium' || value === 'low' || value === 'all' ? value : 'all';
+}
+
+function RecognitionCalibrationLabContent() {
   const { toast } = useToast();
-  const [date, setDate] = useState(getLocalDateString());
-  const [decision, setDecision] = useState<RecognitionDecision | 'all'>('all');
-  const [reviewStatus, setReviewStatus] = useState<RecognitionReviewStatus | 'all'>('all');
-  const [confidenceBand, setConfidenceBand] = useState<RecognitionConfidenceBand | 'all'>('all');
-  const [kioskId, setKioskId] = useState('');
+  const searchParams = useSearchParams();
+  const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const queryDecision = validDecisionParam(searchParams.get('decision'));
+  const queryReviewStatus = validReviewParam(searchParams.get('review_status'));
+  const queryConfidenceBand = validConfidenceParam(searchParams.get('confidence_band'));
+  const queryKioskId = searchParams.get('kiosk_id') || '';
+  const [date, setDate] = useState(queryDate);
+  const [decision, setDecision] = useState<RecognitionDecision | 'all'>(queryDecision);
+  const [reviewStatus, setReviewStatus] = useState<RecognitionReviewStatus | 'all'>(queryReviewStatus);
+  const [confidenceBand, setConfidenceBand] = useState<RecognitionConfidenceBand | 'all'>(queryConfidenceBand);
+  const [kioskId, setKioskId] = useState(queryKioskId);
   const [payload, setPayload] = useState<RecognitionAttemptsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
   const [isReviewPending, startReviewTransition] = useTransition();
+
+  useEffect(() => {
+    setDate(queryDate);
+    setDecision(queryDecision);
+    setReviewStatus(queryReviewStatus);
+    setConfidenceBand(queryConfidenceBand);
+    setKioskId(queryKioskId);
+  }, [queryConfidenceBand, queryDate, queryDecision, queryKioskId, queryReviewStatus]);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ date, limit: '150' });
@@ -330,5 +361,13 @@ export default function RecognitionCalibrationLab() {
         )}
       </section>
     </div>
+  );
+}
+
+export default function RecognitionCalibrationLab() {
+  return (
+    <Suspense fallback={null}>
+      <RecognitionCalibrationLabContent />
+    </Suspense>
   );
 }

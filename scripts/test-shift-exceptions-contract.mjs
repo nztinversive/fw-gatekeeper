@@ -38,6 +38,12 @@ assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment'\]\)/, 'PATCH route should restrict review actions.');
 
 assert.match(page, /fetch\(`\/api\/shift-exceptions\?date=\$\{date\}`/, 'Exceptions page should fetch the shift exceptions API.');
+assert.match(page, /useSearchParams/, 'Exceptions page must honor action-link query params.');
+assert.match(page, /searchParams\.get\('date'\)/, 'Exceptions page should initialize the exception date from query params.');
+assert.match(page, /searchParams\.get\('department'\)/, 'Exceptions page should initialize department filtering from query params.');
+assert.match(page, /searchParams\.get\('type'\)/, 'Exceptions page should initialize type filtering from query params.');
+assert.match(page, /searchParams\.get\('severity'\)/, 'Exceptions page should initialize severity filtering from query params.');
+assert.match(page, /searchParams\.get\('status'\)/, 'Exceptions page should initialize status filtering from query params.');
 assert.match(page, /Export CSV/, 'Exceptions page must provide CSV export.');
 assert.match(page, /All departments/, 'Exceptions page must provide department filtering.');
 assert.match(page, /All types/, 'Exceptions page must provide type filtering.');

@@ -23,6 +23,10 @@ assert.match(briefing, /departments/, 'Shift briefing response must include depa
 assert.match(briefing, /action_items/, 'Shift briefing response must include prioritized action items.');
 assert.match(briefing, /kiosks/, 'Shift briefing response must include kiosk trust data.');
 assert.match(briefing, /No schedule is active today/, 'Shift briefing should explain missing schedule coverage.');
+assert.match(briefing, /getCoverageActionStatus/, 'Briefing coverage actions must choose a precise worker status filter.');
+assert.match(briefing, /buildHref\("\/briefing",\s*\{\s*date,\s*department:\s*row\.department,\s*status:\s*getCoverageActionStatus\(row\)/, 'Briefing coverage actions must deep-link to date, department, and worker status filters.');
+assert.match(briefing, /buildHref\("\/exceptions",\s*\{\s*date,\s*status:\s*"open",\s*department:\s*exception\.department,\s*type:\s*exception\.type,\s*severity:\s*exception\.severity/, 'Briefing exception actions must deep-link to filtered open exception views.');
+assert.match(briefing, /encodeURIComponent/, 'Shift briefing action links must encode filter query params.');
 
 assert.match(apiRoute, /shiftBriefing\.summary/, 'GET /api/shift-briefing must call the Convex briefing query.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'Briefing reads must allow viewer portal members.');
@@ -31,6 +35,10 @@ assert.match(apiRoute, /date must use YYYY-MM-DD format/, 'Briefing route must v
 
 assert.match(page, /\/api\/shift-briefing\?date=\$\{date\}/, 'Briefing page must fetch the shift briefing API.');
 assert.match(page, /Shift <span className="text-gold">Coverage<\/span>/, 'Briefing page must render the Shift Coverage surface.');
+assert.match(page, /useSearchParams/, 'Briefing page must honor action-link query params.');
+assert.match(page, /searchParams\.get\('date'\)/, 'Briefing page should initialize the briefing date from query params.');
+assert.match(page, /searchParams\.get\('department'\)/, 'Briefing page should initialize department filtering from query params.');
+assert.match(page, /searchParams\.get\('status'\)/, 'Briefing page should initialize worker status filtering from query params.');
 assert.match(page, /Coverage by department/, 'Briefing page must show department coverage.');
 assert.match(page, /First actions/, 'Briefing page must show prioritized actions.');
 assert.match(page, /Kiosk trust/, 'Briefing page must show kiosk trust signals.');
