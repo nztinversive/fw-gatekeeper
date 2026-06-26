@@ -23,6 +23,8 @@ const checklistStyles: Record<string, string> = {
   blocked: 'bg-red-400/10 text-red-300 border-red-400/20',
 };
 
+type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+
 function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -79,10 +81,15 @@ function validDateParam(value: string | null) {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
+function canOperateCloseout(role: PortalRole | undefined) {
+  return role === 'admin' || role === 'enrollment';
+}
+
 function ShiftCloseoutPageContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftCloseoutResponse | null>(null);
   const [supervisorName, setSupervisorName] = useState('');
@@ -91,10 +98,28 @@ function ShiftCloseoutPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
+  const canOperate = canOperateCloseout(currentRole);
 
   useEffect(() => {
     setDate(queryDate);
   }, [queryDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-role', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && typeof payload?.role === 'string') {
+          setCurrentRole(payload.role);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchCloseout = useCallback(async () => {
     setLoading(true);
@@ -154,6 +179,10 @@ function ShiftCloseoutPageContent() {
   }, [payload]);
 
   function updateCloseout(action: 'save' | 'complete' | 'reopen') {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can update shift closeout.', 'error');
+      return;
+    }
     if (action === 'complete' && !canComplete) {
       toast('Add an acknowledgement note before completing with blockers.', 'error');
       return;
@@ -283,7 +312,16 @@ function ShiftCloseoutPageContent() {
             </label>
             <label className="space-y-1.5 block">
               <span className="section-label block">Supervisor</span>
-              <input value={supervisorName} onChange={(event) => setSupervisorName(event.target.value)} placeholder="Supervisor name" className="input-field" />
+              <input
+                value={supervisorName}
+                onChange={(event) => {
+                  if (!canOperate) return;
+                  setSupervisorName(event.target.value);
+                }}
+                placeholder="Supervisor name"
+                readOnly={!canOperate}
+                className="input-field"
+              />
             </label>
             {suggestedNote && !completed && !payload?.backend_unavailable && (
               <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
@@ -292,14 +330,16 @@ function ShiftCloseoutPageContent() {
                     <p className="section-label text-gold">Suggested note</p>
                     <p className="mt-2 text-sm leading-6 text-slate-300">{suggestedNote}</p>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-secondary shrink-0 text-xs"
-                    onClick={() => setNotes(suggestedNote)}
-                    disabled={suggestedNoteApplied}
-                  >
-                    {suggestedNoteApplied ? 'Applied' : 'Use note'}
-                  </button>
+                  {canOperate && (
+                    <button
+                      type="button"
+                      className="btn-secondary shrink-0 text-xs"
+                      onClick={() => setNotes(suggestedNote)}
+                      disabled={suggestedNoteApplied}
+                    >
+                      {suggestedNoteApplied ? 'Applied' : 'Use note'}
+                    </button>
+                  )}
                 </div>
                 {sourceBlockerCount > 0 && (
                   <p className="mt-3 text-xs leading-5 text-amber-200/80">
@@ -313,8 +353,12 @@ function ShiftCloseoutPageContent() {
               <textarea
                 rows={7}
                 value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Document exceptions reviewed, kiosk caveats, or follow-up needed."
+                onChange={(event) => {
+                  if (!canOperate) return;
+                  setNotes(event.target.value);
+                }}
+                placeholder={canOperate ? 'Document exceptions reviewed, kiosk caveats, or follow-up needed.' : 'Closeout notes'}
+                readOnly={!canOperate}
                 className="input-field min-h-[180px] resize-y"
               />
             </label>
@@ -323,23 +367,35 @@ function ShiftCloseoutPageContent() {
                 <input
                   type="checkbox"
                   checked={acknowledgedBlockers}
-                  onChange={(event) => setAcknowledgedBlockers(event.target.checked)}
+                  onChange={(event) => {
+                    if (!canOperate) return;
+                    setAcknowledgedBlockers(event.target.checked);
+                  }}
+                  disabled={!canOperate}
                   className="mt-1 h-4 w-4 rounded border-navy-500 bg-navy-900"
                 />
                 <span>I acknowledge the blocked closeout items and documented the reason in notes.</span>
               </label>
             )}
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn-secondary" onClick={() => updateCloseout('save')} disabled={isPending || !payload}>
-                Save notes
-              </button>
-              {completed ? (
-                <button type="button" className="btn-primary" onClick={() => updateCloseout('reopen')} disabled={isPending || !payload}>
-                  Reopen
-                </button>
+              {canOperate ? (
+                <>
+                  <button type="button" className="btn-secondary" onClick={() => updateCloseout('save')} disabled={isPending || !payload}>
+                    Save notes
+                  </button>
+                  {completed ? (
+                    <button type="button" className="btn-primary" onClick={() => updateCloseout('reopen')} disabled={isPending || !payload}>
+                      Reopen
+                    </button>
+                  ) : (
+                    <button type="button" className="btn-primary" onClick={() => updateCloseout('complete')} disabled={isPending || !payload || !canComplete}>
+                      Complete closeout
+                    </button>
+                  )}
+                </>
               ) : (
-                <button type="button" className="btn-primary" onClick={() => updateCloseout('complete')} disabled={isPending || !payload || !canComplete}>
-                  Complete closeout
+                <button type="button" className="btn-secondary" disabled>
+                  Review-only
                 </button>
               )}
             </div>
