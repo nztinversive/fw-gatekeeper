@@ -8,6 +8,7 @@ import ts from 'typescript';
 const require = createRequire(import.meta.url);
 const sourcePath = new URL('../src/lib/proactive-actions.ts', import.meta.url);
 const source = readFileSync(sourcePath, 'utf8');
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const executableSource = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.CommonJS,
@@ -27,6 +28,7 @@ new Script(executableSource, { filename: 'src/lib/proactive-actions.ts' }).runIn
 const { buildProactiveActions, PROACTIVE_ACTION_PRIORITY_RANK } = module.exports;
 
 const actionKeys = (actions) => JSON.parse(JSON.stringify(actions.map((action) => action.key)));
+const plain = (value) => JSON.parse(JSON.stringify(value));
 
 assert.deepEqual(JSON.parse(JSON.stringify(PROACTIVE_ACTION_PRIORITY_RANK)), {
   critical: 0,
@@ -35,7 +37,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(PROACTIVE_ACTION_PRIORITY_RANK)), {
   info: 3,
 }, 'Proactive action priorities must make the ranking contract explicit.');
 
-const rankedActions = buildProactiveActions({
+const mixedRiskPayload = {
   signalFailures: [
     {
       key: 'stats',
@@ -73,7 +75,9 @@ const rankedActions = buildProactiveActions({
     can_complete: false,
     summary: { open_exceptions: 3, critical_exceptions: 1, kiosk_warnings: 1 },
   },
-});
+};
+
+const rankedActions = buildProactiveActions(mixedRiskPayload);
 
 assert.deepEqual(actionKeys(rankedActions), [
   'system-health-0',
@@ -92,6 +96,7 @@ assert.equal(offlineKiosk.priority, 'critical', 'Offline kiosk warnings must be 
 assert.equal(offlineKiosk.severity, 'critical', 'Offline kiosk warnings must expose critical severity.');
 assert.equal(offlineKiosk.blocksReadiness, true, 'Offline kiosks block readiness.');
 assert.equal(offlineKiosk.blocksCloseout, true, 'Kiosk warnings should block closeout until acknowledged.');
+assert.deepEqual(plain(offlineKiosk.actionability), { access: 'operate', canOperate: true, role: null }, 'Missing currentRole should preserve the legacy operate contract.');
 assert.deepEqual(offlineKiosk.evidence.kioskCounts, { online: 1, stale: 0, offline: 1, never_synced: 0 }, 'Kiosk evidence must include fleet counts.');
 
 const invalidEnrollment = rankedActions.find((action) => action.key === 'invalid-face');
@@ -112,10 +117,67 @@ const closeout = rankedActions.find((action) => action.key === 'shift-closeout-p
 assert.equal(closeout.priority, 'closeout', 'Closeout should rank after warning actions.');
 assert.equal(closeout.severity, 'warning', 'Closeout with blockers should still show warning severity.');
 assert.equal(closeout.description, '1 closeout checklist item needs acknowledgement.');
+assert.equal(closeout.cta, 'Close shift', 'Legacy closeout CTA should remain operational when no role is supplied.');
 
 const notArrived = rankedActions.find((action) => action.key === 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
 assert.equal(notArrived.description, '2 active workers have no clock-in scans today.');
+
+const adminActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'admin' });
+assert.deepEqual(actionKeys(adminActions), actionKeys(rankedActions), 'Admin role must not change proactive action ranking.');
+assert.equal(adminActions.find((action) => action.key === 'shift-closeout-pending').cta, 'Review closeout', 'Admins should review closeout until the shift can complete.');
+assert.deepEqual(
+  plain(adminActions.find((action) => action.key === 'system-health-0').actionability),
+  { access: 'operate', canOperate: true, role: 'admin' },
+  'Admin actionability should allow operations across proactive sources.',
+);
+
+const enrollmentActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'enrollment' });
+assert.deepEqual(actionKeys(enrollmentActions), actionKeys(rankedActions), 'Enrollment role must not change proactive action ranking.');
+assert.equal(enrollmentActions.find((action) => action.key === 'shift-closeout-pending').cta, 'Review closeout', 'Enrollment users should review closeout until the shift can complete.');
+assert.deepEqual(
+  plain(enrollmentActions.find((action) => action.key === 'shift-exceptions').actionability),
+  { access: 'operate', canOperate: true, role: 'enrollment' },
+  'Enrollment users should retain exception-review actionability.',
+);
+assert.deepEqual(
+  plain(enrollmentActions.find((action) => action.key === 'invalid-face').actionability),
+  { access: 'operate', canOperate: true, role: 'enrollment' },
+  'Enrollment users should retain face-enrollment actionability.',
+);
+assert.equal(enrollmentActions.find((action) => action.key === 'invalid-face').cta, 'Enroll face', 'Enrollment users should be sent to the enrollment workflow.');
+assert.equal(enrollmentActions.find((action) => action.key === 'invalid-face').href, '/enroll', 'Enrollment users should not be sent to the admin-heavy workers page.');
+assert.equal(enrollmentActions.find((action) => action.key === 'system-health-0').cta, 'Inspect readiness', 'Enrollment users should inspect admin-only kiosk readiness instead of being sent to operate it.');
+assert.equal(enrollmentActions.find((action) => action.key === 'system-health-0').href, '/', 'Enrollment users should not be sent to the admin-only kiosk page.');
+assert.deepEqual(
+  plain(enrollmentActions.find((action) => action.key === 'system-health-0').actionability),
+  { access: 'review', canOperate: false, role: 'enrollment' },
+  'Enrollment actionability should mark kiosk actions as review-only.',
+);
+
+const viewerActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'viewer' });
+assert.deepEqual(actionKeys(viewerActions), actionKeys(rankedActions), 'Viewer role must not change proactive action ranking.');
+assert.equal(viewerActions.find((action) => action.key === 'shift-closeout-pending').cta, 'Review closeout', 'Viewers should review closeout state instead of being told to close the shift.');
+assert.equal(viewerActions.find((action) => action.key === 'shift-closeout-pending').href, '/closeout', 'Viewers can inspect closeout state on the read route.');
+assert.equal(viewerActions.find((action) => action.key === 'shift-exceptions').cta, 'Review exceptions', 'Viewers should review exceptions instead of operating them.');
+assert.equal(viewerActions.find((action) => action.key === 'invalid-face').cta, 'Inspect briefing', 'Viewers should inspect enrollment issues from a read-oriented surface.');
+assert.equal(viewerActions.find((action) => action.key === 'invalid-face').href, '/briefing', 'Viewers should not be sent to worker operations for enrollment issues.');
+assert.equal(viewerActions.find((action) => action.key === 'system-health-0').cta, 'Inspect readiness', 'Viewers should inspect kiosk readiness instead of operating it.');
+assert.equal(viewerActions.find((action) => action.key === 'system-health-0').href, '/', 'Viewers should not be sent to the admin-only kiosk page.');
+assert.deepEqual(
+  plain(viewerActions.find((action) => action.key === 'shift-closeout-pending').actionability),
+  { access: 'review', canOperate: false, role: 'viewer' },
+  'Viewer actionability should mark write workflows as review-only.',
+);
+
+const dashboardSource = read('src/app/page.tsx');
+const portalRoleRoute = read('src/app/api/portal-role/route.ts');
+const middlewareSource = read('src/middleware.ts');
+assert.match(dashboardSource, /\/api\/portal-role/, 'Dashboard should resolve role through the lightweight portal role API.');
+assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');
+assert.match(portalRoleRoute, /hasValidAdminSession/, 'Portal role API should treat legacy admin-cookie sessions as admin.');
+assert.match(portalRoleRoute, /getPortalMemberForToken/, 'Portal role API should resolve Convex portal member roles.');
+assert.match(middlewareSource, /pathname === '\/api\/portal-role' && method === 'GET'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow all active portal roles to resolve dashboard actionability.');
 
 const backendUnavailableActions = buildProactiveActions({
   shiftExceptions: {

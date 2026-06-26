@@ -2,6 +2,7 @@ export type ProactiveActionPriority = 'critical' | 'warning' | 'closeout' | 'inf
 export type ProactiveActionSeverity = 'critical' | 'warning' | 'info';
 export type ProactiveActionTone = 'red' | 'amber' | 'slate';
 export type ProactiveActionSource = 'service' | 'kiosk' | 'enrollment' | 'exceptions' | 'schedule' | 'signal' | 'closeout' | 'attendance';
+export type ProactiveActionAccess = 'operate' | 'review';
 
 export type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-exceptions' | 'shift-closeout' | string;
 
@@ -75,6 +76,13 @@ export interface BuildProactiveActionsInput {
   stats?: ProactiveStats;
   shiftExceptions?: ProactiveShiftExceptions | null;
   shiftCloseout?: ProactiveShiftCloseout | null;
+  currentRole?: 'admin' | 'enrollment' | 'viewer' | string;
+}
+
+export interface ProactiveActionActionability {
+  access: ProactiveActionAccess;
+  canOperate: boolean;
+  role: string | null;
 }
 
 export interface ProactiveAction {
@@ -91,15 +99,17 @@ export interface ProactiveAction {
   evidence: Record<string, unknown>;
   blocksReadiness: boolean;
   blocksCloseout: boolean;
+  actionability: ProactiveActionActionability;
 }
 
-type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'blocksReadiness' | 'blocksCloseout'> & {
+type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
   priority?: ProactiveActionPriority;
   severity?: ProactiveActionSeverity;
   tone?: ProactiveActionTone;
   source?: ProactiveActionSource;
   blocksReadiness?: boolean;
   blocksCloseout?: boolean;
+  actionability?: ProactiveActionActionability;
 };
 
 type RankedProactiveAction = ProactiveAction & {
@@ -133,6 +143,8 @@ const SOURCE_RANK = Object.freeze({
   closeout: 6,
   attendance: 7,
 });
+
+const ENROLLMENT_OPERATE_SOURCES = new Set<ProactiveActionSource>(['enrollment', 'exceptions', 'closeout']);
 
 function plural(count: number, singular: string, pluralValue?: string) {
   return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
@@ -185,6 +197,84 @@ function getToneForPriority(priority: ProactiveActionPriority): ProactiveActionT
   return priority === CRITICAL_PRIORITY ? 'red' : priority === WARNING_PRIORITY ? 'amber' : 'slate';
 }
 
+function normalizeRole(role: BuildProactiveActionsInput['currentRole']) {
+  if (typeof role !== 'string') return null;
+  const normalized = role.trim().toLowerCase();
+  return normalized || null;
+}
+
+function canRoleOperate(role: string | null, source: ProactiveActionSource) {
+  if (!role) return true;
+  if (role === 'admin') return true;
+  if (role === 'enrollment') return ENROLLMENT_OPERATE_SOURCES.has(source);
+  return false;
+}
+
+function getReviewHref(action: ProactiveAction) {
+  if (action.source === 'exceptions') return '/exceptions';
+  if (action.source === 'closeout') return '/closeout';
+  if (action.source === 'schedule') return '/briefing';
+  if (action.source === 'attendance') return '/briefing';
+  if (action.source === 'enrollment') return '/briefing';
+  if (action.source === 'kiosk' || action.source === 'service') return '/';
+  return action.href === '/kiosks' || action.href === '/workers' || action.href === '/schedules' ? '/' : action.href;
+}
+
+function getReviewCta(action: ProactiveAction) {
+  if (action.source === 'exceptions') return 'Review exceptions';
+  if (action.source === 'closeout') return 'Review closeout';
+  if (action.source === 'schedule') return 'Inspect briefing';
+  if (action.source === 'attendance') return 'Inspect briefing';
+  if (action.source === 'enrollment') return 'Inspect briefing';
+  if (action.source === 'kiosk' || action.source === 'service') return 'Inspect readiness';
+  return action.cta.startsWith('Open') ? action.cta.replace('Open', 'Inspect') : 'Inspect details';
+}
+
+function getOperateHref(action: ProactiveAction, role: string | null) {
+  if (role === 'enrollment' && action.source === 'enrollment') return '/enroll';
+  return action.href;
+}
+
+function getOperateCta(action: ProactiveAction, role: string | null) {
+  if (role === 'enrollment' && action.source === 'enrollment') return 'Enroll face';
+  if (
+    (role === 'admin' || role === 'enrollment') &&
+    action.key === 'shift-closeout-pending' &&
+    action.evidence?.canComplete === false
+  ) {
+    return 'Review closeout';
+  }
+  return action.cta;
+}
+
+function applyRoleActionability(actions: ProactiveAction[], role: BuildProactiveActionsInput['currentRole']) {
+  const normalizedRole = normalizeRole(role);
+  return actions.map((action) => {
+    const canOperate = canRoleOperate(normalizedRole, action.source);
+    const actionability: ProactiveActionActionability = {
+      access: canOperate ? 'operate' : 'review',
+      canOperate,
+      role: normalizedRole,
+    };
+
+    if (canOperate) {
+      return {
+        ...action,
+        href: getOperateHref(action, normalizedRole),
+        cta: getOperateCta(action, normalizedRole),
+        actionability,
+      };
+    }
+
+    return {
+      ...action,
+      href: getReviewHref(action),
+      cta: getReviewCta(action),
+      actionability,
+    };
+  });
+}
+
 function normalizeAction(action: DraftProactiveAction, index: number): RankedProactiveAction {
   const priority = action.priority || INFO_PRIORITY;
   const severity = action.severity || getSeverityForPriority(priority);
@@ -198,6 +288,11 @@ function normalizeAction(action: DraftProactiveAction, index: number): RankedPro
     source,
     blocksReadiness: Boolean(action.blocksReadiness),
     blocksCloseout: Boolean(action.blocksCloseout),
+    actionability: action.actionability || {
+      access: 'operate',
+      canOperate: true,
+      role: null,
+    },
     sort: {
       priority: PROACTIVE_ACTION_PRIORITY_RANK[priority] ?? PROACTIVE_ACTION_PRIORITY_RANK[INFO_PRIORITY],
       source: SOURCE_RANK[source] ?? 99,
@@ -468,5 +563,5 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     });
   }
 
-  return rankProactiveActions(actions);
+  return applyRoleActionability(rankProactiveActions(actions), input.currentRole);
 }

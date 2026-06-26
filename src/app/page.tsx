@@ -113,6 +113,7 @@ interface ShiftCloseoutSummary {
 }
 
 type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-exceptions' | 'shift-closeout';
+type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
 
 interface SignalFailure {
   key: SignalFailureKey;
@@ -155,6 +156,7 @@ function signalErrorMessage(label: string, error: unknown) {
 }
 
 export default function Dashboard() {
+  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null, scheduleWarning: undefined as string | undefined });
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
   const [attendanceEvents, setAttendanceEvents] = useState<AttendanceEvent[]>([]);
@@ -270,6 +272,23 @@ export default function Dashboard() {
   }, [attendanceEvents]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-role', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && typeof payload?.role === 'string') {
+          setCurrentRole(payload.role);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     fetchData();
     const interval = setInterval(() => fetchData(true), 10000);
     return () => clearInterval(interval);
@@ -295,6 +314,7 @@ export default function Dashboard() {
     stats,
     shiftExceptions,
     shiftCloseout,
+    currentRole,
   });
 
   const offlineKioskCount = systemHealth
@@ -611,6 +631,9 @@ export default function Dashboard() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`badge border text-[10px] ${priorityTone}`}>{item.priority}</span>
+                        {!item.actionability.canOperate && (
+                          <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
+                        )}
                         <p className="text-xs font-mono uppercase tracking-wider opacity-80">{item.label}</p>
                       </div>
                       <p className="mt-2 text-sm leading-5 text-slate-400">{item.description}</p>
