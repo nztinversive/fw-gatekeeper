@@ -28,6 +28,7 @@ new Script(executableSource, { filename: 'src/lib/proactive-actions.ts' }).runIn
 const {
   buildProactiveActions,
   buildProactiveShiftTrustPlan,
+  getProactiveActionEvidenceChips,
   getProactiveActionOutcomeChips,
   getProactiveActionProofLink,
   PROACTIVE_ACTION_PRIORITY_RANK,
@@ -133,6 +134,7 @@ assert.deepEqual(
     description: 'Main Entry kiosk is offline.',
     href: '/kiosks',
     cta: 'Open kiosks',
+    evidenceChips: ['1 offline kiosk'],
     proofLink: null,
     tone: 'red',
     access: 'operate',
@@ -166,6 +168,11 @@ assert.deepEqual(plain(statsSignalFailure.freshness), {
   unavailable: true,
   message: 'Dashboard stats could not refresh: upstream timeout',
 }, 'Signal failure actions must be stale and unavailable even when freshness metadata is absent.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(findAction(rankedActions, 'system-health-1'))),
+  ['Service warning'],
+  'Service warning evidence chips should not borrow kiosk fleet-count chips from the same health payload.',
+);
 
 const invalidEnrollment = findAction(rankedActions, 'invalid-face');
 assert.equal(invalidEnrollment.description, '1 worker needs re-enrollment because their face data is not kiosk-valid.');
@@ -177,6 +184,11 @@ assert.deepEqual(plain(invalidEnrollment.evidence), {
   firstWorkerId: 'w2',
   workerIds: ['w2'],
 }, 'Invalid enrollment evidence should name affected workers and the exact first handoff target.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(invalidEnrollment)),
+  ['1 worker', 'Exact worker ready'],
+  'Shared evidence chips should expose exact worker handoffs for operating enrollment actions.',
+);
 
 const missingEnrollment = findAction(rankedActions, 'missing-face');
 assert.equal(missingEnrollment.description, '1 worker is missing face data for kiosk recognition.');
@@ -260,6 +272,11 @@ assert.deepEqual(plain(closeoutProofPlan.proofLink), {
   href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct',
   label: 'Open exact source',
 }, 'Shift trust plan should expose exact closeout proof links for operating roles.');
+assert.deepEqual(
+  plain(closeoutProofPlan.evidenceChips),
+  ['1 blocker', 'Exact source ready', 'Needs acknowledgement'],
+  'Shift trust plan should carry compact evidence chips for the selected closeout action.',
+);
 const viewerCloseoutProofPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
   date: '2026-06-26',
   shiftCloseout: {
@@ -529,6 +546,11 @@ assert.equal(findAction(viewerActions, 'shift-exceptions').cta, 'Review exceptio
 assert.equal(findAction(viewerActions, 'shift-exceptions').href, '/exceptions?date=2026-06-26&status=open&severity=critical', 'Viewers should keep the exact exception filter context.');
 assert.equal(findAction(viewerActions, 'invalid-face').cta, 'Inspect briefing', 'Viewers should inspect enrollment issues from a read-oriented surface.');
 assert.equal(findAction(viewerActions, 'invalid-face').href, '/briefing?date=2026-06-26', 'Viewers should keep dated briefing context for enrollment issues.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(findAction(viewerActions, 'invalid-face'))),
+  ['1 worker', 'Worker identified'],
+  'Shared evidence chips should avoid exact-worker-ready copy when the visible enrollment action is review-only.',
+);
 assert.equal(findAction(viewerActions, 'system-health-0').cta, 'Inspect readiness', 'Viewers should inspect kiosk readiness instead of operating it.');
 assert.equal(findAction(viewerActions, 'system-health-0').href, '/briefing?date=2026-06-26', 'Viewers should keep dated briefing context for kiosk readiness.');
 assert.equal(findAction(viewerActions, 'schedule-warning').href, '/briefing?date=2026-06-26', 'Viewers should keep dated briefing context for schedule warnings.');
@@ -570,6 +592,7 @@ assert.match(dashboardSource, /buildProactiveShiftTrustPlan/, 'Dashboard should 
 assert.match(dashboardSource, /Next best action/, 'Dashboard should label the next-best action summary.');
 assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best action should reuse the selected action href.');
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
+assert.match(dashboardSource, /shiftTrustPlan\.evidenceChips\.length[\s\S]*aria-label=\{`\$\{shiftTrustPlan\.label\} evidence`\}[\s\S]*shiftTrustPlan\.evidenceChips\.map/, 'Dashboard next-best action should render the selected action evidence chips.');
 assert.match(dashboardSource, /shiftTrustPlan\.proofLink[\s\S]*href=\{shiftTrustPlan\.proofLink\.href\}[\s\S]*\{shiftTrustPlan\.proofLink\.label\}/, 'Dashboard next-best action should render exact source proof links when the selected action has proof.');
 assert.match(dashboardSource, /const opsKioskHref = canOpenAdminOps \? '\/kiosks' : `\/briefing\?date=\$\{actionDate\}`/, 'Today Ops kiosk CTA should keep non-admin users in dated briefing review context.');
 assert.match(dashboardSource, /const opsKioskCta = canOpenAdminOps \? 'Fix kiosk sync' : 'Review kiosk readiness'/, 'Today Ops kiosk CTA copy should distinguish admin operation from review mode.');
@@ -589,11 +612,11 @@ assert.match(dashboardSource, /label: 'Workers enrolled'[\s\S]*href: opsWorkerHr
 assert.match(dashboardSource, /href: warning\.includes\('Face service'\) \? opsEnrollmentHref : opsKioskHref/, 'Recent Events system warnings should reuse role-safe kiosk and enrollment review targets.');
 assert.match(dashboardSource, /href=\{signalFailureHrefs\[failure\.key\] \|\| failure\.href\}/, 'Live data gap cards should render role-safe href overrides when available.');
 assert.match(dashboardSource, /href=\{opsKioskHref\}[\s\S]*\{systemHealthCta\}/, 'System Health header CTA should reuse the role-safe kiosk review target and copy.');
-assert.match(dashboardSource, /getActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from existing action evidence.');
+assert.match(dashboardSource, /getProactiveActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from shared proactive action semantics.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Dashboard evidence chips should be labelled for assistive technology.');
-assert.match(dashboardSource, /item\.source === 'enrollment'[\s\S]*evidence\.firstWorkerId[\s\S]*item\.actionability\.canOperate && item\.href\.startsWith\('\/enroll\?worker_id='\) \? 'Exact worker ready' : 'Worker identified'/, 'Enrollment evidence chips should disclose exact worker handoffs only when the visible action can open the exact enrollment target.');
-assert.match(dashboardSource, /item\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
-assert.match(dashboardSource, /item\.source === 'closeout'[\s\S]*evidence\.firstBlockerProof[\s\S]*Exact source ready/, 'Closeout evidence chips should disclose exact closeout proof handoffs when available.');
+assert.match(source, /action\.source === 'enrollment'[\s\S]*evidence\.firstWorkerId[\s\S]*action\.actionability\.canOperate && action\.href\.startsWith\('\/enroll\?worker_id='\) \? 'Exact worker ready' : 'Worker identified'/, 'Enrollment evidence chips should disclose exact worker handoffs only when the visible action can open the exact enrollment target.');
+assert.match(source, /action\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
+assert.match(source, /action\.source === 'closeout'[\s\S]*evidence\.firstBlockerProof[\s\S]*Exact source ready/, 'Closeout evidence chips should disclose exact closeout proof handoffs when available.');
 assert.match(dashboardSource, /getProactiveActionProofLink/, 'Dashboard should derive secondary proof links from shared proactive action proof semantics.');
 assert.match(dashboardSource, /proofLink && \([\s\S]*href=\{proofLink\.href\}[\s\S]*\{proofLink\.label\}/, 'Dashboard action cards should render the secondary proof link when exact source proof exists.');
 assert.match(dashboardSource, /getProactiveActionOutcomeChips/, 'Dashboard action cards should derive outcome chips from the shared proactive action semantics.');

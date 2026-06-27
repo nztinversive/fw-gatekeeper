@@ -143,6 +143,7 @@ export interface ProactiveShiftTrustPlan {
   description: string;
   href: string;
   cta: string;
+  evidenceChips: string[];
   proofLink: ProactiveActionProofLink | null;
   tone: ProactiveActionTone;
   access: ProactiveActionAccess;
@@ -498,6 +499,65 @@ function sentenceWithPeriod(value: string) {
   return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
 }
 
+function evidenceNumber(evidence: Record<string, unknown>, key: string) {
+  const value = evidence[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function pluralChip(count: number, singular: string, pluralValue?: string) {
+  return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
+}
+
+export function getProactiveActionEvidenceChips(
+  action: Pick<ProactiveAction, 'key' | 'source' | 'evidence' | 'actionability' | 'href'>,
+) {
+  const evidence = action.evidence || {};
+  const chips: string[] = [];
+  const count = evidenceNumber(evidence, 'count');
+
+  if (action.key === 'missing-clock-outs') {
+    if (count !== null) chips.push(pluralChip(count, 'clock-out'));
+    if (evidence.firstExceptionKey) chips.push('Exact row ready');
+  } else if (action.key === 'recognition-review') {
+    if (count !== null) chips.push(pluralChip(count, 'review item'));
+    if (evidence.firstExceptionKey) chips.push('Exact row ready');
+  } else if (action.source === 'enrollment') {
+    if (count !== null) chips.push(pluralChip(count, 'worker'));
+    if (evidence.firstWorkerId) {
+      chips.push(action.actionability.canOperate && action.href.startsWith('/enroll?worker_id=') ? 'Exact worker ready' : 'Worker identified');
+    }
+  } else if (action.source === 'kiosk') {
+    const kioskCounts = evidence.kioskCounts;
+    if (kioskCounts && typeof kioskCounts === 'object') {
+      const counts = kioskCounts as Partial<Record<'offline' | 'stale' | 'never_synced', number>>;
+      if (counts.offline) chips.push(pluralChip(counts.offline, 'offline kiosk'));
+      if (counts.never_synced) chips.push(pluralChip(counts.never_synced, 'never-synced kiosk'));
+      if (counts.stale) chips.push(pluralChip(counts.stale, 'stale kiosk'));
+    }
+  } else if (action.source === 'service') {
+    if (evidence.warning) chips.push('Service warning');
+  } else if (action.source === 'exceptions') {
+    const open = evidenceNumber(evidence, 'open');
+    const critical = evidenceNumber(evidence, 'critical');
+    if (open !== null) chips.push(pluralChip(open, 'open exception'));
+    if (critical !== null) chips.push(pluralChip(critical, 'critical item', 'critical items'));
+  } else if (action.source === 'closeout') {
+    const blockerCount = evidenceNumber(evidence, 'blockerCount');
+    if (blockerCount !== null) chips.push(blockerCount > 0 ? pluralChip(blockerCount, 'blocker') : 'No blockers');
+    const firstBlockerProof = evidence.firstBlockerProof;
+    if (firstBlockerProof && typeof firstBlockerProof === 'object') {
+      const proof = firstBlockerProof as Partial<{ exact: boolean }>;
+      chips.push(proof.exact ? 'Exact source ready' : 'Source proof ready');
+    }
+    if (evidence.canComplete === false) chips.push('Needs acknowledgement');
+    if (evidence.canComplete === true) chips.push('Ready to complete');
+  } else if (action.source === 'attendance') {
+    if (count !== null) chips.push(pluralChip(count, 'missing scan'));
+  }
+
+  return chips.slice(0, 3);
+}
+
 export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): ProactiveShiftTrustPlan | null {
   const firstAction = actions[0];
   if (!firstAction) return null;
@@ -507,6 +567,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
   const staleLabel = stale ? (firstAction.freshness.lastSuccessAt ? 'Cached evidence' : 'Source unavailable') : null;
   const staleCopy = staleLabel ? ` ${staleLabel}.` : '';
   const unlocks = getPlanUnlocks(firstAction);
+  const evidenceChips = getProactiveActionEvidenceChips(firstAction);
   const proofLink = getProactiveActionProofLink(firstAction);
 
   return {
@@ -515,6 +576,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
     description: `${sentenceWithPeriod(firstAction.description)}${staleCopy}`,
     href: firstAction.href,
     cta: firstAction.cta,
+    evidenceChips,
     proofLink,
     tone: firstAction.tone,
     access: firstAction.actionability.access,

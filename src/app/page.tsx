@@ -6,8 +6,8 @@ import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
-import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
-import type { ProactiveAction, ProactiveSignalFreshness } from '@/lib/proactive-actions';
+import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionEvidenceChips, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
+import type { ProactiveSignalFreshness } from '@/lib/proactive-actions';
 
 interface WorkerWithStatus {
   id: string;
@@ -196,61 +196,6 @@ function getActionFreshnessCopy(freshness: { status: string; lastSuccessAt?: str
   if (freshness.status !== 'stale' && !freshness.failed && !freshness.unavailable) return null;
   const lastSuccess = formatFreshnessTime(freshness.lastSuccessAt);
   return lastSuccess ? `Using cached data from ${lastSuccess}` : 'Source unavailable';
-}
-
-function evidenceNumber(evidence: Record<string, unknown>, key: string) {
-  const value = evidence[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function pluralChip(count: number, singular: string, pluralValue?: string) {
-  return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
-}
-
-function getActionEvidenceChips(item: ProactiveAction) {
-  const evidence = item.evidence || {};
-  const chips: string[] = [];
-  const count = evidenceNumber(evidence, 'count');
-
-  if (item.key === 'missing-clock-outs') {
-    if (count !== null) chips.push(pluralChip(count, 'clock-out'));
-    if (evidence.firstExceptionKey) chips.push('Exact row ready');
-  } else if (item.key === 'recognition-review') {
-    if (count !== null) chips.push(pluralChip(count, 'review item'));
-    if (evidence.firstExceptionKey) chips.push('Exact row ready');
-  } else if (item.source === 'enrollment') {
-    if (count !== null) chips.push(pluralChip(count, 'worker'));
-    if (evidence.firstWorkerId) {
-      chips.push(item.actionability.canOperate && item.href.startsWith('/enroll?worker_id=') ? 'Exact worker ready' : 'Worker identified');
-    }
-  } else if (item.source === 'kiosk' || item.source === 'service') {
-    const kioskCounts = evidence.kioskCounts;
-    if (kioskCounts && typeof kioskCounts === 'object') {
-      const counts = kioskCounts as Partial<Record<'offline' | 'stale' | 'never_synced', number>>;
-      if (counts.offline) chips.push(pluralChip(counts.offline, 'offline kiosk'));
-      if (counts.never_synced) chips.push(pluralChip(counts.never_synced, 'never-synced kiosk'));
-      if (counts.stale) chips.push(pluralChip(counts.stale, 'stale kiosk'));
-    }
-  } else if (item.source === 'exceptions') {
-    const open = evidenceNumber(evidence, 'open');
-    const critical = evidenceNumber(evidence, 'critical');
-    if (open !== null) chips.push(pluralChip(open, 'open exception'));
-    if (critical !== null) chips.push(pluralChip(critical, 'critical item', 'critical items'));
-  } else if (item.source === 'closeout') {
-    const blockerCount = evidenceNumber(evidence, 'blockerCount');
-    if (blockerCount !== null) chips.push(blockerCount > 0 ? pluralChip(blockerCount, 'blocker') : 'No blockers');
-    const firstBlockerProof = evidence.firstBlockerProof;
-    if (firstBlockerProof && typeof firstBlockerProof === 'object') {
-      const proof = firstBlockerProof as Partial<{ exact: boolean }>;
-      chips.push(proof.exact ? 'Exact source ready' : 'Source proof ready');
-    }
-    if (evidence.canComplete === false) chips.push('Needs acknowledgement');
-    if (evidence.canComplete === true) chips.push('Ready to complete');
-  } else if (item.source === 'attendance') {
-    if (count !== null) chips.push(pluralChip(count, 'missing scan'));
-  }
-
-  return chips.slice(0, 3);
 }
 
 export default function Dashboard() {
@@ -798,6 +743,15 @@ export default function Dashboard() {
                 <p className="section-label text-gold">Next best action</p>
                 <h3 className="mt-1 font-display text-base font-semibold text-slate-100">{shiftTrustPlan.label}</h3>
                 <p className="mt-1 text-sm leading-5 text-slate-400">{shiftTrustPlan.description}</p>
+                {shiftTrustPlan.evidenceChips.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2" aria-label={`${shiftTrustPlan.label} evidence`}>
+                    {shiftTrustPlan.evidenceChips.map((chip) => (
+                      <span key={chip} className="rounded border border-navy-500/60 bg-navy-950/35 px-2 py-1 text-[10px] font-mono text-slate-400">
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {shiftTrustPlan.unlocks.map((unlock) => (
                     <span key={unlock} className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">
@@ -853,7 +807,7 @@ export default function Dashboard() {
                 info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
               }[item.priority];
               const actionFreshnessCopy = getActionFreshnessCopy(item.freshness);
-              const evidenceChips = getActionEvidenceChips(item);
+              const evidenceChips = getProactiveActionEvidenceChips(item);
               const outcomeChips = getProactiveActionOutcomeChips(item);
               const proofLink = getProactiveActionProofLink(item);
               return (
