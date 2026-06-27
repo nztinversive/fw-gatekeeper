@@ -170,6 +170,11 @@ assert.deepEqual(plain(statsSignalFailure.freshness), {
   message: 'Dashboard stats could not refresh: upstream timeout',
 }, 'Signal failure actions must be stale and unavailable even when freshness metadata is absent.');
 assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(statsSignalFailure)),
+  ['Stats signal'],
+  'Signal failure evidence chips should name the unavailable dashboard source.',
+);
+assert.deepEqual(
   plain(getProactiveActionEvidenceChips(findAction(rankedActions, 'system-health-1'))),
   ['Service warning'],
   'Service warning evidence chips should not borrow kiosk fleet-count chips from the same health payload.',
@@ -503,6 +508,11 @@ const unavailableTrustPlan = buildProactiveShiftTrustPlan(buildProactiveActions(
 }));
 assert.equal(unavailableTrustPlan.description, 'Kiosk and system health could not refresh: 503 Service Unavailable. Source unavailable.', 'Shift trust plan should avoid claiming cached evidence when no last success exists.');
 assert.equal(unavailableTrustPlan.staleLabel, 'Source unavailable', 'Shift trust plan should label no-cache failures as source unavailable.');
+assert.deepEqual(
+  plain(unavailableTrustPlan.evidenceChips),
+  ['Health signal'],
+  'Unavailable source trust plans should show which source signal failed.',
+);
 
 const adminActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'admin' });
 assert.deepEqual(actionKeys(adminActions), actionKeys(rankedActions), 'Admin role must not change proactive action ranking.');
@@ -555,6 +565,11 @@ assert.deepEqual(
   plain(enrollmentRosterFailure.actionability),
   { access: 'review', canOperate: false, role: 'enrollment' },
   'Enrollment users can operate exact enrollment handoffs, but not non-targeted worker-roster failures.',
+);
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(enrollmentRosterFailure)),
+  ['Roster signal'],
+  'Worker-roster source failures should name the roster signal without implying an exact worker handoff.',
 );
 assert.equal(buildProactiveShiftTrustPlan(enrollmentRosterFailureActions).label, 'Review this first: Worker roster unavailable', 'Worker-roster failure trust plans should use review-safe lead copy for enrollment users.');
 
@@ -676,8 +691,18 @@ assert.deepEqual(actionKeys(backendUnavailableActions), [
 ], 'Deployment-pending shift storage must be visible instead of looking all clear.');
 assert.equal(backendUnavailableActions[0].blocksCloseout, true, 'Unavailable exception storage blocks closeout trust.');
 assert.equal(backendUnavailableActions[0].href, '/exceptions?date=2026-06-26&status=open', 'Unavailable exception storage should still link to the dated exception view.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(backendUnavailableActions[0])),
+  ['Exception signal'],
+  'Unavailable exception storage should name the failed exception signal.',
+);
 assert.equal(backendUnavailableActions[1].description, 'Shift closeout is waiting for the Convex functions to deploy.');
 assert.equal(backendUnavailableActions[1].href, '/closeout?date=2026-06-26', 'Unavailable closeout storage should still link to the dated closeout view.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(backendUnavailableActions[1])),
+  ['Closeout signal'],
+  'Unavailable closeout storage should name the failed closeout signal.',
+);
 
 const completedCloseout = buildProactiveActions({
   workers: [],

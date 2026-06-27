@@ -515,12 +515,25 @@ function pluralChip(count: number, singular: string, pluralValue?: string) {
   return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
 }
 
+function getSignalEvidenceChip(signal: unknown) {
+  if (signal === 'workers') return 'Roster signal';
+  if (signal === 'attendance') return 'Attendance signal';
+  if (signal === 'system-health') return 'Health signal';
+  if (signal === 'shift-exceptions') return 'Exception signal';
+  if (signal === 'shift-closeout') return 'Closeout signal';
+  if (signal === 'stats') return 'Stats signal';
+  return typeof signal === 'string' && signal ? 'Signal failed' : null;
+}
+
 export function getProactiveActionEvidenceChips(
   action: Pick<ProactiveAction, 'key' | 'source' | 'evidence' | 'actionability' | 'href'>,
 ) {
   const evidence = action.evidence || {};
   const chips: string[] = [];
   const count = evidenceNumber(evidence, 'count');
+  const signalChip = getSignalEvidenceChip(evidence.signal);
+
+  if (signalChip) chips.push(signalChip);
 
   if (action.key === 'missing-clock-outs') {
     if (count !== null) chips.push(pluralChip(count, 'clock-out'));
@@ -767,6 +780,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       cta: 'Open exceptions',
       source: 'exceptions',
       evidence: {
+        signal: 'shift-exceptions',
         backendUnavailable: true,
         warning: shiftExceptions.warning || null,
         date: shiftExceptions.date || null,
@@ -888,6 +902,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         cta: 'Open closeout',
         source: 'closeout',
         evidence: {
+          signal: 'shift-closeout',
           backendUnavailable: true,
           warning: shiftCloseout.warning || null,
           date: shiftCloseout.date || null,
