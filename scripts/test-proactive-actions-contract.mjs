@@ -405,7 +405,8 @@ assert.deepEqual(
 assert.equal(findAction(enrollmentActions, 'invalid-face').cta, 'Enroll face', 'Enrollment users should be sent to the enrollment workflow.');
 assert.equal(findAction(enrollmentActions, 'invalid-face').href, '/enroll', 'Enrollment users should not be sent to the admin-heavy workers page.');
 assert.equal(findAction(enrollmentActions, 'system-health-0').cta, 'Inspect readiness', 'Enrollment users should inspect admin-only kiosk readiness instead of being sent to operate it.');
-assert.equal(findAction(enrollmentActions, 'system-health-0').href, '/', 'Enrollment users should not be sent to the admin-only kiosk page.');
+assert.equal(findAction(enrollmentActions, 'system-health-0').href, '/briefing?date=2026-06-26', 'Enrollment users should keep dated briefing context when kiosk readiness is review-only.');
+assert.equal(findAction(enrollmentActions, 'schedule-warning').href, '/briefing?date=2026-06-26', 'Enrollment users should keep dated briefing context when schedule actions are review-only.');
 assert.deepEqual(
   plain(findAction(enrollmentActions, 'system-health-0').actionability),
   { access: 'review', canOperate: false, role: 'enrollment' },
@@ -419,9 +420,10 @@ assert.equal(findAction(viewerActions, 'shift-closeout-pending').href, '/closeou
 assert.equal(findAction(viewerActions, 'shift-exceptions').cta, 'Review exceptions', 'Viewers should review exceptions instead of operating them.');
 assert.equal(findAction(viewerActions, 'shift-exceptions').href, '/exceptions?date=2026-06-26&status=open&severity=critical', 'Viewers should keep the exact exception filter context.');
 assert.equal(findAction(viewerActions, 'invalid-face').cta, 'Inspect briefing', 'Viewers should inspect enrollment issues from a read-oriented surface.');
-assert.equal(findAction(viewerActions, 'invalid-face').href, '/briefing', 'Viewers should not be sent to worker operations for enrollment issues.');
+assert.equal(findAction(viewerActions, 'invalid-face').href, '/briefing?date=2026-06-26', 'Viewers should keep dated briefing context for enrollment issues.');
 assert.equal(findAction(viewerActions, 'system-health-0').cta, 'Inspect readiness', 'Viewers should inspect kiosk readiness instead of operating it.');
-assert.equal(findAction(viewerActions, 'system-health-0').href, '/', 'Viewers should not be sent to the admin-only kiosk page.');
+assert.equal(findAction(viewerActions, 'system-health-0').href, '/briefing?date=2026-06-26', 'Viewers should keep dated briefing context for kiosk readiness.');
+assert.equal(findAction(viewerActions, 'schedule-warning').href, '/briefing?date=2026-06-26', 'Viewers should keep dated briefing context for schedule warnings.');
 assert.equal(findAction(viewerActions, 'not-arrived').cta, 'Review missing', 'Viewers should get read-safe missing-worker copy.');
 assert.equal(findAction(viewerActions, 'not-arrived').href, '/briefing?date=2026-06-26&status=missing', 'Viewer attendance actions should keep the dated missing-worker briefing filter.');
 assert.deepEqual(
@@ -431,7 +433,7 @@ assert.deepEqual(
 );
 const viewerTrustPlan = buildProactiveShiftTrustPlan(viewerActions);
 assert.equal(viewerTrustPlan.label, 'Review this first: Kiosk sync warning', 'Viewer shift trust plan should use review-safe language.');
-assert.equal(viewerTrustPlan.href, '/', 'Viewer shift trust plan should inherit the role-safe review href.');
+assert.equal(viewerTrustPlan.href, '/briefing?date=2026-06-26', 'Viewer shift trust plan should inherit the dated role-safe review href.');
 assert.equal(viewerTrustPlan.cta, 'Inspect readiness', 'Viewer shift trust plan should inherit the role-safe review CTA.');
 assert.equal(viewerTrustPlan.access, 'review', 'Viewer shift trust plan should expose review access.');
 assert.deepEqual(

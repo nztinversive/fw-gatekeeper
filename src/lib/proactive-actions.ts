@@ -353,14 +353,15 @@ function canRoleOperate(role: string | null, source: ProactiveActionSource) {
   return false;
 }
 
-function getReviewHref(action: ProactiveAction) {
+function getReviewHref(action: ProactiveAction, date: string | null) {
+  const briefingHref = buildHref('/briefing', { date });
   if (action.source === 'exceptions') return stripHrefParams(action.href, ['intent']);
   if (action.source === 'closeout') return action.href;
-  if (action.source === 'schedule') return '/briefing';
+  if (action.source === 'schedule') return briefingHref;
   if (action.source === 'attendance') return action.href;
-  if (action.source === 'enrollment') return '/briefing';
-  if (action.source === 'kiosk' || action.source === 'service') return '/';
-  return action.href === '/kiosks' || action.href === '/workers' || action.href === '/schedules' ? '/' : action.href;
+  if (action.source === 'enrollment') return briefingHref;
+  if (action.source === 'kiosk' || action.source === 'service') return briefingHref;
+  return action.href === '/kiosks' || action.href === '/workers' || action.href === '/schedules' ? briefingHref : action.href;
 }
 
 function getReviewCta(action: ProactiveAction) {
@@ -393,7 +394,7 @@ function getOperateCta(action: ProactiveAction, role: string | null) {
   return action.cta;
 }
 
-function applyRoleActionability(actions: ProactiveAction[], role: BuildProactiveActionsInput['currentRole']) {
+function applyRoleActionability(actions: ProactiveAction[], role: BuildProactiveActionsInput['currentRole'], date: string | null) {
   const normalizedRole = normalizeRole(role);
   return actions.map((action) => {
     const canOperate = canRoleOperate(normalizedRole, action.source);
@@ -414,7 +415,7 @@ function applyRoleActionability(actions: ProactiveAction[], role: BuildProactive
 
     return {
       ...action,
-      href: getReviewHref(action),
+      href: getReviewHref(action, date),
       cta: getReviewCta(action),
       actionability,
     };
@@ -857,5 +858,5 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     });
   }
 
-  return applyRoleActionability(rankProactiveActions(actions), input.currentRole);
+  return applyRoleActionability(rankProactiveActions(actions), input.currentRole, actionDate);
 }
