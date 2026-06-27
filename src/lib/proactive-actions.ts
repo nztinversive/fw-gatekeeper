@@ -597,7 +597,8 @@ export function getProactiveActionEvidenceChips(
       if (counts.stale) chips.push(pluralChip(counts.stale, 'stale kiosk'));
     }
   } else if (action.source === 'service') {
-    if (evidence.warning) chips.push('Service warning');
+    if (typeof evidence.warning === 'string' && isFaceServiceWarning(evidence.warning)) chips.push('Face service warning');
+    else if (evidence.warning) chips.push('Service warning');
   } else if (action.source === 'exceptions') {
     const open = evidenceNumber(evidence, 'open');
     const critical = evidenceNumber(evidence, 'critical');

@@ -178,8 +178,8 @@ assert.deepEqual(
 );
 assert.deepEqual(
   plain(getProactiveActionEvidenceChips(findAction(rankedActions, 'system-health-1'))),
-  ['Service warning'],
-  'Service warning evidence chips should not borrow kiosk fleet-count chips from the same health payload.',
+  ['Face service warning'],
+  'Face-service warning evidence chips should name the service source without borrowing kiosk fleet counts.',
 );
 assert.equal(findAction(rankedActions, 'system-health-1').href, '/enroll', 'Face-service warning actions should send operators to enrollment readiness instead of kiosk management.');
 assert.equal(findAction(rankedActions, 'system-health-1').cta, 'Review face service', 'Face-service warning actions should name the face-service review handoff.');
@@ -190,6 +190,11 @@ const lowercaseFaceServiceActions = buildProactiveActions({
 });
 assert.equal(findAction(lowercaseFaceServiceActions, 'system-health-0').source, 'service', 'Face-service warning classification should be case-insensitive.');
 assert.equal(findAction(lowercaseFaceServiceActions, 'system-health-0').href, '/enroll', 'Lowercase face-service warnings should keep the enrollment readiness handoff.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(findAction(lowercaseFaceServiceActions, 'system-health-0'))),
+  ['Face service warning'],
+  'Lowercase face-service warnings should still get face-service-specific evidence.',
+);
 
 const invalidEnrollment = findAction(rankedActions, 'invalid-face');
 assert.equal(invalidEnrollment.description, '1 worker needs re-enrollment because their face data is not kiosk-valid.');
