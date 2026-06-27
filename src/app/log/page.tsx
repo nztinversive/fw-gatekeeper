@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AttendanceTable, { attendanceRowId } from '@/components/AttendanceTable';
 import { AttendanceCorrection, AttendanceCorrectionsResponse, AttendanceWithWorker } from '@/lib/types';
@@ -26,6 +27,8 @@ function LogPageContent() {
   const [date, setDate] = useState(queryDate);
   const [events, setEvents] = useState<AttendanceWithWorker[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+  const hasSourceContext = Boolean(queryWorkerId || queryAttendanceId);
+  const fullDayHref = `/log?date=${encodeURIComponent(date)}`;
 
   useEffect(() => {
     setDate(queryDate);
@@ -96,6 +99,29 @@ function LogPageContent() {
           </button>
         </div>
       </div>
+
+      {hasSourceContext && (
+        <div className="glass-card mb-6 flex flex-col gap-4 border-l-4 border-gold/70 px-5 py-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="section-label text-gold">Source-linked view</div>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs font-mono text-slate-400">
+              {queryWorkerId && (
+                <span className="rounded border border-navy-500/70 bg-navy-900/60 px-2 py-1">
+                  worker {queryWorkerId}
+                </span>
+              )}
+              {queryAttendanceId && (
+                <span className="rounded border border-gold/30 bg-gold/10 px-2 py-1 text-gold">
+                  event {queryAttendanceId}
+                </span>
+              )}
+            </div>
+          </div>
+          <Link href={fullDayHref} className="btn-secondary self-start text-xs md:self-auto">
+            Full day
+          </Link>
+        </div>
+      )}
 
       <div className="glass-card overflow-hidden">
         <AttendanceTable events={events} targetAttendanceId={queryAttendanceId} />

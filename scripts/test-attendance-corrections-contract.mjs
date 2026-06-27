@@ -70,11 +70,16 @@ assert.match(exceptionsPage, /Source exception \$\{exception\.key\}/, 'Suggested
 assert.match(logPage, /Correction history/, 'Activity log must show correction history.');
 assert.match(logPage, /searchParams\.get\('worker_id'\)/, 'Activity log should honor worker-filtered source links.');
 assert.match(logPage, /searchParams\.get\('attendance_id'\)/, 'Activity log should honor exact attendance-row source links.');
+assert.match(logPage, /hasSourceContext = Boolean\(queryWorkerId \|\| queryAttendanceId\)/, 'Activity log should detect when source-link filters are active.');
+assert.match(logPage, /fullDayHref = `\/log\?date=\$\{encodeURIComponent\(date\)\}`/, 'Activity log should keep the selected date when clearing source-link filters.');
 assert.match(logPage, /attendanceParams\.set\('worker_id', queryWorkerId\)/, 'Activity log should pass worker filters to attendance reads.');
 assert.match(logPage, /correctionParams\.set\('worker_id', queryWorkerId\)/, 'Activity log should pass worker filters to correction history reads.');
 assert.match(logPage, /\/api\/attendance\?\$\{attendanceParams\.toString\(\)\}/, 'Activity log must fetch attendance with contextual query params.');
 assert.match(logPage, /\/api\/attendance-corrections\?\$\{correctionParams\.toString\(\)\}/, 'Activity log must fetch correction history with contextual query params.');
 assert.match(logPage, /document\.getElementById\(attendanceRowId\(queryAttendanceId\)\)\?\.scrollIntoView/, 'Activity log should scroll exact attendance source links to the target row.');
+assert.match(logPage, /Source-linked view/, 'Activity log should label source-linked views.');
+assert.match(logPage, /href=\{fullDayHref\}/, 'Activity log should offer a clear path back to the full-day view.');
+assert.match(logPage, />\s*Full day\s*<\/Link>/, 'Activity log should name the full-day reset action plainly.');
 assert.match(logPage, /targetAttendanceId=\{queryAttendanceId\}/, 'Activity log should pass exact attendance targets into the table.');
 assert.match(attendanceTable, /function attendanceRowId/, 'Attendance table should expose stable row ids for source links.');
 assert.match(attendanceTable, /targetAttendanceId === e\.id/, 'Attendance table should detect targeted source rows.');
