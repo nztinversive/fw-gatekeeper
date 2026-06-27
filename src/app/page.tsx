@@ -452,6 +452,7 @@ export default function Dashboard() {
   const canOpenEnrollmentOps = dashboardRole === 'admin' || dashboardRole === 'enrollment';
   const opsKioskHref = canOpenAdminOps ? '/kiosks' : `/briefing?date=${actionDate}`;
   const opsKioskCta = canOpenAdminOps ? 'Fix kiosk sync' : 'Review kiosk readiness';
+  const morningBriefHref = `/briefing?date=${actionDate}`;
   const opsEnrollmentHref = canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
   const opsWorkerHref = canOpenAdminOps ? '/workers' : canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
   const opsExceptionsHref = `/exceptions?date=${actionDate}&status=open`;
@@ -618,6 +619,9 @@ export default function Dashboard() {
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-300">{readinessCopy.description}</p>
             <div className="mt-4 flex flex-wrap gap-2">
+              <Link href={morningBriefHref} className="btn-primary inline-flex px-4 py-2 text-sm">
+                Open morning brief
+              </Link>
               <Link href={opsKioskHref} className="btn-primary inline-flex px-4 py-2 text-sm">
                 {opsKioskCta}
               </Link>
@@ -759,9 +763,12 @@ export default function Dashboard() {
             <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Today’s decisions, ranked</h2>
             <p className="mt-1 text-xs text-slate-500 font-mono">Sorted by shift risk, readiness blockers, and closeout trust</p>
           </div>
-          <span className="badge border bg-navy-900/60 text-slate-400 border-navy-600/50">
-            {actionItems.length || 'All clear'}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Link href={morningBriefHref} className="btn-secondary text-xs">Full brief</Link>
+            <span className="badge border bg-navy-900/60 text-slate-400 border-navy-600/50">
+              {actionItems.length || 'All clear'}
+            </span>
+          </div>
         </div>
 
         {shiftTrustPlan && (

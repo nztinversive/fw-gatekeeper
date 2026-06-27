@@ -761,6 +761,9 @@ assert.match(dashboardSource, /\{actionFreshnessBadge\}/, 'Dashboard action card
 assert.doesNotMatch(dashboardSource, />Stale data</, 'Dashboard action cards should not render generic stale-data badges.');
 assert.match(dashboardSource, /const opsKioskHref = canOpenAdminOps \? '\/kiosks' : `\/briefing\?date=\$\{actionDate\}`/, 'Today Ops kiosk CTA should keep non-admin users in dated briefing review context.');
 assert.match(dashboardSource, /const opsKioskCta = canOpenAdminOps \? 'Fix kiosk sync' : 'Review kiosk readiness'/, 'Today Ops kiosk CTA copy should distinguish admin operation from review mode.');
+assert.match(dashboardSource, /const morningBriefHref = `\/briefing\?date=\$\{actionDate\}`/, 'Dashboard should derive a dated Morning Readiness Brief href.');
+assert.match(dashboardSource, /href=\{morningBriefHref\}[\s\S]*Open morning brief/, 'Today Ops should link naturally to the full Morning Readiness Brief.');
+assert.match(dashboardSource, /href=\{morningBriefHref\}[\s\S]*Full brief/, 'Action Center should link to the full Morning Readiness Brief without changing action ranking.');
 assert.match(dashboardSource, /const canOpenAdminOps = dashboardRole === 'admin'/, 'Dashboard admin-only CTAs should use the review-safe dashboard role fallback.');
 assert.match(dashboardSource, /const canOpenEnrollmentOps = dashboardRole === 'admin' \|\| dashboardRole === 'enrollment'/, 'Dashboard should distinguish enrollment-capable users from review-only users after applying the safe role fallback.');
 assert.match(dashboardSource, /const opsEnrollmentHref = canOpenEnrollmentOps \? '\/enroll' : `\/briefing\?date=\$\{actionDate\}`/, 'Face-service warning links should keep review-only users in dated briefing context.');

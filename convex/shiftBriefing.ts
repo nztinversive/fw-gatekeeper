@@ -7,9 +7,23 @@ type WorkerCoverageStatus = "present" | "late" | "missing" | "clocked_out" | "st
 type DepartmentCoverageStatus = "covered" | "short" | "critical" | "unscheduled";
 type ActionPriority = "critical" | "warning" | "info";
 type KioskStatus = "online" | "stale" | "offline" | "never_synced";
+type ShiftTrustBriefStatus = "ready" | "attention" | "blocked";
+type ShiftTrustRiskCategory = "kiosk" | "enrollment" | "schedule" | "exception" | "correction" | "attendance";
+
+type ShiftTrustRisk = {
+  id: string;
+  category: ShiftTrustRiskCategory;
+  severity: ActionPriority;
+  label: string;
+  description: string;
+  count: number;
+  href: string;
+  exact: boolean;
+};
 
 const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
 const STALE_THRESHOLD_MS = 60 * 60 * 1000;
+const SUPPORTED_ENCODING_LENGTHS = new Set([128, 512]);
 
 function getDayOfWeek(dateKey: string): number {
   const [year, month, day] = dateKey.split("-").map(Number);
@@ -42,6 +56,13 @@ function parseScheduleDays(days: string): number[] {
 function normalizeText(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed || "";
+}
+
+function getEncodingStatus(encoding?: number[]) {
+  if (!encoding || encoding.length === 0) return "missing";
+  return SUPPORTED_ENCODING_LENGTHS.has(encoding.length) && encoding.every((value) => Number.isFinite(value))
+    ? "valid"
+    : "invalid";
 }
 
 function getScheduleForWorker(worker: any, schedules: any[], dayOfWeek: number) {
@@ -97,6 +118,275 @@ function getRecognitionReviewHref(date: string, exceptions: any[]) {
   });
 }
 
+function plural(count: number, singular: string, pluralValue?: string) {
+  return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
+}
+
+function getPrimaryActionSourceLabel(action: any) {
+  if (String(action.id || "").startsWith("coverage:")) return "Schedule and effective attendance";
+  if (String(action.id || "").startsWith("kiosk:")) return "Kiosk sync evidence";
+  if (String(action.id || "").startsWith("recognition:")) return "Recognition review exceptions";
+  if (String(action.id || "").startsWith("schedules:")) return "Active schedule coverage";
+  if (action.href?.startsWith("/exceptions")) return "Open shift exceptions";
+  return "Shift briefing evidence";
+}
+
+function hrefHasExactSource(href?: string | null) {
+  return Boolean(href && (href.includes("exception_key=") || href.includes("attendance_id=") || href.includes("worker_id=")));
+}
+
+function getPrimaryActionProofLabel(action: any) {
+  if (hrefHasExactSource(action.href)) return "Exact source row";
+  if (action.href?.startsWith("/exceptions")) return "Filtered exception queue";
+  if (action.href?.startsWith("/briefing")) return "Filtered briefing view";
+  if (action.href === "/kiosks") return "Kiosk trust record";
+  if (action.href === "/schedules") return "Schedule setup";
+  return "Source view";
+}
+
+function risk(
+  id: string,
+  category: ShiftTrustRiskCategory,
+  severity: ActionPriority,
+  label: string,
+  description: string,
+  count: number,
+  href: string,
+  exact = false,
+): ShiftTrustRisk {
+  return { id, category, severity, label, description, count, href, exact };
+}
+
+function buildShiftTrustBrief(input: {
+  date: string;
+  generatedAt: string;
+  summary: {
+    expected: number;
+    present: number;
+    late: number;
+    missing: number;
+    open_exceptions: number;
+    recognition_reviews: number;
+    kiosk_warnings: number;
+  };
+  actionItems: any[];
+  todaysSchedules: any[];
+  workers: any[];
+  openExceptions: any[];
+  criticalExceptions: any[];
+  missingClockOuts: any[];
+  recognitionReviews: any[];
+  kioskCounts: Record<KioskStatus, number>;
+  attendanceCorrections: any[];
+}) {
+  const invalidEnrollment = input.workers.filter((worker) => getEncodingStatus(worker.faceEncoding) === "invalid");
+  const missingEnrollment = input.workers.filter((worker) => getEncodingStatus(worker.faceEncoding) === "missing");
+  const offlineKioskWarnings = input.kioskCounts.offline + input.kioskCounts.never_synced;
+  const staleKioskWarnings = input.kioskCounts.stale;
+  const firstCriticalException = input.criticalExceptions.find((exception) => exception.key);
+  const firstMissingClockOut = input.missingClockOuts.find((exception) => exception.key);
+  const firstRecognitionReview = input.recognitionReviews.find((exception) => exception.key);
+  const firstInvalidEnrollmentWorker = invalidEnrollment.find((worker) => worker._id);
+  const firstMissingEnrollmentWorker = missingEnrollment.find((worker) => worker._id);
+
+  const readinessBlockers: ShiftTrustRisk[] = [];
+  if (input.todaysSchedules.length === 0) {
+    readinessBlockers.push(risk(
+      "schedule:none-today",
+      "schedule",
+      "warning",
+      "No active schedule today",
+      "Shift trust cannot be calculated until a schedule includes this date.",
+      1,
+      "/schedules",
+    ));
+  }
+  if (input.summary.missing > 0) {
+    readinessBlockers.push(risk(
+      "attendance:missing-arrivals",
+      "attendance",
+      "critical",
+      "Expected workers missing",
+      `${plural(input.summary.missing, "scheduled worker")} have no clock-in scan yet.`,
+      input.summary.missing,
+      buildHref("/briefing", { date: input.date, status: "missing" }),
+    ));
+  }
+  if (offlineKioskWarnings > 0) {
+    readinessBlockers.push(risk(
+      "kiosk:offline",
+      "kiosk",
+      "critical",
+      "Kiosk sync is blocking trust",
+      `${plural(offlineKioskWarnings, "kiosk")} are offline or have never synced.`,
+      offlineKioskWarnings,
+      "/kiosks",
+    ));
+  }
+  if (invalidEnrollment.length > 0) {
+    readinessBlockers.push(risk(
+      "enrollment:invalid-face-data",
+      "enrollment",
+      "critical",
+      "Invalid face data blocks clock-in confidence",
+      `${plural(invalidEnrollment.length, "worker")} need re-enrollment before kiosk recognition can be trusted.`,
+      invalidEnrollment.length,
+      buildHref("/enroll", { worker_id: firstInvalidEnrollmentWorker ? String(firstInvalidEnrollmentWorker._id) : null }),
+      Boolean(firstInvalidEnrollmentWorker?._id),
+    ));
+  }
+  if (input.criticalExceptions.length > 0) {
+    readinessBlockers.push(risk(
+      "exception:critical",
+      "exception",
+      "critical",
+      "Critical exceptions are open",
+      `${plural(input.criticalExceptions.length, "critical exception")} need supervisor review.`,
+      input.criticalExceptions.length,
+      buildHref("/exceptions", {
+        date: input.date,
+        status: "open",
+        severity: "critical",
+        exception_key: firstCriticalException?.key,
+      }),
+      Boolean(firstCriticalException?.key),
+    ));
+  }
+
+  const closeoutRisks: ShiftTrustRisk[] = [];
+  if (input.missingClockOuts.length > 0) {
+    closeoutRisks.push(risk(
+      "closeout:missing-clock-outs",
+      "attendance",
+      "warning",
+      "Missing clock-outs need review",
+      `${plural(input.missingClockOuts.length, "missing clock-out exception")} remain open.`,
+      input.missingClockOuts.length,
+      buildHref("/exceptions", {
+        date: input.date,
+        status: "open",
+        type: "missing_clock_out",
+        exception_key: firstMissingClockOut?.key,
+        intent: firstMissingClockOut?.key ? "correct" : null,
+      }),
+      Boolean(firstMissingClockOut?.key),
+    ));
+  }
+  if (input.recognitionReviews.length > 0) {
+    closeoutRisks.push(risk(
+      "closeout:recognition-reviews",
+      "exception",
+      getRecognitionReviewPriority(input.recognitionReviews),
+      "Recognition reviews remain open",
+      `${plural(input.recognitionReviews.length, "recognition review")} remain open before closeout trust is clean.`,
+      input.recognitionReviews.length,
+      getRecognitionReviewHref(input.date, input.recognitionReviews),
+      Boolean(firstRecognitionReview?.key),
+    ));
+  }
+  if (staleKioskWarnings + offlineKioskWarnings > 0) {
+    closeoutRisks.push(risk(
+      "closeout:kiosk-warnings",
+      "kiosk",
+      offlineKioskWarnings > 0 ? "critical" : "warning",
+      "Kiosk warnings affect closeout trust",
+      `${plural(staleKioskWarnings + offlineKioskWarnings, "kiosk warning")} may affect today’s attendance confidence.`,
+      staleKioskWarnings + offlineKioskWarnings,
+      "/kiosks",
+    ));
+  }
+  if (input.openExceptions.length > 0) {
+    closeoutRisks.push(risk(
+      "closeout:open-exceptions",
+      "exception",
+      input.criticalExceptions.length > 0 ? "critical" : "warning",
+      "Open exceptions need disposition",
+      `${plural(input.openExceptions.length, "open exception")} need review or acknowledgement before closeout.`,
+      input.openExceptions.length,
+      buildHref("/exceptions", { date: input.date, status: "open" }),
+    ));
+  }
+  if (input.attendanceCorrections.length > 0) {
+    closeoutRisks.push(risk(
+      "closeout:attendance-corrections",
+      "correction",
+      "info",
+      "Corrections are part of today’s audit trail",
+      `${plural(input.attendanceCorrections.length, "attendance correction")} are recorded for this shift.`,
+      input.attendanceCorrections.length,
+      buildHref("/log", { date: input.date }),
+    ));
+  }
+  if (missingEnrollment.length > 0) {
+    closeoutRisks.push(risk(
+      "closeout:missing-face-data",
+      "enrollment",
+      "warning",
+      "Enrollment gaps may cause tomorrow’s exceptions",
+      `${plural(missingEnrollment.length, "worker")} are missing face data for kiosk recognition.`,
+      missingEnrollment.length,
+      buildHref("/enroll", { worker_id: firstMissingEnrollmentWorker ? String(firstMissingEnrollmentWorker._id) : null }),
+      Boolean(firstMissingEnrollmentWorker?._id),
+    ));
+  }
+
+  const hasCriticalBlocker = readinessBlockers.some((item) => item.severity === "critical");
+  const readinessStatus: ShiftTrustBriefStatus = hasCriticalBlocker
+    ? "blocked"
+    : readinessBlockers.length > 0 || closeoutRisks.some((item) => item.severity !== "info") || input.summary.late > 0
+      ? "attention"
+      : "ready";
+  const statusLead = readinessStatus === "ready"
+    ? "Morning readiness is ready"
+    : readinessStatus === "blocked"
+      ? "Morning readiness is blocked"
+      : "Morning readiness needs attention";
+  const summarySentence = `${statusLead}: ${input.summary.present}/${input.summary.expected} expected workers are present, ${input.summary.late} late, ${input.summary.missing} missing, ${input.summary.open_exceptions} open exceptions, and ${input.summary.kiosk_warnings} kiosk warnings.`;
+  const primaryAction = input.actionItems[0]
+    ? {
+        ...input.actionItems[0],
+        cta: input.actionItems[0].priority === "critical" ? "Open first action" : "Review first action",
+        source_label: getPrimaryActionSourceLabel(input.actionItems[0]),
+        proof_label: getPrimaryActionProofLabel(input.actionItems[0]),
+        exact: hrefHasExactSource(input.actionItems[0].href),
+      }
+    : null;
+
+  return {
+    readiness_status: readinessStatus,
+    summary_sentence: summarySentence,
+    primary_action: primaryAction,
+    readiness_blockers: readinessBlockers,
+    closeout_risks: closeoutRisks,
+    source_counts: {
+      expected: input.summary.expected,
+      present: input.summary.present,
+      late: input.summary.late,
+      missing: input.summary.missing,
+      open_exceptions: input.summary.open_exceptions,
+      critical_exceptions: input.criticalExceptions.length,
+      recognition_reviews: input.recognitionReviews.length,
+      missing_clock_outs: input.missingClockOuts.length,
+      corrections: input.attendanceCorrections.length,
+      kiosk_warnings: input.summary.kiosk_warnings,
+    },
+    generated_at: input.generatedAt,
+    freshness: {
+      label: "Generated from current briefing evidence",
+      generated_at: input.generatedAt,
+    },
+    source_labels: [
+      "Active workers",
+      "Active schedules",
+      "Effective attendance",
+      "Kiosk sync records",
+      "Open shift exceptions",
+      "Attendance corrections",
+      "Ranked briefing actions",
+    ],
+  };
+}
+
 function buildHref(path: string, params: Record<string, string | null | undefined>) {
   const query = Object.entries(params)
     .filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -120,7 +410,7 @@ function getWorkerStatus(input: {
 
 export async function buildShiftBriefing(ctx: any, date: string) {
     const dayOfWeek = getDayOfWeek(date);
-    const [workers, schedules, attendance, kiosks, exceptions] = await Promise.all([
+    const [workers, schedules, attendance, kiosks, exceptions, attendanceCorrections] = await Promise.all([
       ctx.db
         .query("workers")
         .withIndex("by_active", (q: any) => q.eq("active", true))
@@ -135,7 +425,11 @@ export async function buildShiftBriefing(ctx: any, date: string) {
         .withIndex("by_active", (q: any) => q.eq("active", true))
         .collect(),
       buildShiftExceptions(ctx, date),
-    ]) as [any[], any[], any[], any[], any[]];
+      ctx.db
+        .query("attendanceCorrections")
+        .withIndex("by_date", (q: any) => q.eq("date", date))
+        .collect(),
+    ]) as [any[], any[], any[], any[], any[], any[]];
 
     const todaysSchedules = schedules.filter((schedule) => parseScheduleDays(schedule.days).includes(dayOfWeek));
     const eventsByWorker = new Map<string, any[]>();
@@ -250,6 +544,8 @@ export async function buildShiftBriefing(ctx: any, date: string) {
 
     const openExceptions = exceptions.filter((exception) => exception.status === "open");
     const recognitionReviews = openExceptions.filter((exception) => exception.type === "recognition_review");
+    const criticalExceptions = openExceptions.filter((exception) => exception.severity === "critical");
+    const missingClockOuts = openExceptions.filter((exception) => exception.type === "missing_clock_out");
     const exceptionActions = openExceptions.filter((exception) => exception.type !== "recognition_review");
     const actionItems = [
       ...departmentRows
@@ -308,22 +604,38 @@ export async function buildShiftBriefing(ctx: any, date: string) {
           }]
         : []),
     ].sort((a, b) => actionRank(a.priority) - actionRank(b.priority) || a.label.localeCompare(b.label));
+    const generatedAt = new Date().toISOString();
+    const summary = {
+      expected,
+      present,
+      late,
+      missing,
+      clocked_out: clockedOut,
+      departments: departmentRows.length,
+      open_exceptions: openExceptions.length,
+      recognition_reviews: recognitionReviews.length,
+      critical_actions: actionItems.filter((item) => item.priority === "critical").length,
+      kiosk_warnings: kioskCounts.stale + kioskCounts.offline + kioskCounts.never_synced,
+    };
+    const shiftTrustBrief = buildShiftTrustBrief({
+      date,
+      generatedAt,
+      summary,
+      actionItems,
+      todaysSchedules,
+      workers,
+      openExceptions,
+      criticalExceptions,
+      missingClockOuts,
+      recognitionReviews,
+      kioskCounts,
+      attendanceCorrections,
+    });
 
     return {
       date,
-      generated_at: new Date().toISOString(),
-      summary: {
-        expected,
-        present,
-        late,
-        missing,
-        clocked_out: clockedOut,
-        departments: departmentRows.length,
-        open_exceptions: openExceptions.length,
-        recognition_reviews: recognitionReviews.length,
-        critical_actions: actionItems.filter((item) => item.priority === "critical").length,
-        kiosk_warnings: kioskCounts.stale + kioskCounts.offline + kioskCounts.never_synced,
-      },
+      generated_at: generatedAt,
+      summary,
       departments: departmentRows,
       workers: workerRows,
       action_items: actionItems,
@@ -336,6 +648,7 @@ export async function buildShiftBriefing(ctx: any, date: string) {
         active_today: todaysSchedules.length,
         total_active: schedules.length,
       },
+      shift_trust_brief: shiftTrustBrief,
     };
 }
 

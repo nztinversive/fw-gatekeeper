@@ -18,9 +18,10 @@ function isMissingConvexFunction(error: unknown) {
 }
 
 function emptyResponse(date: string) {
+  const generatedAt = new Date().toISOString();
   return {
     date,
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     summary: {
       expected: 0,
       present: 0,
@@ -42,6 +43,39 @@ function emptyResponse(date: string) {
       rows: [],
     },
     schedules: { active_today: 0, total_active: 0 },
+    shift_trust_brief: {
+      readiness_status: 'attention',
+      summary_sentence: `Morning readiness needs attention: 0/0 expected workers are present, 0 late, 0 missing, 0 open exceptions, and 0 kiosk warnings.`,
+      primary_action: null,
+      readiness_blockers: [],
+      closeout_risks: [],
+      source_counts: {
+        expected: 0,
+        present: 0,
+        late: 0,
+        missing: 0,
+        open_exceptions: 0,
+        critical_exceptions: 0,
+        recognition_reviews: 0,
+        missing_clock_outs: 0,
+        corrections: 0,
+        kiosk_warnings: 0,
+      },
+      generated_at: generatedAt,
+      freshness: {
+        label: 'Generated from deployment fallback evidence',
+        generated_at: generatedAt,
+      },
+      source_labels: [
+        'Active workers',
+        'Active schedules',
+        'Effective attendance',
+        'Kiosk sync records',
+        'Open shift exceptions',
+        'Attendance corrections',
+        'Ranked briefing actions',
+      ],
+    },
     backend_unavailable: true,
     warning: 'Shift briefing is waiting for the Convex functions to deploy.',
   };
