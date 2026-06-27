@@ -479,7 +479,14 @@ export default function Dashboard() {
   const opsKioskHref = canOpenAdminOps ? '/kiosks' : `/briefing?date=${actionDate}`;
   const opsKioskCta = canOpenAdminOps ? 'Fix kiosk sync' : 'Review kiosk readiness';
   const opsEnrollmentHref = canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
+  const opsWorkerHref = canOpenAdminOps ? '/workers' : canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
   const opsExceptionsHref = `/exceptions?date=${actionDate}&status=open`;
+  const systemHealthCta = canOpenAdminOps ? 'Manage kiosks' : 'Review readiness';
+  const rosterFailureHref = canOpenAdminOps ? '/workers' : `/briefing?date=${actionDate}`;
+  const signalFailureHrefs: Partial<Record<SignalFailureKey, string>> = {
+    workers: rosterFailureHref,
+    'system-health': opsKioskHref,
+  };
 
   const offlineKioskCount = systemHealth
     ? systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced
@@ -531,9 +538,9 @@ export default function Dashboard() {
 
   const readinessChecks = [
     { label: 'Portal', value: systemHealth ? 'Online' : 'Unknown', status: systemHealth ? 'online' as HealthStatus : 'offline' as HealthStatus, href: '/' },
-    { label: 'Face service', value: systemHealth ? healthLabel(systemHealth.face_service.status) : 'Unknown', status: systemHealth?.face_service.status || 'offline' as HealthStatus, href: '/enroll' },
+    { label: 'Face service', value: systemHealth ? healthLabel(systemHealth.face_service.status) : 'Unknown', status: systemHealth?.face_service.status || 'offline' as HealthStatus, href: opsEnrollmentHref },
     { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: opsKioskHref },
-    { label: 'Workers enrolled', value: systemHealth ? `${systemHealth.sync.ready_worker_count} of ${stats.totalWorkers} enrolled` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length} of ${stats.totalWorkers} enrolled`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/workers' },
+    { label: 'Workers enrolled', value: systemHealth ? `${systemHealth.sync.ready_worker_count} of ${stats.totalWorkers} enrolled` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length} of ${stats.totalWorkers} enrolled`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: opsWorkerHref },
     { label: 'Exceptions', value: shiftExceptions ? `${shiftExceptions.summary.open} open exceptions` : 'Unknown', status: shiftExceptions?.summary.critical ? 'offline' as HealthStatus : shiftExceptions?.summary.open ? 'stale' as HealthStatus : 'online' as HealthStatus, href: `/exceptions?date=${actionDate}&status=open` },
   ];
 
@@ -610,7 +617,7 @@ export default function Dashboard() {
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[520px]">
               {signalFailures.map((failure) => (
-                <Link key={failure.key} href={failure.href} className="rounded-xl border border-amber-400/20 bg-navy-950/35 px-3 py-2 text-sm text-amber-100 hover:border-gold/35 transition-colors">
+                <Link key={failure.key} href={signalFailureHrefs[failure.key] || failure.href} className="rounded-xl border border-amber-400/20 bg-navy-950/35 px-3 py-2 text-sm text-amber-100 hover:border-gold/35 transition-colors">
                   <span className="block font-display font-semibold">{failure.label}</span>
                   <span className="mt-1 block text-xs leading-5 text-amber-100/65">{failure.message}</span>
                 </Link>
@@ -693,7 +700,7 @@ export default function Dashboard() {
               <p className="mt-1 text-xs text-amber-300 font-mono">{systemHealthStaleCopy}</p>
             )}
           </div>
-          <Link href="/kiosks" className="btn-secondary text-xs">Manage kiosks</Link>
+          <Link href={opsKioskHref} className="btn-secondary text-xs">{systemHealthCta}</Link>
         </div>
 
         {systemHealth ? (
