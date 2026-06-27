@@ -116,7 +116,16 @@ interface ShiftCloseoutSummary {
     critical_exceptions: number;
     kiosk_warnings: number;
   };
-  blockers: Array<{ id: string; label: string }>;
+  blockers: Array<{
+    id: string;
+    label: string;
+    proof?: {
+      label: string;
+      count: number;
+      href: string;
+      exact: boolean;
+    };
+  }>;
   can_complete: boolean;
 }
 
@@ -227,6 +236,11 @@ function getActionEvidenceChips(item: ProactiveAction) {
   } else if (item.source === 'closeout') {
     const blockerCount = evidenceNumber(evidence, 'blockerCount');
     if (blockerCount !== null) chips.push(blockerCount > 0 ? pluralChip(blockerCount, 'blocker') : 'No blockers');
+    const firstBlockerProof = evidence.firstBlockerProof;
+    if (firstBlockerProof && typeof firstBlockerProof === 'object') {
+      const proof = firstBlockerProof as Partial<{ exact: boolean }>;
+      chips.push(proof.exact ? 'Exact source ready' : 'Source proof ready');
+    }
     if (evidence.canComplete === false) chips.push('Needs acknowledgement');
     if (evidence.canComplete === true) chips.push('Ready to complete');
   } else if (item.source === 'attendance') {

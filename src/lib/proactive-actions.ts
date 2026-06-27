@@ -88,7 +88,16 @@ export interface ProactiveShiftCloseout {
     completed_at?: string | null;
   } | null;
   summary?: Record<string, unknown>;
-  blockers?: Array<{ id?: string; label?: string }>;
+  blockers?: Array<{
+    id?: string;
+    label?: string;
+    proof?: {
+      label?: string;
+      count?: number;
+      href?: string;
+      exact?: boolean;
+    };
+  }>;
   can_complete?: boolean;
 }
 
@@ -811,6 +820,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       });
     } else {
       const blockerCount = shiftCloseout?.blockers?.length || 0;
+      const firstBlocker = shiftCloseout?.blockers?.[0] || null;
       actions.push({
         key: 'shift-closeout-pending',
         priority: CLOSEOUT_PRIORITY,
@@ -826,6 +836,8 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         evidence: {
           blockerCount,
           canComplete: Boolean(shiftCloseout?.can_complete),
+          firstBlockerLabel: firstBlocker?.label || null,
+          firstBlockerProof: firstBlocker?.proof || null,
           summary: shiftCloseout?.summary || null,
         },
         freshness: getFreshness(signalFreshness, ['shift-closeout', 'closeout']),

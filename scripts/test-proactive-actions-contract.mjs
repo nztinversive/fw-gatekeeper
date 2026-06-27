@@ -94,7 +94,16 @@ const mixedRiskPayload = {
   shiftCloseout: {
     date: '2026-06-26',
     closeout: null,
-    blockers: [{ id: 'critical-exceptions', label: 'Critical exceptions' }],
+    blockers: [{
+      id: 'critical-exceptions',
+      label: 'Critical exceptions',
+      proof: {
+        label: 'open critical exceptions',
+        count: 1,
+        href: '/exceptions?date=2026-06-26&status=open&severity=critical&exception_key=2026-06-26%3Acritical%3Aw2',
+        exact: true,
+      },
+    }],
     can_complete: false,
     summary: { open_exceptions: 3, critical_exceptions: 1, kiosk_warnings: 1 },
   },
@@ -177,6 +186,13 @@ assert.equal(closeout.severity, 'warning', 'Closeout with blockers should still 
 assert.equal(closeout.description, '1 closeout checklist item needs acknowledgement.');
 assert.equal(closeout.cta, 'Close shift', 'Legacy closeout CTA should remain operational when no role is supplied.');
 assert.equal(closeout.href, '/closeout?date=2026-06-26', 'Closeout actions should preserve the selected date.');
+assert.equal(closeout.evidence.firstBlockerLabel, 'Critical exceptions', 'Closeout evidence should preserve the first blocker label.');
+assert.deepEqual(plain(closeout.evidence.firstBlockerProof), {
+  label: 'open critical exceptions',
+  count: 1,
+  href: '/exceptions?date=2026-06-26&status=open&severity=critical&exception_key=2026-06-26%3Acritical%3Aw2',
+  exact: true,
+}, 'Closeout evidence should preserve first blocker proof without rerouting the action away from closeout.');
 
 const notArrived = findAction(rankedActions, 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
@@ -463,6 +479,7 @@ assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action
 assert.match(dashboardSource, /getActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from existing action evidence.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Dashboard evidence chips should be labelled for assistive technology.');
 assert.match(dashboardSource, /item\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
+assert.match(dashboardSource, /item\.source === 'closeout'[\s\S]*evidence\.firstBlockerProof[\s\S]*Exact source ready/, 'Closeout evidence chips should disclose exact closeout proof handoffs when available.');
 assert.match(dashboardSource, /getProactiveActionOutcomeChips/, 'Dashboard action cards should derive outcome chips from the shared proactive action semantics.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} outcomes`\}/, 'Dashboard outcome chips should be labelled for assistive technology.');
 assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');
