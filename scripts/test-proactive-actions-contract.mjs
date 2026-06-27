@@ -769,6 +769,8 @@ assert.match(dashboardSource, /label: 'Face service'[\s\S]*href: opsEnrollmentHr
 assert.match(dashboardSource, /label: 'Kiosks online'[\s\S]*href: opsKioskHref/, 'Today Ops kiosk readiness tile should use the same role-safe kiosk review target.');
 assert.match(dashboardSource, /label: 'Workers enrolled'[\s\S]*href: opsWorkerHref/, 'Today Ops worker-readiness tile should use the role-safe worker/enrollment/review target.');
 assert.match(dashboardSource, /function isFaceServiceWarning\(warning: string\)[\s\S]*toLowerCase\(\)\.includes\('face service'\)/, 'Dashboard face-service warning classification should be case-insensitive.');
+assert.match(dashboardSource, /function isCriticalSystemWarning\(warning: string\)[\s\S]*normalized\.includes\('offline'\)[\s\S]*normalized\.includes\('unavailable'\)/, 'Dashboard system-warning severity should use case-insensitive critical warning semantics.');
+assert.match(dashboardSource, /tone: isCriticalSystemWarning\(warning\) \? 'red' as const : 'amber' as const/, 'Recent Events system warning tone should reuse critical warning semantics.');
 assert.match(dashboardSource, /const faceServiceWarning = isFaceServiceWarning\(warning\)[\s\S]*href: faceServiceWarning \? opsEnrollmentHref : opsKioskHref/, 'Recent Events system warnings should reuse role-safe kiosk and enrollment review targets.');
 assert.match(dashboardSource, /href=\{signalFailureHrefs\[failure\.key\] \|\| failure\.href\}/, 'Live data gap cards should render role-safe href overrides when available.');
 assert.match(dashboardSource, /href=\{opsKioskHref\}[\s\S]*\{systemHealthCta\}/, 'System Health header CTA should reuse the role-safe kiosk review target and copy.');

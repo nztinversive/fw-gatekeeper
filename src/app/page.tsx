@@ -177,6 +177,16 @@ function isFaceServiceWarning(warning: string) {
   return warning.toLowerCase().includes('face service');
 }
 
+function isCriticalSystemWarning(warning: string) {
+  const normalized = warning.toLowerCase();
+  return (
+    normalized.includes('offline') ||
+    normalized.includes('never synced') ||
+    normalized.includes('not ready') ||
+    normalized.includes('unavailable')
+  );
+}
+
 function formatFreshnessTime(value: string | null | undefined) {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
@@ -513,7 +523,7 @@ export default function Dashboard() {
       const faceServiceWarning = isFaceServiceWarning(warning);
       return {
         id: `warning-${index}`,
-        tone: warning.includes('offline') || warning.includes('never synced') ? 'red' as const : 'amber' as const,
+        tone: isCriticalSystemWarning(warning) ? 'red' as const : 'amber' as const,
         source: 'system-warning' as const,
         label: faceServiceWarning ? 'System warning' : 'Kiosk timeline signal',
         title: faceServiceWarning ? 'Face service needs attention' : 'Kiosk sync needs attention',
