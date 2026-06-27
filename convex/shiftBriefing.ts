@@ -186,6 +186,8 @@ function buildShiftTrustBrief(input: {
   const firstCriticalException = input.criticalExceptions.find((exception) => exception.key);
   const firstMissingClockOut = input.missingClockOuts.find((exception) => exception.key);
   const firstRecognitionReview = input.recognitionReviews.find((exception) => exception.key);
+  const firstInvalidEnrollmentWorker = invalidEnrollment.find((worker) => worker._id);
+  const firstMissingEnrollmentWorker = missingEnrollment.find((worker) => worker._id);
 
   const readinessBlockers: ShiftTrustRisk[] = [];
   if (input.todaysSchedules.length === 0) {
@@ -229,7 +231,8 @@ function buildShiftTrustBrief(input: {
       "Invalid face data blocks clock-in confidence",
       `${plural(invalidEnrollment.length, "worker")} need re-enrollment before kiosk recognition can be trusted.`,
       invalidEnrollment.length,
-      "/enroll",
+      buildHref("/enroll", { worker_id: firstInvalidEnrollmentWorker ? String(firstInvalidEnrollmentWorker._id) : null }),
+      Boolean(firstInvalidEnrollmentWorker?._id),
     ));
   }
   if (input.criticalExceptions.length > 0) {
@@ -322,7 +325,8 @@ function buildShiftTrustBrief(input: {
       "Enrollment gaps may cause tomorrow’s exceptions",
       `${plural(missingEnrollment.length, "worker")} are missing face data for kiosk recognition.`,
       missingEnrollment.length,
-      "/enroll",
+      buildHref("/enroll", { worker_id: firstMissingEnrollmentWorker ? String(firstMissingEnrollmentWorker._id) : null }),
+      Boolean(firstMissingEnrollmentWorker?._id),
     ));
   }
 

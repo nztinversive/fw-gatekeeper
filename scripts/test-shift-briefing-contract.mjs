@@ -30,6 +30,10 @@ assert.match(briefing, /readiness_blockers:\s*readinessBlockers/, 'Shift trust b
 assert.match(briefing, /closeout_risks:\s*closeoutRisks/, 'Shift trust brief must expose closeout risks.');
 assert.match(briefing, /source_counts:\s*\{[\s\S]*critical_exceptions:[\s\S]*missing_clock_outs:[\s\S]*corrections:[\s\S]*kiosk_warnings:/, 'Shift trust brief source counts should include exceptions, clock-outs, corrections, and kiosk warnings.');
 assert.match(briefing, /ctx\.db[\s\S]*\.query\("attendanceCorrections"\)[\s\S]*\.withIndex\("by_date"/, 'Shift trust brief should count existing audited attendance corrections without rewriting kiosk evidence.');
+assert.match(briefing, /firstInvalidEnrollmentWorker = invalidEnrollment\.find\(\(worker\) => worker\._id\)/, 'Shift trust brief should identify the first invalid-enrollment worker.');
+assert.match(briefing, /buildHref\("\/enroll", \{ worker_id: firstInvalidEnrollmentWorker \? String\(firstInvalidEnrollmentWorker\._id\) : null \}\)/, 'Invalid enrollment readiness blockers should deep-link to the affected worker enrollment flow.');
+assert.match(briefing, /firstMissingEnrollmentWorker = missingEnrollment\.find\(\(worker\) => worker\._id\)/, 'Shift trust brief should identify the first missing-enrollment worker.');
+assert.match(briefing, /buildHref\("\/enroll", \{ worker_id: firstMissingEnrollmentWorker \? String\(firstMissingEnrollmentWorker\._id\) : null \}\)/, 'Missing enrollment closeout risks should deep-link to the affected worker enrollment flow.');
 assert.match(briefing, /readinessStatus: ShiftTrustBriefStatus = hasCriticalBlocker[\s\S]*\? "blocked"[\s\S]*\? "attention"[\s\S]*: "ready"/, 'Shift trust brief readiness status must be deterministic.');
 assert.match(briefing, /source_labels:\s*\[[\s\S]*"Effective attendance"[\s\S]*"Kiosk sync records"[\s\S]*"Attendance corrections"[\s\S]*"Ranked briefing actions"/, 'Shift trust brief should label the deterministic evidence sources.');
 assert.match(briefing, /No schedule is active today/, 'Shift briefing should explain missing schedule coverage.');
