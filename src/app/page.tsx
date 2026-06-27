@@ -474,6 +474,10 @@ export default function Dashboard() {
     currentRole,
   });
   const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
+  const canOpenAdminOps = currentRole === 'admin';
+  const opsKioskHref = canOpenAdminOps ? '/kiosks' : `/briefing?date=${actionDate}`;
+  const opsKioskCta = canOpenAdminOps ? 'Fix kiosk sync' : 'Review kiosk readiness';
+  const opsExceptionsHref = `/exceptions?date=${actionDate}&status=open`;
 
   const offlineKioskCount = systemHealth
     ? systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced
@@ -526,7 +530,7 @@ export default function Dashboard() {
   const readinessChecks = [
     { label: 'Portal', value: systemHealth ? 'Online' : 'Unknown', status: systemHealth ? 'online' as HealthStatus : 'offline' as HealthStatus, href: '/' },
     { label: 'Face service', value: systemHealth ? healthLabel(systemHealth.face_service.status) : 'Unknown', status: systemHealth?.face_service.status || 'offline' as HealthStatus, href: '/enroll' },
-    { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/kiosks' },
+    { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: opsKioskHref },
     { label: 'Workers enrolled', value: systemHealth ? `${systemHealth.sync.ready_worker_count} of ${stats.totalWorkers} enrolled` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length} of ${stats.totalWorkers} enrolled`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: '/workers' },
     { label: 'Exceptions', value: shiftExceptions ? `${shiftExceptions.summary.open} open exceptions` : 'Unknown', status: shiftExceptions?.summary.critical ? 'offline' as HealthStatus : shiftExceptions?.summary.open ? 'stale' as HealthStatus : 'online' as HealthStatus, href: `/exceptions?date=${actionDate}&status=open` },
   ];
@@ -628,10 +632,10 @@ export default function Dashboard() {
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-300">{readinessCopy.description}</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link href="/kiosks" className="btn-primary inline-flex px-4 py-2 text-sm">
-                Fix kiosk sync
+              <Link href={opsKioskHref} className="btn-primary inline-flex px-4 py-2 text-sm">
+                {opsKioskCta}
               </Link>
-              <Link href="/exceptions" className="btn-secondary inline-flex px-4 py-2 text-sm">
+              <Link href={opsExceptionsHref} className="btn-secondary inline-flex px-4 py-2 text-sm">
                 Review exceptions
               </Link>
             </div>
