@@ -258,6 +258,10 @@ function isCriticalSystemWarning(warning: string) {
   );
 }
 
+function isFaceServiceWarning(warning: string) {
+  return String(warning).toLowerCase().includes('face service');
+}
+
 function getSignalPriority(failure: ProactiveSignalFailure): ProactiveActionPriority {
   return failure?.key === 'system-health' || failure?.key === 'workers' ? CRITICAL_PRIORITY : WARNING_PRIORITY;
 }
@@ -773,7 +777,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
 
   for (const [index, warning] of (systemHealth?.warnings || []).entries()) {
     const critical = isCriticalSystemWarning(warning);
-    const source = String(warning).includes('Face service') ? 'service' : 'kiosk';
+    const source = isFaceServiceWarning(warning) ? 'service' : 'kiosk';
     actions.push({
       key: `system-health-${index}`,
       priority: critical ? CRITICAL_PRIORITY : WARNING_PRIORITY,

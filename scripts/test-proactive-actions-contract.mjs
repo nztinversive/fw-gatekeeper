@@ -183,6 +183,13 @@ assert.deepEqual(
 );
 assert.equal(findAction(rankedActions, 'system-health-1').href, '/enroll', 'Face-service warning actions should send operators to enrollment readiness instead of kiosk management.');
 assert.equal(findAction(rankedActions, 'system-health-1').cta, 'Review face service', 'Face-service warning actions should name the face-service review handoff.');
+const lowercaseFaceServiceActions = buildProactiveActions({
+  systemHealth: {
+    warnings: ['face service model is unavailable'],
+  },
+});
+assert.equal(findAction(lowercaseFaceServiceActions, 'system-health-0').source, 'service', 'Face-service warning classification should be case-insensitive.');
+assert.equal(findAction(lowercaseFaceServiceActions, 'system-health-0').href, '/enroll', 'Lowercase face-service warnings should keep the enrollment readiness handoff.');
 
 const invalidEnrollment = findAction(rankedActions, 'invalid-face');
 assert.equal(invalidEnrollment.description, '1 worker needs re-enrollment because their face data is not kiosk-valid.');
@@ -761,7 +768,8 @@ assert.match(dashboardSource, /href=\{opsExceptionsHref\}[\s\S]*Review exception
 assert.match(dashboardSource, /label: 'Face service'[\s\S]*href: opsEnrollmentHref/, 'Today Ops face-service readiness tile should use the role-safe enrollment review target.');
 assert.match(dashboardSource, /label: 'Kiosks online'[\s\S]*href: opsKioskHref/, 'Today Ops kiosk readiness tile should use the same role-safe kiosk review target.');
 assert.match(dashboardSource, /label: 'Workers enrolled'[\s\S]*href: opsWorkerHref/, 'Today Ops worker-readiness tile should use the role-safe worker/enrollment/review target.');
-assert.match(dashboardSource, /href: warning\.includes\('Face service'\) \? opsEnrollmentHref : opsKioskHref/, 'Recent Events system warnings should reuse role-safe kiosk and enrollment review targets.');
+assert.match(dashboardSource, /function isFaceServiceWarning\(warning: string\)[\s\S]*toLowerCase\(\)\.includes\('face service'\)/, 'Dashboard face-service warning classification should be case-insensitive.');
+assert.match(dashboardSource, /const faceServiceWarning = isFaceServiceWarning\(warning\)[\s\S]*href: faceServiceWarning \? opsEnrollmentHref : opsKioskHref/, 'Recent Events system warnings should reuse role-safe kiosk and enrollment review targets.');
 assert.match(dashboardSource, /href=\{signalFailureHrefs\[failure\.key\] \|\| failure\.href\}/, 'Live data gap cards should render role-safe href overrides when available.');
 assert.match(dashboardSource, /href=\{opsKioskHref\}[\s\S]*\{systemHealthCta\}/, 'System Health header CTA should reuse the role-safe kiosk review target and copy.');
 assert.match(dashboardSource, /getProactiveActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from shared proactive action semantics.');

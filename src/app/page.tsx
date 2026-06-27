@@ -173,6 +173,10 @@ function signalErrorMessage(label: string, error: unknown) {
   return `${label} could not refresh: ${detail}`;
 }
 
+function isFaceServiceWarning(warning: string) {
+  return warning.toLowerCase().includes('face service');
+}
+
 function formatFreshnessTime(value: string | null | undefined) {
   if (!value) return null;
   const timestamp = new Date(value).getTime();
@@ -505,16 +509,19 @@ export default function Dashboard() {
   ];
 
   const recentEvents: RecentEvent[] = [
-    ...(systemHealth?.warnings || []).map((warning, index) => ({
-      id: `warning-${index}`,
-      tone: warning.includes('offline') || warning.includes('never synced') ? 'red' as const : 'amber' as const,
-      source: 'system-warning' as const,
-      label: warning.includes('Face service') ? 'System warning' : 'Kiosk timeline signal',
-      title: warning.includes('Face service') ? 'Face service needs attention' : 'Kiosk sync needs attention',
-      description: warning,
-      timestamp: systemHealth?.checked_at || null,
-      href: warning.includes('Face service') ? opsEnrollmentHref : opsKioskHref,
-    })),
+    ...(systemHealth?.warnings || []).map((warning, index) => {
+      const faceServiceWarning = isFaceServiceWarning(warning);
+      return {
+        id: `warning-${index}`,
+        tone: warning.includes('offline') || warning.includes('never synced') ? 'red' as const : 'amber' as const,
+        source: 'system-warning' as const,
+        label: faceServiceWarning ? 'System warning' : 'Kiosk timeline signal',
+        title: faceServiceWarning ? 'Face service needs attention' : 'Kiosk sync needs attention',
+        description: warning,
+        timestamp: systemHealth?.checked_at || null,
+        href: faceServiceWarning ? opsEnrollmentHref : opsKioskHref,
+      };
+    }),
     ...attendanceEvents.map((event) => ({
       id: event.id || `${event.worker_id}-${event.timestamp}-${event.event_type}`,
       tone: event.event_type === 'clock_in' ? 'emerald' as const : 'slate' as const,
