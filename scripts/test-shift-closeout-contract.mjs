@@ -92,6 +92,11 @@ assert.match(page, /nextStep\.requiresAcknowledgement/, 'Closeout next-step summ
 assert.match(page, /Clock-out Blockers[\s\S]*summary\?\.missing_clock_outs/, 'Closeout summary cards should expose missing clock-out blocker counts.');
 assert.match(page, /Recognition Reviews[\s\S]*summary\?\.recognition_reviews/, 'Closeout summary cards should expose recognition review blocker counts.');
 assert.match(page, /Closeout checklist/, 'Closeout page must show the checklist.');
+assert.match(page, /function checklistExportLine/, 'Closeout export should centralize checklist proof formatting.');
+assert.match(page, /item\.proof[\s\S]*Proof: \$\{item\.proof\.count\} \$\{item\.proof\.label\}/, 'Closeout export should include checklist proof counts and labels.');
+assert.match(page, /item\.proof\.exact \? 'exact source' : 'source view'/, 'Closeout export should distinguish exact proof sources from broad source views.');
+assert.match(page, /item\.proof\.href/, 'Closeout export should preserve proof source links.');
+assert.match(page, /payload\.checklist\.map\(checklistExportLine\)/, 'Closeout text export should use proof-aware checklist lines.');
 assert.match(page, /item\.proof/, 'Closeout checklist should render proof rows from the closeout payload.');
 assert.match(page, /item\.proof\.href/, 'Closeout proof rows should use the source proof href.');
 assert.match(page, /item\.proof\.count/, 'Closeout proof rows should expose source proof counts.');

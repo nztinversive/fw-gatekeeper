@@ -41,6 +41,13 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
+function checklistExportLine(item: ShiftCloseoutChecklistItem) {
+  const proof = item.proof
+    ? ` Proof: ${item.proof.count} ${item.proof.label} (${item.proof.exact ? 'exact source' : 'source view'}: ${item.proof.href}).`
+    : '';
+  return `- ${item.label}: ${item.status} (${item.count}) - ${item.description}${proof}`;
+}
+
 function exportText(payload: ShiftCloseoutResponse, supervisorName: string, notes: string) {
   const lines = [
     `FW Gatekeeper shift closeout - ${payload.date}`,
@@ -59,7 +66,7 @@ function exportText(payload: ShiftCloseoutResponse, supervisorName: string, note
     `Attendance corrections: ${payload.summary.attendance_corrections}`,
     '',
     'Checklist',
-    ...payload.checklist.map((item) => `- ${item.label}: ${item.status} (${item.count}) - ${item.description}`),
+    ...payload.checklist.map(checklistExportLine),
     '',
     'Notes',
     notes || payload.closeout?.notes || 'No notes recorded.',
