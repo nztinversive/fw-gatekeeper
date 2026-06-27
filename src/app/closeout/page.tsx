@@ -243,6 +243,8 @@ function ShiftCloseoutPageContent() {
       ['Late', summary?.late ?? 0, 'text-amber-300'],
       ['Missing', summary?.missing ?? 0, 'text-red-300'],
       ['Open Exceptions', summary?.open_exceptions ?? 0, 'text-gold'],
+      ['Clock-out Blockers', summary?.missing_clock_outs ?? 0, 'text-amber-300'],
+      ['Recognition Reviews', summary?.recognition_reviews ?? 0, 'text-blue-300'],
       ['Kiosk Warnings', summary?.kiosk_warnings ?? 0, 'text-blue-300'],
       ['Corrections', summary?.attendance_corrections ?? 0, 'text-gold'],
     ];

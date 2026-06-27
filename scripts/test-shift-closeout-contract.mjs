@@ -89,6 +89,8 @@ assert.match(page, /Next closeout step/, 'Closeout page should render a next-ste
 assert.match(page, /nextStep\.href \?/, 'Closeout next-step CTA should link only when a source href exists.');
 assert.match(page, /nextStep\.exact/, 'Closeout next-step summary should visibly distinguish exact source handoffs.');
 assert.match(page, /nextStep\.requiresAcknowledgement/, 'Closeout next-step summary should keep acknowledgement requirements explicit.');
+assert.match(page, /Clock-out Blockers[\s\S]*summary\?\.missing_clock_outs/, 'Closeout summary cards should expose missing clock-out blocker counts.');
+assert.match(page, /Recognition Reviews[\s\S]*summary\?\.recognition_reviews/, 'Closeout summary cards should expose recognition review blocker counts.');
 assert.match(page, /Closeout checklist/, 'Closeout page must show the checklist.');
 assert.match(page, /item\.proof/, 'Closeout checklist should render proof rows from the closeout payload.');
 assert.match(page, /item\.proof\.href/, 'Closeout proof rows should use the source proof href.');
