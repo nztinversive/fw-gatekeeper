@@ -100,7 +100,7 @@ function getDate(req: NextRequest, now: Date) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!(await hasValidPortalSession(req, ['admin']))) {
+  if (!(await hasValidPortalSession(req, ['admin', 'enrollment', 'viewer']))) {
     return unauthorizedApiResponse();
   }
 

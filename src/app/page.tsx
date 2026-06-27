@@ -246,7 +246,7 @@ export default function Dashboard() {
       const today = getLocalDateString();
       const signals: Array<{ key: SignalFailureKey; label: string; href: string; request: () => Promise<Response> }> = [
         { key: 'stats', label: 'Dashboard stats', href: '/reports', request: () => fetch(`/api/stats?date=${today}`) },
-        { key: 'workers', label: 'Worker roster', href: '/workers', request: () => fetch('/api/workers') },
+        { key: 'workers', label: 'Worker roster', href: '/workers', request: () => fetch('/api/workers?scope=dashboard') },
         { key: 'attendance', label: 'Attendance events', href: `/log?date=${today}`, request: () => fetch(`/api/attendance?date=${today}`) },
         { key: 'system-health', label: 'Kiosk and system health', href: '/kiosks', request: () => fetch(`/api/system-health?date=${today}`) },
         { key: 'shift-exceptions', label: 'Shift exceptions', href: `/exceptions?date=${today}&status=open`, request: () => fetch(`/api/shift-exceptions?date=${today}`) },

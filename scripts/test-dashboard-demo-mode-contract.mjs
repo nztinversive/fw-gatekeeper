@@ -37,6 +37,9 @@ assert.match(demoMode, /no production Convex data was changed/i, 'Demo write res
 const publicConvexUrl = read('src/lib/public-convex-url.ts');
 assert.match(publicConvexUrl, /NEXT_PUBLIC_FW_DEMO_WRITE_MODE/, 'Client demo mode should boot without requiring production Convex env wiring');
 assert.match(publicConvexUrl, /NODE_ENV\s*!==\s*['"]production['"]/, 'Client demo fallback must be disabled in production');
+const serverConvex = read('src/lib/convex.ts');
+assert.match(serverConvex, /FW_DEMO_WRITE_MODE/, 'Server Convex helper should support local demo mode without requiring production Convex env wiring');
+assert.match(serverConvex, /NODE_ENV\s*!==\s*["']production["']/, 'Server demo Convex fallback must be disabled in production');
 assert.match(read('src/components/ConvexAuthProvider.tsx'), /getPublicConvexUrl/, 'Convex auth provider should use the demo-safe public URL helper');
 assert.match(read('src/components/ConvexAuthProvider.tsx'), /ConvexProvider/, 'Convex auth provider should bypass Convex Auth env storage only for local demo boot');
 assert.match(read('src/components/ConvexAuthProvider.tsx'), /ConvexAuthNextjsProvider/, 'Convex auth provider should preserve the normal authenticated provider path');
@@ -85,5 +88,9 @@ assert.match(login, /Continue to local demo/, 'Local demo login surface should g
 const middleware = read('src/middleware.ts');
 assert.match(middleware, /isLocalDemoWriteMode/, 'Middleware should have an explicit local demo bypass');
 assert.match(middleware, /NextResponse\.next\(\)/, 'Local demo middleware should allow protected write-flow pages to render without a real auth session');
+const portalAuth = read('src/lib/portal-auth.ts');
+assert.match(portalAuth, /isDemoWriteMode\(\)[\s\S]*return true/, 'Route-level portal auth should allow local demo routes without a real auth session');
+const portalRole = read('src/app/api/portal-role/route.ts');
+assert.match(portalRole, /isDemoWriteMode\(\)[\s\S]*role:\s*['"]viewer['"][\s\S]*source:\s*['"]local-demo['"]/, 'Portal role API should resolve a safe review role in local demo mode without a real auth session');
 
 console.log('Dashboard partial-data and demo write mode contract passed');

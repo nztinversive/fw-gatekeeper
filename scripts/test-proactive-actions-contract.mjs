@@ -745,6 +745,7 @@ const middlewareSource = read('src/middleware.ts');
 assert.match(dashboardSource, /\/api\/portal-role/, 'Dashboard should resolve role through the lightweight portal role API.');
 assert.match(dashboardSource, /const dashboardRole = currentRole \|\| 'viewer'/, 'Dashboard should default unresolved portal roles to review-safe actionability until role lookup confirms operator access.');
 assert.match(dashboardSource, /currentRole:\s*dashboardRole/, 'Dashboard proactive actions should use the review-safe role fallback instead of raw unresolved role state.');
+assert.match(dashboardSource, /\/api\/workers\?scope=dashboard/, 'Dashboard should use the read-scoped worker roster endpoint so review-only roles do not see artificial roster failures.');
 assert.match(dashboardSource, /buildProactiveShiftTrustPlan/, 'Dashboard should render a single next-best shift trust plan from ranked actions.');
 assert.match(dashboardSource, /Next best action/, 'Dashboard should label the next-best action summary.');
 assert.match(dashboardSource, /No readiness, kiosk, exception, closeout, enrollment, schedule, or arrival issues need review right now\./, 'Dashboard Action Center empty state should name the full shift-trust scope.');
@@ -792,6 +793,13 @@ assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should n
 assert.match(portalRoleRoute, /hasValidAdminSession/, 'Portal role API should treat legacy admin-cookie sessions as admin.');
 assert.match(portalRoleRoute, /getPortalMemberForToken/, 'Portal role API should resolve Convex portal member roles.');
 assert.match(middlewareSource, /pathname === '\/api\/portal-role' && method === 'GET'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow all active portal roles to resolve dashboard actionability.');
+assert.match(middlewareSource, /pathname === '\/api\/workers' && method === 'GET' && searchParams\.get\('scope'\) === 'dashboard'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow dashboard-scoped worker reads for all dashboard portal roles.');
+assert.match(middlewareSource, /pathname === '\/api\/stats' \|\| pathname === '\/api\/attendance' \|\| pathname === '\/api\/system-health'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow dashboard read signals for all dashboard portal roles without broadening write APIs.');
+const workersRoute = read('src/app/api/workers/route.ts');
+const systemHealthRoute = read('src/app/api/system-health/route.ts');
+assert.match(workersRoute, /requireDashboardWorkerRead\s*\(/, 'Workers API should separate dashboard roster reads from admin-only worker management.');
+assert.match(workersRoute, /scope'\) === 'dashboard'[\s\S]*!includeEncodings[\s\S]*requireDashboardWorkerRead\(req\)/, 'Dashboard worker reads should allow safe roster fields without raw face encodings.');
+assert.match(systemHealthRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'System health read API should allow dashboard roles to see real readiness signals.');
 
 const backendUnavailableActions = buildProactiveActions({
   shiftExceptions: {
