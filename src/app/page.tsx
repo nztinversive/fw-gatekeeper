@@ -816,9 +816,16 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-              <Link href={shiftTrustPlan.href} className="btn-primary shrink-0 self-start text-xs md:self-auto">
-                {shiftTrustPlan.cta}
-              </Link>
+              <div className="flex shrink-0 flex-wrap items-center gap-3 self-start md:self-auto">
+                <Link href={shiftTrustPlan.href} className="btn-primary text-xs">
+                  {shiftTrustPlan.cta}
+                </Link>
+                {shiftTrustPlan.proofLink && (
+                  <Link href={shiftTrustPlan.proofLink.href} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
+                    {shiftTrustPlan.proofLink.label} →
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         )}

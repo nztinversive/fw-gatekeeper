@@ -133,6 +133,7 @@ assert.deepEqual(
     description: 'Main Entry kiosk is offline.',
     href: '/kiosks',
     cta: 'Open kiosks',
+    proofLink: null,
     tone: 'red',
     access: 'operate',
     stale: false,
@@ -235,6 +236,53 @@ assert.deepEqual(plain(getProactiveActionProofLink({
   href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2',
   label: 'Review exact source',
 }, 'Unknown roles should use review-safe closeout proof links until portal role resolution completes.');
+const closeoutProofPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
+  date: '2026-06-26',
+  shiftCloseout: {
+    date: '2026-06-26',
+    closeout: null,
+    blockers: [{
+      id: 'missing-clock-outs',
+      label: 'Missing clock-outs',
+      proof: {
+        label: 'missing clock-out exceptions',
+        count: 1,
+        href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct',
+        exact: true,
+      },
+    }],
+    can_complete: false,
+  },
+  currentRole: 'admin',
+}));
+assert.equal(closeoutProofPlan.actionKey, 'shift-closeout-pending', 'Blocked closeout can be the next best action when higher-risk blockers are absent.');
+assert.deepEqual(plain(closeoutProofPlan.proofLink), {
+  href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct',
+  label: 'Open exact source',
+}, 'Shift trust plan should expose exact closeout proof links for operating roles.');
+const viewerCloseoutProofPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
+  date: '2026-06-26',
+  shiftCloseout: {
+    date: '2026-06-26',
+    closeout: null,
+    blockers: [{
+      id: 'missing-clock-outs',
+      label: 'Missing clock-outs',
+      proof: {
+        label: 'missing clock-out exceptions',
+        count: 1,
+        href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct',
+        exact: true,
+      },
+    }],
+    can_complete: false,
+  },
+  currentRole: 'viewer',
+}));
+assert.deepEqual(plain(viewerCloseoutProofPlan.proofLink), {
+  href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2',
+  label: 'Review exact source',
+}, 'Shift trust plan should strip correction intent from exact closeout proof links for review-only roles.');
 
 const notArrived = findAction(rankedActions, 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
@@ -522,6 +570,7 @@ assert.match(dashboardSource, /buildProactiveShiftTrustPlan/, 'Dashboard should 
 assert.match(dashboardSource, /Next best action/, 'Dashboard should label the next-best action summary.');
 assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best action should reuse the selected action href.');
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
+assert.match(dashboardSource, /shiftTrustPlan\.proofLink[\s\S]*href=\{shiftTrustPlan\.proofLink\.href\}[\s\S]*\{shiftTrustPlan\.proofLink\.label\}/, 'Dashboard next-best action should render exact source proof links when the selected action has proof.');
 assert.match(dashboardSource, /const opsKioskHref = canOpenAdminOps \? '\/kiosks' : `\/briefing\?date=\$\{actionDate\}`/, 'Today Ops kiosk CTA should keep non-admin users in dated briefing review context.');
 assert.match(dashboardSource, /const opsKioskCta = canOpenAdminOps \? 'Fix kiosk sync' : 'Review kiosk readiness'/, 'Today Ops kiosk CTA copy should distinguish admin operation from review mode.');
 assert.match(dashboardSource, /const canOpenAdminOps = dashboardRole === 'admin'/, 'Dashboard admin-only CTAs should use the review-safe dashboard role fallback.');

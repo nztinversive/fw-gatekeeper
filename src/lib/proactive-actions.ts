@@ -143,6 +143,7 @@ export interface ProactiveShiftTrustPlan {
   description: string;
   href: string;
   cta: string;
+  proofLink: ProactiveActionProofLink | null;
   tone: ProactiveActionTone;
   access: ProactiveActionAccess;
   stale: boolean;
@@ -506,6 +507,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
   const staleLabel = stale ? (firstAction.freshness.lastSuccessAt ? 'Cached evidence' : 'Source unavailable') : null;
   const staleCopy = staleLabel ? ` ${staleLabel}.` : '';
   const unlocks = getPlanUnlocks(firstAction);
+  const proofLink = getProactiveActionProofLink(firstAction);
 
   return {
     actionKey: firstAction.key,
@@ -513,6 +515,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
     description: `${sentenceWithPeriod(firstAction.description)}${staleCopy}`,
     href: firstAction.href,
     cta: firstAction.cta,
+    proofLink,
     tone: firstAction.tone,
     access: firstAction.actionability.access,
     stale,
