@@ -81,6 +81,22 @@ function getExceptionIntent(exception: any) {
   return exception.type === "missing_arrival" || exception.type === "missing_clock_out" ? "correct" : undefined;
 }
 
+function getRecognitionReviewPriority(exceptions: any[]): ActionPriority {
+  if (exceptions.some((exception) => exception.severity === "critical")) return "critical";
+  return exceptions.some((exception) => exception.severity === "warning") ? "warning" : "info";
+}
+
+function getRecognitionReviewHref(date: string, exceptions: any[]) {
+  const [exception] = exceptions;
+  return buildHref("/exceptions", {
+    date,
+    status: "open",
+    type: "recognition_review",
+    severity: exceptions.length === 1 ? exception?.severity : undefined,
+    exception_key: exceptions.length === 1 ? exception?.key : undefined,
+  });
+}
+
 function buildHref(path: string, params: Record<string, string | null | undefined>) {
   const query = Object.entries(params)
     .filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -233,6 +249,8 @@ export async function buildShiftBriefing(ctx: any, date: string) {
     );
 
     const openExceptions = exceptions.filter((exception) => exception.status === "open");
+    const recognitionReviews = openExceptions.filter((exception) => exception.type === "recognition_review");
+    const exceptionActions = openExceptions.filter((exception) => exception.type !== "recognition_review");
     const actionItems = [
       ...departmentRows
         .filter((row) => row.status !== "covered")
@@ -247,7 +265,16 @@ export async function buildShiftBriefing(ctx: any, date: string) {
             status: getCoverageActionStatus(row),
           }),
         })),
-      ...openExceptions.slice(0, 8).map((exception) => ({
+      ...(recognitionReviews.length > 0
+        ? [{
+            id: "recognition:trust-review",
+            priority: getRecognitionReviewPriority(recognitionReviews),
+            label: "Recognition confidence needs review",
+            description: `${recognitionReviews.length} recognition ${recognitionReviews.length === 1 ? "attempt needs" : "attempts need"} review before today's coverage can be trusted.`,
+            href: getRecognitionReviewHref(date, recognitionReviews),
+          }]
+        : []),
+      ...exceptionActions.slice(0, 8).map((exception) => ({
         id: exception.key,
         priority: exception.severity as ActionPriority,
         label: exception.title,
@@ -293,6 +320,7 @@ export async function buildShiftBriefing(ctx: any, date: string) {
         clocked_out: clockedOut,
         departments: departmentRows.length,
         open_exceptions: openExceptions.length,
+        recognition_reviews: recognitionReviews.length,
         critical_actions: actionItems.filter((item) => item.priority === "critical").length,
         kiosk_warnings: kioskCounts.stale + kioskCounts.offline + kioskCounts.never_synced,
       },

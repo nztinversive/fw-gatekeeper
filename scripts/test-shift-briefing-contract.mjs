@@ -27,16 +27,29 @@ assert.match(briefing, /getCoverageActionStatus/, 'Briefing coverage actions mus
 assert.match(briefing, /function getExceptionIntent/, 'Briefing exception actions should classify direct correction intents.');
 assert.match(briefing, /if \(!exception\.worker_id\) return undefined/, 'Briefing correction intents should require a worker-backed exception.');
 assert.match(briefing, /exception\.type === "scan_sequence"[\s\S]*exception\.attendance_id \? "correct" : undefined/, 'Briefing scan-sequence correction intents should require a source attendance row.');
+assert.match(briefing, /function getRecognitionReviewPriority/, 'Briefing should rank recognition review risk from existing exception severity.');
+assert.match(briefing, /function getRecognitionReviewHref/, 'Briefing should centralize recognition review handoff links.');
+assert.match(briefing, /exception\.severity === "critical"[\s\S]*return "critical"/, 'Grouped recognition review priority should preserve critical severity.');
+assert.match(briefing, /exception\.severity === "warning"[\s\S]*\? "warning" : "info"/, 'Grouped recognition review priority should preserve warning severity.');
+assert.match(briefing, /buildHref\("\/exceptions",\s*\{\s*date,\s*status:\s*"open",\s*type:\s*"recognition_review"/, 'Grouped recognition review handoffs must open the matching open exception queue.');
+assert.match(briefing, /severity:\s*exceptions\.length === 1 \? exception\?\.severity : undefined/, 'Single recognition review handoffs should preserve severity context.');
+assert.match(briefing, /exception_key:\s*exceptions\.length === 1 \? exception\?\.key : undefined/, 'Single recognition review handoffs should preserve the exact exception row key.');
+assert.match(briefing, /const recognitionReviews = openExceptions\.filter\(\(exception\) => exception\.type === "recognition_review"\)/, 'Briefing should derive recognition review risk from open shift exceptions.');
+assert.match(briefing, /const exceptionActions = openExceptions\.filter\(\(exception\) => exception\.type !== "recognition_review"\)/, 'Briefing should avoid duplicating recognition review exceptions after adding the grouped action.');
+assert.match(briefing, /id:\s*"recognition:trust-review"[\s\S]*label:\s*"Recognition confidence needs review"/, 'Briefing should add a grouped recognition confidence action.');
+assert.match(briefing, /recognitionReviews\.length[\s\S]*attempt needs[\s\S]*attempts need[\s\S]*review before today's coverage can be trusted/, 'Recognition confidence action copy should summarize review volume without asking for new data entry.');
 assert.match(briefing, /buildHref\("\/briefing",\s*\{\s*date,\s*department:\s*row\.department,\s*status:\s*getCoverageActionStatus\(row\)/, 'Briefing coverage actions must deep-link to date, department, and worker status filters.');
 assert.match(briefing, /buildHref\("\/exceptions",\s*\{\s*date,\s*status:\s*"open",\s*department:\s*exception\.department,\s*type:\s*exception\.type,\s*severity:\s*exception\.severity/, 'Briefing exception actions must deep-link to filtered open exception views.');
 assert.match(briefing, /exception_key:\s*exception\.key/, 'Briefing exception actions must preserve the exact exception row key.');
 assert.match(briefing, /intent:\s*getExceptionIntent\(exception\)/, 'Briefing correctable exception actions should carry correction intent.');
 assert.match(briefing, /encodeURIComponent/, 'Shift briefing action links must encode filter query params.');
+assert.match(briefing, /recognition_reviews:\s*recognitionReviews\.length/, 'Briefing summary should expose recognition review counts.');
 
 assert.match(apiRoute, /shiftBriefing\.summary/, 'GET /api/shift-briefing must call the Convex briefing query.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'Briefing reads must allow viewer portal members.');
 assert.match(apiRoute, /FunctionPathNotFound/, 'Briefing route should degrade gracefully while Convex functions deploy.');
 assert.match(apiRoute, /date must use YYYY-MM-DD format/, 'Briefing route must validate date format.');
+assert.match(apiRoute, /recognition_reviews:\s*0/, 'Briefing fallback summary should include recognition review counts.');
 
 assert.match(page, /\/api\/shift-briefing\?date=\$\{date\}/, 'Briefing page must fetch the shift briefing API.');
 assert.match(page, /Shift <span className="text-gold">Coverage<\/span>/, 'Briefing page must render the Shift Coverage surface.');
@@ -86,6 +99,7 @@ assert.match(middleware, /pathname === '\/api\/shift-briefing' && method === 'GE
 assert.match(types, /interface ShiftBriefingResponse/, 'Shared types must define ShiftBriefingResponse.');
 assert.match(types, /interface ShiftBriefingDepartment/, 'Shared types must define ShiftBriefingDepartment.');
 assert.match(types, /interface ShiftBriefingActionItem/, 'Shared types must define ShiftBriefingActionItem.');
+assert.match(types, /recognition_reviews:\s*number/, 'Shared briefing summary types must include recognition review counts.');
 
 assert.match(packageJson, /"test:shift-briefing":\s*"node scripts\/test-shift-briefing-contract\.mjs"/, 'package.json must expose test:shift-briefing.');
 

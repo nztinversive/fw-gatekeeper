@@ -244,6 +244,7 @@ export interface ShiftBriefingResponse {
     clocked_out: number;
     departments: number;
     open_exceptions: number;
+    recognition_reviews: number;
     critical_actions: number;
     kiosk_warnings: number;
   };

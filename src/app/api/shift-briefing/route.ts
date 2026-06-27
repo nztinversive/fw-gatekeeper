@@ -29,6 +29,7 @@ function emptyResponse(date: string) {
       clocked_out: 0,
       departments: 0,
       open_exceptions: 0,
+      recognition_reviews: 0,
       critical_actions: 0,
       kiosk_warnings: 0,
     },
