@@ -754,6 +754,7 @@ export default function Dashboard() {
                 <p className="section-label text-gold">Next best action</p>
                 <h3 className="mt-1 font-display text-base font-semibold text-slate-100">{shiftTrustPlan.label}</h3>
                 <p className="mt-1 text-sm leading-5 text-slate-400">{shiftTrustPlan.description}</p>
+                <p className="mt-2 text-xs font-mono text-slate-500">{shiftTrustPlan.impactLabel}</p>
                 {shiftTrustPlan.evidenceChips.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2" aria-label={`${shiftTrustPlan.label} evidence`}>
                     {shiftTrustPlan.evidenceChips.map((chip) => (

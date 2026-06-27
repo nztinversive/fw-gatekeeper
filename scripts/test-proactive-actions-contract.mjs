@@ -133,6 +133,7 @@ assert.deepEqual(
     actionKey: 'system-health-0',
     label: 'Do this first: Kiosk sync warning',
     description: 'Main Entry kiosk is offline.',
+    impactLabel: 'Unblocks: Shift readiness + Closeout trust',
     href: '/kiosks',
     cta: 'Open kiosks',
     evidenceChips: ['1 offline kiosk'],
@@ -695,6 +696,7 @@ assert.equal(viewerTrustPlan.label, 'Review this first: Kiosk sync warning', 'Vi
 assert.equal(viewerTrustPlan.href, '/briefing?date=2026-06-26', 'Viewer shift trust plan should inherit the dated role-safe review href.');
 assert.equal(viewerTrustPlan.cta, 'Inspect readiness', 'Viewer shift trust plan should inherit the role-safe review CTA.');
 assert.equal(viewerTrustPlan.access, 'review', 'Viewer shift trust plan should expose review access.');
+assert.equal(viewerTrustPlan.impactLabel, 'Review focus: Shift readiness + Closeout trust', 'Viewer shift trust plan should not use unblock copy for review-only users.');
 assert.deepEqual(
   plain(viewerTrustPlan.outcomeChips),
   ['Review shift readiness', 'Review closeout trust'],
@@ -726,6 +728,7 @@ assert.match(dashboardSource, /buildProactiveShiftTrustPlan/, 'Dashboard should 
 assert.match(dashboardSource, /Next best action/, 'Dashboard should label the next-best action summary.');
 assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best action should reuse the selected action href.');
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
+assert.match(dashboardSource, /\{shiftTrustPlan\.impactLabel\}/, 'Dashboard next-best action should render the role-aware impact label from the selected action.');
 assert.match(dashboardSource, /shiftTrustPlan\.evidenceChips\.length[\s\S]*aria-label=\{`\$\{shiftTrustPlan\.label\} evidence`\}[\s\S]*shiftTrustPlan\.evidenceChips\.map/, 'Dashboard next-best action should render the selected action evidence chips.');
 assert.match(dashboardSource, /shiftTrustPlan\.outcomeChips\.map[\s\S]*\{chip\}/, 'Dashboard next-best action should render role-aware outcome chips from the selected action.');
 assert.match(dashboardSource, /shiftTrustPlan\.proofLink[\s\S]*href=\{shiftTrustPlan\.proofLink\.href\}[\s\S]*\{shiftTrustPlan\.proofLink\.label\}/, 'Dashboard next-best action should render exact source proof links when the selected action has proof.');

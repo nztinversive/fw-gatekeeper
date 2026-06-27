@@ -141,6 +141,7 @@ export interface ProactiveShiftTrustPlan {
   actionKey: string;
   label: string;
   description: string;
+  impactLabel: string;
   href: string;
   cta: string;
   evidenceChips: string[];
@@ -502,6 +503,11 @@ function getPlanUnlocks(action: ProactiveAction) {
   return unlocks;
 }
 
+function getPlanImpactLabel(action: ProactiveAction, unlocks: string[]) {
+  const scope = unlocks.join(' + ');
+  return action.actionability.canOperate ? `Unblocks: ${scope}` : `Review focus: ${scope}`;
+}
+
 function getFreshnessSubject(sourceKeys: string[]) {
   const keys = new Set(sourceKeys);
   if (keys.has('workers')) return 'roster';
@@ -621,6 +627,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
   const staleLabel = stale ? getProactiveActionFreshnessLabel(firstAction.freshness) : null;
   const staleCopy = staleLabel ? ` ${staleLabel}.` : '';
   const unlocks = getPlanUnlocks(firstAction);
+  const impactLabel = getPlanImpactLabel(firstAction, unlocks);
   const evidenceChips = getProactiveActionEvidenceChips(firstAction);
   const outcomeChips = getProactiveActionOutcomeChips(firstAction);
   const proofLink = getProactiveActionProofLink(firstAction);
@@ -629,6 +636,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
     actionKey: firstAction.key,
     label: `${lead}: ${firstAction.label}`,
     description: `${sentenceWithPeriod(firstAction.description)}${staleCopy}`,
+    impactLabel,
     href: firstAction.href,
     cta: firstAction.cta,
     evidenceChips,
