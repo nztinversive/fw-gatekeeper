@@ -104,6 +104,28 @@ export interface RecognitionAttemptsResponse {
 
 export type ShiftExceptionSeverity = 'critical' | 'warning' | 'info';
 export type ShiftExceptionStatus = 'open' | 'reviewed' | 'ignored' | 'resolved';
+export type ShiftExceptionSuggestedResolutionAction =
+  | 'review_only'
+  | 'add_clock_in'
+  | 'add_clock_out'
+  | 'void_event'
+  | 'open_recognition_review';
+
+export interface ShiftExceptionSuggestedResolution {
+  action: ShiftExceptionSuggestedResolutionAction;
+  label: string;
+  cta: string;
+  reason: string;
+  corrected_time: string | null;
+  original_attendance_id: string | null;
+  href: string | null;
+  source_href: string | null;
+  requires_worker: boolean;
+  requires_original_event: boolean;
+  can_apply: boolean;
+  disabled_reason: string | null;
+  source_exception_key: string;
+}
 
 export interface ShiftException {
   key: string;
@@ -127,6 +149,7 @@ export interface ShiftException {
   attendance_id?: string | null;
   review_note: string | null;
   reviewed_at: string | null;
+  suggested_resolution: ShiftExceptionSuggestedResolution;
   links: {
     activity_log?: string;
     worker?: string;

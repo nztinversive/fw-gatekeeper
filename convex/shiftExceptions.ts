@@ -8,6 +8,27 @@ const LOW_MARGIN_THRESHOLD = 0.08;
 
 type ExceptionStatus = "open" | "reviewed" | "ignored" | "resolved";
 type ExceptionSeverity = "critical" | "warning" | "info";
+type SuggestedResolutionAction =
+  | "review_only"
+  | "add_clock_in"
+  | "add_clock_out"
+  | "void_event"
+  | "open_recognition_review";
+type SuggestedResolution = {
+  action: SuggestedResolutionAction;
+  label: string;
+  cta: string;
+  reason: string;
+  corrected_time: string | null;
+  original_attendance_id: string | null;
+  href: string | null;
+  source_href: string | null;
+  requires_worker: boolean;
+  requires_original_event: boolean;
+  can_apply: boolean;
+  disabled_reason: string | null;
+  source_exception_key: string;
+};
 type ShiftException = {
   key: string;
   date: string;
@@ -30,6 +51,7 @@ type ShiftException = {
   attendance_id?: string | null;
   review_note: string | null;
   reviewed_at: string | null;
+  suggested_resolution: SuggestedResolution;
   links: {
     activity_log?: string;
     worker?: string;
@@ -67,6 +89,10 @@ function dateHasPassed(date: string) {
 
 function formatTime(value?: string | null) {
   return value || "not set";
+}
+
+function titleCase(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function normalizeText(value?: string | null) {
@@ -118,6 +144,166 @@ function getReviewStatus(review: any): ExceptionStatus {
   return "open";
 }
 
+function timeFromTimestamp(value?: string | null) {
+  const match = value?.match(/T(\d{2}:\d{2})/);
+  return match?.[1] || "";
+}
+
+function exceptionTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    missing_arrival: "Missing arrival",
+    late_arrival: "Late arrival",
+    missing_clock_out: "Still clocked in",
+    scan_sequence: "Bad scan sequence",
+    recognition_review: "Recognition review",
+  };
+  return labels[type] || titleCase(type);
+}
+
+function correctionReason(
+  exception: Omit<ShiftException, "suggested_resolution">,
+  action: "add_clock_in" | "add_clock_out" | "void_event",
+  correctedTime?: string | null,
+) {
+  const worker = exception.worker_name || "Unknown worker";
+  const issue = exceptionTypeLabel(exception.type);
+  const schedule = exception.schedule_name ? ` on ${exception.schedule_name}` : "";
+  const source = `Source exception ${exception.key}.`;
+
+  if (action === "add_clock_in") {
+    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-in at ${correctedTime}. ${source}`;
+  }
+
+  if (action === "add_clock_out") {
+    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-out at ${correctedTime}. ${source}`;
+  }
+
+  const sourceEvent = exception.attendance_id ? ` source event ${exception.attendance_id}` : " selected source scan event";
+  return `${issue}: supervisor verified ${worker}'s${sourceEvent} should be voided from effective attendance. ${source}`;
+}
+
+function reviewReason(exception: Omit<ShiftException, "suggested_resolution">, detail: string) {
+  const issue = exceptionTypeLabel(exception.type);
+  const worker = exception.worker_name || "Unknown worker";
+  return `${issue}: ${detail} for ${worker}. Source exception ${exception.key}.`;
+}
+
+function suggestedResolutionBase(exception: Omit<ShiftException, "suggested_resolution">) {
+  return {
+    corrected_time: null,
+    original_attendance_id: null,
+    href: exception.links.activity_log || exception.links.recognition_lab || exception.links.kiosk || null,
+    source_href: exception.links.activity_log || exception.links.recognition_lab || exception.links.kiosk || null,
+    requires_worker: false,
+    requires_original_event: false,
+    can_apply: false,
+    disabled_reason: null,
+    source_exception_key: exception.key,
+  };
+}
+
+function buildSuggestedResolution(exception: Omit<ShiftException, "suggested_resolution">): SuggestedResolution {
+  const base = suggestedResolutionBase(exception);
+  const workerMissing = !exception.worker_id;
+  const workerDisabledReason = "A worker-backed exception is required before an attendance correction can be created.";
+
+  if (exception.type === "missing_arrival") {
+    const correctedTime = exception.scheduled_start || "06:00";
+    return {
+      ...base,
+      action: "add_clock_in",
+      label: "Add missing clock-in",
+      cta: "Correct attendance",
+      reason: correctionReason(exception, "add_clock_in", correctedTime),
+      corrected_time: correctedTime,
+      href: exception.links.activity_log || null,
+      requires_worker: true,
+      can_apply: !workerMissing,
+      disabled_reason: workerMissing ? workerDisabledReason : null,
+    };
+  }
+
+  if (exception.type === "missing_clock_out") {
+    const correctedTime = exception.scheduled_end || timeFromTimestamp(exception.last_seen) || "14:30";
+    return {
+      ...base,
+      action: "add_clock_out",
+      label: "Add missing clock-out",
+      cta: "Correct attendance",
+      reason: correctionReason(exception, "add_clock_out", correctedTime),
+      corrected_time: correctedTime,
+      href: exception.links.activity_log || null,
+      requires_worker: true,
+      can_apply: !workerMissing,
+      disabled_reason: workerMissing ? workerDisabledReason : null,
+    };
+  }
+
+  if (exception.type === "scan_sequence") {
+    if (!exception.attendance_id) {
+      return {
+        ...base,
+        action: "review_only",
+        label: "Review scan sequence",
+        cta: "Review source",
+        reason: reviewReason(exception, "scan sequence has no raw attendance row to void automatically"),
+        requires_worker: true,
+        requires_original_event: true,
+        disabled_reason: "No original attendance event is available to void; review the source scans before deciding on a correction.",
+      };
+    }
+
+    return {
+      ...base,
+      action: "void_event",
+      label: "Void mistaken scan",
+      cta: "Correct attendance",
+      reason: correctionReason(exception, "void_event"),
+      corrected_time: timeFromTimestamp(exception.last_seen || exception.first_seen) || null,
+      original_attendance_id: exception.attendance_id,
+      href: exception.links.activity_log || null,
+      requires_worker: true,
+      requires_original_event: true,
+      can_apply: !workerMissing,
+      disabled_reason: workerMissing ? workerDisabledReason : null,
+    };
+  }
+
+  if (exception.type === "late_arrival") {
+    return {
+      ...base,
+      action: "review_only",
+      label: "Review late arrival",
+      cta: "Review source",
+      reason: reviewReason(exception, "late arrival preserves the kiosk clock-in and should be reviewed without rewriting raw evidence"),
+      href: exception.links.activity_log || null,
+      disabled_reason: "Late arrivals use the kiosk clock-in as evidence; add an audited correction only if separate evidence proves a missing scan.",
+    };
+  }
+
+  if (exception.type === "recognition_review") {
+    return {
+      ...base,
+      action: "open_recognition_review",
+      label: "Open recognition review",
+      cta: "Open Recognition Lab",
+      reason: reviewReason(exception, "supervisor should review the linked recognition attempt before changing attendance"),
+      href: exception.links.recognition_lab || null,
+      source_href: exception.links.recognition_lab || exception.links.activity_log || null,
+      disabled_reason: exception.links.recognition_lab ? null : "No exact recognition attempt link is available; review the recognition backlog manually.",
+    };
+  }
+
+  return {
+    ...base,
+    action: "review_only",
+    label: "Review exception",
+    cta: "Review source",
+    reason: reviewReason(exception, "unknown exception type requires supervisor review before any audited correction"),
+    disabled_reason: "This exception type does not have a one-tap audited correction path.",
+  };
+}
+
 function withReview(exception: ShiftException, review: any): ShiftException {
   return {
     ...exception,
@@ -127,12 +313,16 @@ function withReview(exception: ShiftException, review: any): ShiftException {
   };
 }
 
-function createException(input: Omit<ShiftException, "status" | "review_note" | "reviewed_at">): ShiftException {
-  return {
+function createException(input: Omit<ShiftException, "status" | "review_note" | "reviewed_at" | "suggested_resolution">): ShiftException {
+  const exception: Omit<ShiftException, "suggested_resolution"> = {
     ...input,
     status: "open",
     review_note: null,
     reviewed_at: null,
+  };
+  return {
+    ...exception,
+    suggested_resolution: buildSuggestedResolution(exception),
   };
 }
 

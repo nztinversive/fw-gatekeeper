@@ -48,6 +48,17 @@ assert.match(exceptions, /attendance_id:\s*attendanceId \|\| null/, 'Activity Lo
 assert.match(exceptions, /activity_log:\s*getActivityLogHref\(date,\s*workerId,\s*String\(firstIn\._id\)/, 'Late-arrival activity links should target the source clock-in row.');
 assert.match(exceptions, /activity_log:\s*getActivityLogHref\(date,\s*workerId,\s*String\(lastEvent\._id\)/, 'Missing-clock-out activity links should target the latest source scan row.');
 assert.match(exceptions, /activity_log:\s*getActivityLogHref\(date,\s*workerId,\s*String\(event\._id\)/, 'Scan-sequence activity links should target the problematic source scan row.');
+assert.match(exceptions, /type SuggestedResolutionAction[\s\S]*"review_only"[\s\S]*"add_clock_in"[\s\S]*"add_clock_out"[\s\S]*"void_event"[\s\S]*"open_recognition_review"/, 'Shift exceptions must define server-side suggested resolution actions.');
+assert.match(exceptions, /suggested_resolution:\s*SuggestedResolution/, 'ShiftException rows must include a server-side suggested_resolution object.');
+assert.match(exceptions, /function buildSuggestedResolution/, 'Shift exceptions must centralize suggested resolution semantics server-side.');
+assert.match(exceptions, /suggested_resolution:\s*buildSuggestedResolution\(exception\)/, 'Every created exception should receive a deterministic suggested_resolution.');
+assert.match(exceptions, /exception\.type === "missing_arrival"[\s\S]*action:\s*"add_clock_in"[\s\S]*corrected_time:\s*correctedTime[\s\S]*requires_worker:\s*true[\s\S]*can_apply:\s*!workerMissing/, 'Missing-arrival suggestions should be audited add-clock-in actions with scheduled-time fallback.');
+assert.match(exceptions, /exception\.type === "missing_clock_out"[\s\S]*exception\.scheduled_end \|\| timeFromTimestamp\(exception\.last_seen\) \|\| "14:30"[\s\S]*action:\s*"add_clock_out"[\s\S]*can_apply:\s*!workerMissing/, 'Missing-clock-out suggestions should use scheduled end or last-seen fallback.');
+assert.match(exceptions, /exception\.type === "scan_sequence"[\s\S]*!exception\.attendance_id[\s\S]*action:\s*"review_only"[\s\S]*requires_original_event:\s*true[\s\S]*No original attendance event is available/, 'Scan-sequence rows without attendance ids should be review-only with a clear disabled reason.');
+assert.match(exceptions, /exception\.type === "scan_sequence"[\s\S]*action:\s*"void_event"[\s\S]*original_attendance_id:\s*exception\.attendance_id[\s\S]*requires_original_event:\s*true/, 'Scan-sequence rows with attendance ids should suggest voiding the exact source event.');
+assert.match(exceptions, /exception\.type === "late_arrival"[\s\S]*action:\s*"review_only"[\s\S]*preserves the kiosk clock-in/, 'Late-arrival suggestions should remain review-only and preserve kiosk evidence.');
+assert.match(exceptions, /exception\.type === "recognition_review"[\s\S]*action:\s*"open_recognition_review"[\s\S]*href:\s*exception\.links\.recognition_lab/, 'Recognition-review suggestions should hand off to the exact Recognition Lab source link.');
+assert.match(exceptions, /return \{[\s\S]*action:\s*"review_only"[\s\S]*unknown exception type requires supervisor review/, 'Unknown future exception types should default to conservative review-only copy.');
 
 assert.match(apiRoute, /shiftExceptions\.summary/, 'GET /api/shift-exceptions must call the Convex summary query.');
 assert.match(apiRoute, /shiftExceptions\.review/, 'PATCH /api/shift-exceptions must call the Convex review mutation.');
@@ -67,6 +78,11 @@ assert.match(page, /searchParams\.get\('intent'\)/, 'Exceptions page should read
 assert.match(page, /\/api\/portal-role/, 'Exceptions page should resolve the current portal role before exposing direct write intent.');
 assert.match(page, /function canOperateExceptions/, 'Exceptions page should centralize write-role checks.');
 assert.match(page, /function suggestedReviewNotes/, 'Exceptions page should provide deterministic review-note suggestions.');
+assert.match(page, /exception\.suggested_resolution/, 'Exceptions page should consume server-side suggested resolutions.');
+assert.match(page, /function isAttendanceCorrectionAction/, 'Exceptions page should only treat correction-compatible suggested actions as attendance correction actions.');
+assert.match(page, /resolution\.can_apply && isAttendanceCorrectionAction\(resolution\.action\)/, 'Exceptions page should use suggested_resolution.can_apply instead of local exception-type rules.');
+assert.doesNotMatch(page, /function suggestedCorrection\(/, 'Exceptions page must not own correction suggestion action/time business rules.');
+assert.doesNotMatch(page, /function suggestedCorrectionReason/, 'Exceptions page must not own deterministic correction audit-note business rules.');
 assert.match(page, /function applySuggestedReviewNote/, 'Exceptions page should let operators apply suggested review notes without typing them from scratch.');
 assert.match(page, /function appendReviewNote/, 'Suggested review notes should preserve existing note text instead of overwriting it.');
 assert.match(page, /current\.includes\(suggestion\)/, 'Suggested review notes should not duplicate the same generated note.');
@@ -76,14 +92,14 @@ assert.match(page, /handledIntentKey === queryExceptionKey/, 'Exceptions page sh
 assert.match(page, /!canOperate \|\| !queryExceptionKey/, 'Exceptions page should not auto-open correction intent for read-only roles.');
 assert.match(page, /filtered\.find\(\(exception\) => exception\.key === queryExceptionKey\)/, 'Exceptions page should only auto-open a correction target visible in the current filtered queue.');
 assert.match(page, /canCorrectException\(target\)/, 'Exceptions page should only auto-open correction flow for correctable exception types.');
-assert.match(page, /exception\.type === 'scan_sequence'\) return Boolean\(exception\.attendance_id\)/, 'Scan-sequence correction intent must require an attendance row to void.');
 assert.match(page, /queryExceptionKey === exception\.key/, 'Exceptions page should highlight the targeted exception row.');
 assert.match(page, /id=\{exceptionRowId\(exception\.key\)\}/, 'Targeted exception rows should have stable ids for direct-link scrolling.');
 assert.match(page, /scrollIntoView/, 'Exceptions page should scroll direct links to the targeted row.');
-assert.match(page, /canOperate \?[\s\S]*canCorrectException\(exception\)[\s\S]*Correct attendance[\s\S]*Review-only/, 'Correction buttons should only render for operating roles and correctable rows.');
+assert.match(page, /canOperate \?[\s\S]*canCorrectException\(exception\)[\s\S]*resolution\.cta[\s\S]*Review-only/, 'Correction buttons should only render for operating roles and correctable rows.');
 assert.match(page, /if \(!canOperate\)[\s\S]*Only admin or enrollment roles can update exception reviews/, 'Exception review mutations should be guarded client-side for read-only roles.');
 assert.match(page, /canOperate \?[\s\S]*Reviewed[\s\S]*Resolved[\s\S]*Ignore[\s\S]*Review-only/, 'Exceptions page should hide write controls behind role-aware rendering.');
 assert.match(page, /suggestedReviewNotes\(exception\)\.map/, 'Operators should see suggested note chips for exception review rows.');
+assert.match(page, /Suggested resolution/, 'Exception rows should display the server-backed safest next resolution.');
 assert.match(page, /readOnly=\{!canOperate\}/, 'Viewer note fields should be read-only.');
 assert.match(page, /if \(!canOperate\) return;[\s\S]*setNoteDrafts/, 'Viewer note edits should not update local draft state.');
 assert.match(page, /Source exception \$\{exception\.key\}/, 'Suggested review notes should preserve source exception keys.');

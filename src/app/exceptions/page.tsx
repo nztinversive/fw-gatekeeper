@@ -39,6 +39,10 @@ type CorrectionDraft = {
   exception: ShiftException;
   action: AttendanceCorrectionAction;
   correctedTime: string;
+  suggestedCorrectedTime: string;
+  originalAttendanceId: string | null;
+  sourceExceptionKey: string;
+  sourceHref: string | null;
   reason: string;
   reasonWasSuggested: boolean;
   supervisorName: string;
@@ -68,70 +72,31 @@ function escapeCsv(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
+function isAttendanceCorrectionAction(action: ShiftException['suggested_resolution']['action']): action is AttendanceCorrectionAction {
+  return action === 'add_clock_in' || action === 'add_clock_out' || action === 'void_event';
+}
+
 function canCorrectException(exception: ShiftException) {
-  if (!exception.worker_id) return false;
-  if (exception.type === 'scan_sequence') return Boolean(exception.attendance_id);
-  return exception.type === 'missing_arrival' || exception.type === 'missing_clock_out';
-}
-
-function timeFromTimestamp(value?: string | null) {
-  const match = value?.match(/T(\d{2}:\d{2})/);
-  return match?.[1] || '';
-}
-
-function suggestedCorrection(exception: ShiftException): Pick<CorrectionDraft, 'action' | 'correctedTime'> {
-  if (exception.type === 'missing_arrival') {
-    return { action: 'add_clock_in', correctedTime: exception.scheduled_start || '06:00' };
-  }
-  if (exception.type === 'missing_clock_out') {
-    return { action: 'add_clock_out', correctedTime: exception.scheduled_end || timeFromTimestamp(exception.last_seen) || '14:30' };
-  }
-  if (exception.type === 'scan_sequence' && exception.attendance_id) {
-    return { action: 'void_event', correctedTime: timeFromTimestamp(exception.last_seen || exception.first_seen) };
-  }
-  return { action: 'add_clock_in', correctedTime: timeFromTimestamp(exception.last_seen || exception.first_seen) || exception.scheduled_start || '06:00' };
-}
-
-function suggestedCorrectionReason(exception: ShiftException, suggestion: Pick<CorrectionDraft, 'action' | 'correctedTime'>) {
-  const worker = exception.worker_name || 'Unknown worker';
-  const issue = typeLabels[exception.type] || titleCase(exception.type);
-  const schedule = exception.schedule_name ? ` on ${exception.schedule_name}` : '';
-  const source = `Source exception ${exception.key}.`;
-
-  if (suggestion.action === 'add_clock_in') {
-    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-in at ${suggestion.correctedTime}. ${source}`;
-  }
-
-  if (suggestion.action === 'add_clock_out') {
-    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-out at ${suggestion.correctedTime}. ${source}`;
-  }
-
-  const sourceEvent = exception.attendance_id ? ` source event ${exception.attendance_id}` : ' selected source scan event';
-  return `${issue}: supervisor verified ${worker}'s${sourceEvent} should be voided from effective attendance. ${source}`;
+  const resolution = exception.suggested_resolution;
+  return resolution.can_apply && isAttendanceCorrectionAction(resolution.action);
 }
 
 function suggestedReviewNotes(exception: ShiftException) {
   const worker = exception.worker_name || 'Unknown worker';
   const issue = typeLabels[exception.type] || titleCase(exception.type);
   const source = `Source exception ${exception.key}.`;
+  const resolution = exception.suggested_resolution;
   const notes = [
     {
-      label: 'Source reviewed',
-      note: `${issue}: supervisor reviewed source evidence for ${worker}. ${source}`,
+      label: resolution.label,
+      note: resolution.reason,
     },
   ];
 
-  if (canCorrectException(exception)) {
+  if (resolution.href) {
     notes.push({
-      label: 'Correction reviewed',
-      note: `${issue}: supervisor reviewed attendance correction path for ${worker}. ${source}`,
-    });
-  }
-
-  if (exception.type === 'recognition_review') {
-    notes.push({
-      label: 'Recognition reviewed',
-      note: `${issue}: supervisor reviewed the recognition attempt context. ${source}`,
+      label: 'Source reviewed',
+      note: `${issue}: supervisor reviewed source evidence for ${worker}. ${source}`,
     });
   }
 
@@ -336,27 +301,32 @@ function ExceptionsPageContent() {
       toast('Only admin or enrollment roles can correct attendance.', 'error');
       return;
     }
-    const suggestion = suggestedCorrection(exception);
+    const resolution = exception.suggested_resolution;
+    if (!canCorrectException(exception) || !isAttendanceCorrectionAction(resolution.action)) {
+      toast(resolution.disabled_reason || 'This exception does not have a one-tap correction path.', 'error');
+      return;
+    }
     const existingReason = noteDrafts[exception.key] || exception.review_note || '';
     setCorrectionDraft({
       exception,
-      action: suggestion.action,
-      correctedTime: suggestion.correctedTime,
-      reason: existingReason || suggestedCorrectionReason(exception, suggestion),
+      action: resolution.action,
+      correctedTime: resolution.corrected_time || '',
+      suggestedCorrectedTime: resolution.corrected_time || '',
+      originalAttendanceId: resolution.original_attendance_id,
+      sourceExceptionKey: resolution.source_exception_key,
+      sourceHref: resolution.source_href,
+      reason: existingReason || resolution.reason,
       reasonWasSuggested: !existingReason,
       supervisorName: '',
     });
   }
 
-  function updateCorrectionDraft(next: Partial<Pick<CorrectionDraft, 'action' | 'correctedTime'>>) {
+  function updateCorrectionTime(correctedTime: string) {
     setCorrectionDraft((current) => {
       if (!current) return current;
-      const updated = { ...current, ...next };
       return {
-        ...updated,
-        reason: current.reasonWasSuggested
-          ? suggestedCorrectionReason(updated.exception, updated)
-          : updated.reason,
+        ...current,
+        correctedTime,
       };
     });
   }
@@ -395,6 +365,14 @@ function ExceptionsPageContent() {
       toast('Correction time required', 'error');
       return;
     }
+    if (
+      correctionDraft.action !== 'void_event' &&
+      correctionDraft.reasonWasSuggested &&
+      correctionDraft.correctedTime !== correctionDraft.suggestedCorrectedTime
+    ) {
+      toast('Update the correction reason after changing the suggested time.', 'error');
+      return;
+    }
 
     setSavingCorrection(true);
     try {
@@ -406,8 +384,8 @@ function ExceptionsPageContent() {
           worker_id: correctionDraft.exception.worker_id,
           action: correctionDraft.action,
           corrected_timestamp: correctionDraft.action === 'void_event' ? undefined : timestampFor(date, correctionDraft.correctedTime),
-          original_attendance_id: correctionDraft.action === 'void_event' ? correctionDraft.exception.attendance_id : undefined,
-          related_exception_key: correctionDraft.exception.key,
+          original_attendance_id: correctionDraft.action === 'void_event' ? correctionDraft.originalAttendanceId : undefined,
+          related_exception_key: correctionDraft.sourceExceptionKey,
           reason: correctionDraft.reason,
           supervisor_name: correctionDraft.supervisorName,
         }),
@@ -568,6 +546,7 @@ function ExceptionsPageContent() {
                 {filtered.map((exception) => {
                   const controlsDisabled = isPending && pendingKey === exception.key;
                   const targeted = queryExceptionKey === exception.key;
+                  const resolution = exception.suggested_resolution;
                   return (
                     <tr
                       id={exceptionRowId(exception.key)}
@@ -577,6 +556,18 @@ function ExceptionsPageContent() {
                       <td className="px-4 py-4">
                         <p className="font-medium text-slate-100">{exception.title}</p>
                         <p className="mt-1 max-w-lg text-xs leading-5 text-slate-500">{exception.description}</p>
+                        <div className="mt-3 rounded-lg border border-navy-600/50 bg-navy-950/50 p-3">
+                          <p className="text-[11px] uppercase tracking-wider text-slate-500">Suggested resolution</p>
+                          <p className="mt-1 text-xs font-medium text-slate-200">{resolution.label}</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {resolution.disabled_reason || resolution.reason}
+                          </p>
+                          {resolution.href && (
+                            <Link href={resolution.href} className="mt-2 inline-flex text-xs text-gold hover:text-gold-light">
+                              {resolution.cta}
+                            </Link>
+                          )}
+                        </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <span className="badge border border-navy-600/50 bg-navy-900/60 text-slate-400">
                             {typeLabels[exception.type] || titleCase(exception.type)}
@@ -654,8 +645,13 @@ function ExceptionsPageContent() {
                               </button>
                               {canCorrectException(exception) && (
                                 <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => openCorrection(exception)}>
-                                  Correct attendance
+                                  {resolution.cta}
                                 </button>
+                              )}
+                              {!canCorrectException(exception) && resolution.href && (
+                                <Link href={resolution.href} className="btn-secondary text-xs">
+                                  {resolution.cta}
+                                </Link>
                               )}
                               <button type="button" className="btn-ghost text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'ignored')}>
                                 Ignore
@@ -667,9 +663,15 @@ function ExceptionsPageContent() {
                               )}
                             </>
                           ) : (
-                            <button type="button" className="btn-secondary text-xs" disabled>
-                              Review-only
-                            </button>
+                            resolution.href ? (
+                              <Link href={resolution.href} className="btn-secondary text-xs">
+                                Review source
+                              </Link>
+                            ) : (
+                              <button type="button" className="btn-secondary text-xs" disabled>
+                                Review-only
+                              </button>
+                            )
                           )}
                         </div>
                       </td>
@@ -703,15 +705,11 @@ function ExceptionsPageContent() {
               </label>
               <label className="space-y-1.5">
                 <span className="section-label block">Action</span>
-                <select
-                  value={correctionDraft.action}
-                  onChange={(event) => updateCorrectionDraft({ action: event.target.value as AttendanceCorrectionAction })}
+                <input
+                  value={correctionDraft.exception.suggested_resolution.label}
+                  readOnly
                   className="input-field"
-                >
-                  <option value="add_clock_in">Add clock-in</option>
-                  <option value="add_clock_out">Add clock-out</option>
-                  {correctionDraft.exception.attendance_id && <option value="void_event">Void mistaken event</option>}
-                </select>
+                />
               </label>
               {correctionDraft.action !== 'void_event' ? (
                 <label className="space-y-1.5">
@@ -719,13 +717,13 @@ function ExceptionsPageContent() {
                   <input
                     type="time"
                     value={correctionDraft.correctedTime}
-                    onChange={(event) => updateCorrectionDraft({ correctedTime: event.target.value })}
+                    onChange={(event) => updateCorrectionTime(event.target.value)}
                     className="input-field font-mono"
                   />
                 </label>
               ) : (
                 <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100/85">
-                  This will void raw event <span className="font-mono text-amber-100">{correctionDraft.exception.attendance_id}</span> from the effective attendance record. The kiosk row remains in the audit trail.
+                  This will void raw event <span className="font-mono text-amber-100">{correctionDraft.originalAttendanceId}</span> from the effective attendance record. The kiosk row remains in the audit trail.
                 </div>
               )}
               <label className="space-y-1.5">
@@ -738,6 +736,12 @@ function ExceptionsPageContent() {
                 />
               </label>
             </div>
+
+            {correctionDraft.sourceHref && (
+              <Link href={correctionDraft.sourceHref} className="mt-4 inline-flex text-xs text-gold hover:text-gold-light">
+                Open source evidence
+              </Link>
+            )}
 
             <label className="mt-4 block space-y-1.5">
               <span className="section-label block">Correction reason</span>
