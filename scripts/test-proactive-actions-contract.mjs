@@ -822,6 +822,11 @@ const completedCloseout = buildProactiveActions({
 assert.deepEqual(actionKeys(completedCloseout), ['shift-closeout-complete'], 'Completed closeout should be the only informational action in a clean closeout payload.');
 assert.match(completedCloseout[0].description, /^Today's supervisor closeout was completed at /, 'Completed closeout description should include a display time.');
 assert.equal(completedCloseout[0].blocksCloseout, false, 'Completed closeout must not block closeout.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(completedCloseout[0])),
+  ['Signoff complete'],
+  'Completed closeout actions should expose a compact signoff evidence chip.',
+);
 
 const noActions = buildProactiveActions({
   signalFailures: [],

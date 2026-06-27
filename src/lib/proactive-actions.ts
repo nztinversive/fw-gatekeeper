@@ -602,6 +602,7 @@ export function getProactiveActionEvidenceChips(
   } else if (action.source === 'closeout') {
     const blockerCount = evidenceNumber(evidence, 'blockerCount');
     if (blockerCount !== null) chips.push(blockerCount > 0 ? pluralChip(blockerCount, 'blocker') : 'No blockers');
+    if (evidence.status === 'completed') chips.push('Signoff complete');
     if (evidence.firstBlockerLabel) chips.push(String(evidence.firstBlockerLabel));
     const firstBlockerProof = evidence.firstBlockerProof;
     if (firstBlockerProof && typeof firstBlockerProof === 'object') {
