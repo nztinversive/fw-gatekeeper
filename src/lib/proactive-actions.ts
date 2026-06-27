@@ -660,9 +660,11 @@ export function getProactiveActionProofLink(
   if (!firstProof.exact || !firstProof.href) return null;
 
   const canOpenProof = action.actionability.canOperate && action.actionability.role !== null;
+  const firstBlockerLabel = typeof action.evidence?.firstBlockerLabel === 'string' ? action.evidence.firstBlockerLabel.trim() : '';
+  const labelPrefix = canOpenProof ? 'Open' : 'Review';
   return {
     href: canOpenProof ? firstProof.href : stripHrefParams(firstProof.href, ['intent']),
-    label: canOpenProof ? 'Open exact source' : 'Review exact source',
+    label: firstBlockerLabel ? `${labelPrefix} ${firstBlockerLabel} source` : `${labelPrefix} exact source`,
   };
 }
 

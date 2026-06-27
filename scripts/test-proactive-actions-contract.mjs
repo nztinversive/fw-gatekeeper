@@ -277,8 +277,8 @@ const closeoutProofPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
 assert.equal(closeoutProofPlan.actionKey, 'shift-closeout-pending', 'Blocked closeout can be the next best action when higher-risk blockers are absent.');
 assert.deepEqual(plain(closeoutProofPlan.proofLink), {
   href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct',
-  label: 'Open exact source',
-}, 'Shift trust plan should expose exact closeout proof links for operating roles.');
+  label: 'Open Missing clock-outs source',
+}, 'Shift trust plan should expose blocker-specific exact closeout proof links for operating roles.');
 assert.deepEqual(
   plain(closeoutProofPlan.evidenceChips),
   ['1 blocker', 'Missing clock-outs', 'Exact source ready'],
@@ -336,8 +336,8 @@ const viewerCloseoutProofPlan = buildProactiveShiftTrustPlan(buildProactiveActio
 }));
 assert.deepEqual(plain(viewerCloseoutProofPlan.proofLink), {
   href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2',
-  label: 'Review exact source',
-}, 'Shift trust plan should strip correction intent from exact closeout proof links for review-only roles.');
+  label: 'Review Missing clock-outs source',
+}, 'Shift trust plan should strip correction intent from exact closeout proof links for review-only roles while naming the blocker.');
 
 const notArrived = findAction(rankedActions, 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
