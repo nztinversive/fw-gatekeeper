@@ -299,6 +299,7 @@ function ShiftBriefingPageContent() {
           ? 'Review before shift'
           : 'Coverage on track';
   const nextStep = getBriefingNextStep(payload, currentRole, date);
+  const hasExportableBriefing = filteredWorkers.length > 0 || Boolean(payload?.action_items.length);
 
   return (
     <div className="animate-fade-in space-y-6 pb-24 md:pb-8">
@@ -319,7 +320,7 @@ function ShiftBriefingPageContent() {
           <button type="button" onClick={() => window.print()} className="btn-secondary">
             Print
           </button>
-          <button type="button" onClick={exportCsv} className="btn-primary" disabled={filteredWorkers.length === 0}>
+          <button type="button" onClick={exportCsv} className="btn-primary" disabled={!hasExportableBriefing}>
             Export CSV
           </button>
         </div>
