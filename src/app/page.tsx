@@ -801,7 +801,7 @@ export default function Dashboard() {
             <span className="status-dot-pulse bg-emerald-400 mt-1.5" />
             <div>
               <p className="font-display font-semibold text-emerald-300">All clear</p>
-              <p className="text-sm text-slate-500 mt-1">No enrollment, schedule, or arrival issues need review right now.</p>
+              <p className="text-sm text-slate-500 mt-1">No readiness, kiosk, exception, closeout, enrollment, schedule, or arrival issues need review right now.</p>
             </div>
           </div>
         ) : (

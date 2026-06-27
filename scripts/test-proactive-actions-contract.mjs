@@ -726,6 +726,7 @@ assert.match(dashboardSource, /const dashboardRole = currentRole \|\| 'viewer'/,
 assert.match(dashboardSource, /currentRole:\s*dashboardRole/, 'Dashboard proactive actions should use the review-safe role fallback instead of raw unresolved role state.');
 assert.match(dashboardSource, /buildProactiveShiftTrustPlan/, 'Dashboard should render a single next-best shift trust plan from ranked actions.');
 assert.match(dashboardSource, /Next best action/, 'Dashboard should label the next-best action summary.');
+assert.match(dashboardSource, /No readiness, kiosk, exception, closeout, enrollment, schedule, or arrival issues need review right now\./, 'Dashboard Action Center empty state should name the full shift-trust scope.');
 assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best action should reuse the selected action href.');
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
 assert.match(dashboardSource, /\{shiftTrustPlan\.impactLabel\}/, 'Dashboard next-best action should render the role-aware impact label from the selected action.');
