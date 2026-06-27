@@ -606,6 +606,7 @@ export function getProactiveActionEvidenceChips(
     if (evidence.canComplete === true) chips.push('Ready to complete');
   } else if (action.source === 'attendance') {
     if (count !== null) chips.push(pluralChip(count, 'missing scan'));
+    if (Array.isArray(evidence.workerIds) && evidence.workerIds.length > 0) chips.push('Worker list ready');
   }
 
   return chips.slice(0, 3);

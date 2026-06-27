@@ -344,6 +344,21 @@ assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is information
 assert.equal(notArrived.description, '2 active workers have no clock-in scans today.');
 assert.equal(notArrived.href, '/briefing?date=2026-06-26&status=missing', 'Attendance actions should deep-link to the dated missing-worker briefing filter.');
 assert.equal(notArrived.cta, 'Review missing', 'Not-arrived actions should point supervisors at the missing-worker review.');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(notArrived)),
+  ['2 missing scans', 'Worker list ready'],
+  'Roster-backed missing-arrival actions should show that the worker list is ready in Briefing.',
+);
+const statsOnlyNotArrived = findAction(buildProactiveActions({
+  date: '2026-06-26',
+  workers: [],
+  stats: { notArrived: 2 },
+}), 'not-arrived');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(statsOnlyNotArrived)),
+  ['2 missing scans'],
+  'Stats-only missing-arrival actions should not claim a worker list is ready.',
+);
 
 const focusedExceptionActions = buildProactiveActions({
   date: '2026-06-26',
