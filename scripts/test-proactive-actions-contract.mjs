@@ -29,6 +29,7 @@ const {
   buildProactiveActions,
   buildProactiveShiftTrustPlan,
   getProactiveActionOutcomeChips,
+  getProactiveActionProofLink,
   PROACTIVE_ACTION_PRIORITY_RANK,
 } = module.exports;
 
@@ -193,6 +194,34 @@ assert.deepEqual(plain(closeout.evidence.firstBlockerProof), {
   href: '/exceptions?date=2026-06-26&status=open&severity=critical&exception_key=2026-06-26%3Acritical%3Aw2',
   exact: true,
 }, 'Closeout evidence should preserve first blocker proof without rerouting the action away from closeout.');
+const correctionProofAction = {
+  source: 'closeout',
+  evidence: {
+    firstBlockerProof: {
+      href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct',
+      exact: true,
+    },
+  },
+  actionability: { access: 'operate', canOperate: true, role: 'admin' },
+};
+assert.deepEqual(plain(getProactiveActionProofLink(correctionProofAction)), {
+  href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct',
+  label: 'Open exact source',
+}, 'Operating roles should keep exact closeout proof links intact.');
+assert.deepEqual(plain(getProactiveActionProofLink({
+  ...correctionProofAction,
+  actionability: { access: 'review', canOperate: false, role: 'viewer' },
+})), {
+  href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2',
+  label: 'Review exact source',
+}, 'Review-only roles should preserve exact proof row context while stripping correction intent.');
+assert.deepEqual(plain(getProactiveActionProofLink({
+  ...correctionProofAction,
+  actionability: { access: 'operate', canOperate: true, role: null },
+})), {
+  href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2',
+  label: 'Review exact source',
+}, 'Unknown roles should use review-safe closeout proof links until portal role resolution completes.');
 
 const notArrived = findAction(rankedActions, 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
@@ -480,6 +509,8 @@ assert.match(dashboardSource, /getActionEvidenceChips/, 'Dashboard action cards 
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Dashboard evidence chips should be labelled for assistive technology.');
 assert.match(dashboardSource, /item\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
 assert.match(dashboardSource, /item\.source === 'closeout'[\s\S]*evidence\.firstBlockerProof[\s\S]*Exact source ready/, 'Closeout evidence chips should disclose exact closeout proof handoffs when available.');
+assert.match(dashboardSource, /getProactiveActionProofLink/, 'Dashboard should derive secondary proof links from shared proactive action proof semantics.');
+assert.match(dashboardSource, /proofLink && \([\s\S]*href=\{proofLink\.href\}[\s\S]*\{proofLink\.label\}/, 'Dashboard action cards should render the secondary proof link when exact source proof exists.');
 assert.match(dashboardSource, /getProactiveActionOutcomeChips/, 'Dashboard action cards should derive outcome chips from the shared proactive action semantics.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} outcomes`\}/, 'Dashboard outcome chips should be labelled for assistive technology.');
 assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');

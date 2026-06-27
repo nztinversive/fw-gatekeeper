@@ -6,7 +6,7 @@ import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
-import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionOutcomeChips } from '@/lib/proactive-actions';
+import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
 import type { ProactiveAction, ProactiveSignalFreshness } from '@/lib/proactive-actions';
 
 interface WorkerWithStatus {
@@ -831,6 +831,7 @@ export default function Dashboard() {
               const actionFreshnessCopy = getActionFreshnessCopy(item.freshness);
               const evidenceChips = getActionEvidenceChips(item);
               const outcomeChips = getProactiveActionOutcomeChips(item);
+              const proofLink = getProactiveActionProofLink(item);
               return (
                 <div key={item.key} className={`rounded-2xl border p-4 ${tone}`}>
                   <div className="flex items-start justify-between gap-3">
@@ -878,9 +879,16 @@ export default function Dashboard() {
                     </div>
                     <span className="text-3xl font-display font-bold tabular-nums">{item.value}</span>
                   </div>
-                  <Link href={item.href} className="mt-4 inline-flex text-xs font-semibold text-gold hover:text-gold-light">
-                    {item.cta} →
-                  </Link>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <Link href={item.href} className="inline-flex text-xs font-semibold text-gold hover:text-gold-light">
+                      {item.cta} →
+                    </Link>
+                    {proofLink && (
+                      <Link href={proofLink.href} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
+                        {proofLink.label} →
+                      </Link>
+                    )}
+                  </div>
                 </div>
               );
             })}

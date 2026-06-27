@@ -150,6 +150,11 @@ export interface ProactiveShiftTrustPlan {
   unlocks: string[];
 }
 
+export interface ProactiveActionProofLink {
+  href: string;
+  label: string;
+}
+
 type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'freshness' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
   priority?: ProactiveActionPriority;
   severity?: ProactiveActionSeverity;
@@ -516,6 +521,21 @@ export function getProactiveActionOutcomeChips(action: Pick<ProactiveAction, 'bl
   if (chips.length === 0 && action.priority === CLOSEOUT_PRIORITY) chips.push(`${actionVerb} closeout signoff`);
   if (chips.length === 0) chips.push('Supports supervisor review');
   return chips;
+}
+
+export function getProactiveActionProofLink(
+  action: Pick<ProactiveAction, 'source' | 'evidence' | 'actionability'>,
+): ProactiveActionProofLink | null {
+  const proof = action.evidence?.firstBlockerProof;
+  if (action.source !== 'closeout' || !proof || typeof proof !== 'object') return null;
+  const firstProof = proof as Partial<{ href: string; exact: boolean }>;
+  if (!firstProof.exact || !firstProof.href) return null;
+
+  const canOpenProof = action.actionability.canOperate && action.actionability.role !== null;
+  return {
+    href: canOpenProof ? firstProof.href : stripHrefParams(firstProof.href, ['intent']),
+    label: canOpenProof ? 'Open exact source' : 'Review exact source',
+  };
 }
 
 export function buildProactiveActions(input: BuildProactiveActionsInput = {}): ProactiveAction[] {
