@@ -2,14 +2,20 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
+import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 
 export async function GET(req: NextRequest) {
   try {
-    const date = req.nextUrl.searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const date = resolveRequestDate(req.nextUrl.searchParams);
+    if (!isValidLocalDateString(date)) {
+      return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
+    }
     const workerId = req.nextUrl.searchParams.get('worker_id');
+    const includeCorrections = req.nextUrl.searchParams.get('raw') === 'true' ? false : undefined;
     const rows = await convex.query(api.attendance.list, {
       date,
       workerId: workerId || undefined,
+      includeCorrections,
     });
     return NextResponse.json(rows);
   } catch (error) {

@@ -1,9 +1,13 @@
 import { convexAuthNextjsMiddleware } from '@convex-dev/auth/nextjs/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
 import { hasValidAdminSession, hasValidKioskKey, isKioskRequestAllowed, unauthorizedApiResponse } from '@/lib/auth';
 import { hasPortalMemberAccess, type PortalMemberRole } from '@/lib/portal-member';
 
 const PUBLIC_PATHS = ['/login', '/api/auth', '/api/convex-auth', '/api/health'];
+
+function isLocalDemoWriteMode() {
+  return process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
+}
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -18,6 +22,54 @@ function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
   }
 
   if (pathname === '/api/workers' && method === 'GET' && searchParams.has('id')) {
+    return ['admin', 'enrollment'];
+  }
+
+  if (pathname === '/api/workers' && method === 'GET' && searchParams.get('scope') === 'dashboard') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if ((pathname === '/api/stats' || pathname === '/api/attendance' || pathname === '/api/system-health') && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/recognition-attempts' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/portal-role' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/recognition-attempts' && method === 'PATCH') {
+    return ['admin', 'enrollment'];
+  }
+
+  if (pathname === '/api/shift-exceptions' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/shift-exceptions' && method === 'PATCH') {
+    return ['admin', 'enrollment'];
+  }
+
+  if (pathname === '/api/attendance-corrections' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/attendance-corrections' && method === 'POST') {
+    return ['admin', 'enrollment'];
+  }
+
+  if (pathname === '/api/shift-briefing' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/shift-closeout' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
+  if (pathname === '/api/shift-closeout' && method === 'PATCH') {
     return ['admin', 'enrollment'];
   }
 
@@ -72,7 +124,7 @@ async function legacyAccessMiddleware(
   return NextResponse.next();
 }
 
-export const middleware = convexAuthNextjsMiddleware(async (req, { convexAuth }) => {
+const authenticatedMiddleware = convexAuthNextjsMiddleware(async (req, { convexAuth }) => {
   const token = await convexAuth.getToken();
   const apiAllowedRoles = getApiAllowedRoles(req);
   const hasConvexPortalMember = await hasPortalMemberAccess(token);
@@ -84,6 +136,13 @@ export const middleware = convexAuthNextjsMiddleware(async (req, { convexAuth })
 }, {
   apiRoute: '/api/convex-auth',
 });
+
+export function middleware(req: NextRequest, event: NextFetchEvent) {
+  if (isLocalDemoWriteMode()) {
+    return NextResponse.next();
+  }
+  return authenticatedMiddleware(req, event);
+}
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],

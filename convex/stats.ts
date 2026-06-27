@@ -1,6 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-import { listAttendanceByTimestampRange } from "./attendance";
+import { listEffectiveAttendanceByTimestampRange } from "./attendance";
 
 function getDateKey(timestamp: string): string {
   return timestamp.slice(0, 10);
@@ -28,7 +28,7 @@ export const get = query({
     const totalWorkers = allWorkers.length;
 
     // Get today's records
-    const todayAttendance = await listAttendanceByTimestampRange(ctx, today);
+    const todayAttendance = await listEffectiveAttendanceByTimestampRange(ctx, today);
 
     // Latest event per worker
     const workerStatus = new Map<string, { eventType: string; timestamp: string }>();

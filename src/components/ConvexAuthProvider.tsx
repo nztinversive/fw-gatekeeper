@@ -1,17 +1,17 @@
 'use client';
 
 import { ConvexAuthNextjsProvider } from '@convex-dev/auth/nextjs';
-import { ConvexReactClient } from 'convex/react';
+import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { ReactNode, useMemo } from 'react';
+import { getPublicConvexUrl, isPublicDemoWriteMode } from '@/lib/public-convex-url';
 
 export default function ConvexAuthProvider({ children }: { children: ReactNode }) {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-
-  if (!convexUrl) {
-    throw new Error('NEXT_PUBLIC_CONVEX_URL is required');
-  }
-
+  const convexUrl = getPublicConvexUrl();
   const convex = useMemo(() => new ConvexReactClient(convexUrl), [convexUrl]);
+
+  if (isPublicDemoWriteMode() && !process.env.NEXT_PUBLIC_CONVEX_URL) {
+    return <ConvexProvider client={convex}>{children}</ConvexProvider>;
+  }
 
   return <ConvexAuthNextjsProvider client={convex}>{children}</ConvexAuthNextjsProvider>;
 }

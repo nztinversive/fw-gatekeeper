@@ -22,6 +22,11 @@ assert.match(
 );
 assert.match(
   middleware,
+  /pathname\s*===\s*['"]\/api\/workers['"][\s\S]*method\s*===\s*['"]GET['"][\s\S]*searchParams\.get\(['"]scope['"]\)\s*===\s*['"]dashboard['"][\s\S]*\['admin',\s*'enrollment',\s*'viewer'\]/,
+  'middleware should allow dashboard-scoped worker roster reads for active dashboard roles',
+);
+assert.match(
+  middleware,
   /hasPortalMemberAccess\(token,\s*apiAllowedRoles\)/,
   'middleware should pass route-specific allowed roles into portal-member authorization',
 );
@@ -46,6 +51,16 @@ assert.match(
   workersRoute,
   /include_encodings[\s\S]*requireAdmin\(req\)/,
   'Full worker listing and include_encodings access should remain admin-only',
+);
+assert.match(
+  workersRoute,
+  /requireDashboardWorkerRead\s*\(/,
+  'Workers API should expose a separate dashboard read scope without broadening worker management',
+);
+assert.match(
+  workersRoute,
+  /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/,
+  'Dashboard worker roster reads should allow viewer portal members',
 );
 assert.match(
   workersRoute,

@@ -149,6 +149,10 @@ GREEN = (0, 200, 0)
 RED = (0, 0, 220)
 
 
+def _now_iso():
+    return datetime.now().isoformat(timespec="seconds")
+
+
 def draw_box(frame_bgr, face_loc, color, label=None):
     out = frame_bgr.copy()
     if face_loc is None:
@@ -188,6 +192,40 @@ def normalize_embedding(embedding):
 
 def largest_face(face_locations):
     return max(face_locations, key=lambda loc: (loc[2] - loc[0]) * (loc[1] - loc[3]))
+
+
+def _empty_recognition_result(face_loc, decision="rejected_unknown"):
+    return {
+        "face_loc": face_loc,
+        "name": None,
+        "confidence": 0.0,
+        "candidate_worker_id": None,
+        "candidate_worker_name": None,
+        "best_score": None,
+        "second_best_score": None,
+        "score_margin": None,
+        "decision": decision,
+        "threshold": config.RECOGNITION_MATCH_THRESHOLD,
+        "liveness_confirmed": False,
+        "model_version": config.RECOGNITION_MODEL_VERSION,
+    }
+
+
+def _log_recognition_attempt(result, decision):
+    database.log_recognition_attempt(
+        timestamp=_now_iso(),
+        kiosk_id=config.KIOSK_ID,
+        face_detected=bool(result and result.get("face_loc") is not None),
+        candidate_worker_id=result.get("candidate_worker_id") if result else None,
+        candidate_worker_name=result.get("candidate_worker_name") if result else None,
+        best_score=result.get("best_score") if result else None,
+        second_best_score=result.get("second_best_score") if result else None,
+        score_margin=result.get("score_margin") if result else None,
+        decision=decision,
+        threshold=result.get("threshold") if result else config.RECOGNITION_MATCH_THRESHOLD,
+        liveness_confirmed=bool(result and result.get("liveness_confirmed")),
+        model_version=result.get("model_version") if result else config.RECOGNITION_MODEL_VERSION,
+    )
 
 
 def run(args):
@@ -291,7 +329,7 @@ def run(args):
 
                 if face_crop.size == 0:
                     embedding_history.clear()
-                    current_result[0] = (face_loc, None, 0.0)
+                    current_result[0] = _empty_recognition_result(face_loc, decision="rejected_no_embedding")
                     continue
 
                 # Get 512-dim MobileFaceNet embedding (matches server encoding)
@@ -300,7 +338,7 @@ def run(args):
                 except Exception as e:
                     logger.error("ONNX encoding error: %s", e)
                     embedding_history.clear()
-                    current_result[0] = (face_loc, None, 0.0)
+                    current_result[0] = _empty_recognition_result(face_loc, decision="rejected_model_error")
                     continue
 
                 embedding_history.append(embedding)
@@ -310,6 +348,8 @@ def run(args):
                 known_encs, known_ids, known_names = recognizer._snapshot_known_faces()
                 matched = None
                 conf = 0.0
+                best_idx = None
+                second_score = None
 
                 if known_encs:
                     enc_dim = len(known_encs[0])
@@ -317,21 +357,46 @@ def run(args):
 
                     if enc_dim == cand_dim:
                         # Both 512-dim - cosine similarity
-                        best_sim = -1
-                        best_idx = 0
+                        scores = []
                         for i, known in enumerate(known_encs):
                             sim = cosine_sim(np.array(known), smoothed_embedding)
-                            if sim > best_sim:
-                                best_sim = sim
-                                best_idx = i
+                            scores.append((sim, i))
+                        scores.sort(reverse=True, key=lambda item: item[0])
+                        best_sim, best_idx = scores[0]
+                        if len(scores) > 1:
+                            second_score = scores[1][0]
                         conf = best_sim
                         logger.info("Match: sim=%.3f name=%s window=%d", conf, known_names[best_idx], len(embedding_history))
-                        if conf >= 0.30:  # TODO: raise to 0.45 after re-enrollment with Pi camera
+                        if conf >= config.RECOGNITION_MATCH_THRESHOLD:
                             matched = known_names[best_idx]
                     else:
                         logger.warning("Dim mismatch: known=%d vs live=%d", enc_dim, cand_dim)
 
-                current_result[0] = (face_loc, matched, conf)
+                margin = conf - second_score if second_score is not None else None
+                candidate_worker_id = known_ids[best_idx] if best_idx is not None else None
+                candidate_worker_name = known_names[best_idx] if best_idx is not None else None
+                decision = "accepted" if matched else "rejected_unknown"
+                if (
+                    matched is None
+                    and best_idx is not None
+                    and conf >= config.RECOGNITION_MATCH_THRESHOLD - config.RECOGNITION_NEAR_MISS_MARGIN
+                ):
+                    decision = "near_miss"
+
+                current_result[0] = {
+                    "face_loc": face_loc,
+                    "name": matched,
+                    "confidence": conf,
+                    "candidate_worker_id": candidate_worker_id,
+                    "candidate_worker_name": candidate_worker_name,
+                    "best_score": conf if best_idx is not None else None,
+                    "second_best_score": second_score,
+                    "score_margin": margin,
+                    "decision": decision,
+                    "threshold": config.RECOGNITION_MATCH_THRESHOLD,
+                    "liveness_confirmed": False,
+                    "model_version": config.RECOGNITION_MODEL_VERSION,
+                }
 
             except Exception as e:
                 logger.error("Detection error: %s", e, exc_info=True)
@@ -381,7 +446,9 @@ def run(args):
                 time.sleep(0.05)
                 continue
 
-            face_loc, name, confidence = result
+            face_loc = result.get("face_loc")
+            name = result.get("name")
+            confidence = result.get("confidence") or 0.0
             box_loc = face_loc
 
             if name is None:
@@ -393,6 +460,7 @@ def run(args):
                                           worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
                 else:
+                    _log_recognition_attempt(result, result.get("decision") or "rejected_unknown")
                     web_app.update_status(state="NOT_RECOGNIZED", message="Face not recognized",
                                           worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
@@ -430,6 +498,7 @@ def run(args):
                                       worker_name=display_name, worker_id=display_id, face_detected=True,
                                       confidence=confidence,
                                       known_workers=recognizer.known_count)
+                _log_recognition_attempt(result, "accepted_already_clocked")
                 display_until[0] = now + config.DISPLAY_TIME_SEC
                 continue
 
@@ -445,6 +514,7 @@ def run(args):
                 worker_id=worker_id, worker_name=display_name,
                 action=action, liveness_confirmed=False, confidence=confidence,
             )
+            _log_recognition_attempt(result, "accepted")
             last_clocks[worker_id] = datetime.now()
 
             time_str = datetime.now().strftime("%I:%M %p")

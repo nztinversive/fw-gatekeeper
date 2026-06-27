@@ -81,6 +81,23 @@ def init_db():
             note TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS recognition_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            kiosk_id TEXT NOT NULL DEFAULT '',
+            face_detected INTEGER NOT NULL DEFAULT 0,
+            candidate_worker_id INTEGER,
+            candidate_worker_name TEXT,
+            best_score REAL,
+            second_best_score REAL,
+            score_margin REAL,
+            decision TEXT NOT NULL,
+            threshold REAL,
+            liveness_confirmed INTEGER NOT NULL DEFAULT 0,
+            model_version TEXT,
+            synced INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS sync_state (
             id INTEGER PRIMARY KEY CHECK(id = 1),
             last_sync TEXT
@@ -88,6 +105,8 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_attendance_worker_time ON attendance_log(worker_id, timestamp);
         CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_log(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_recognition_attempts_sync ON recognition_attempts(synced, id);
+        CREATE INDEX IF NOT EXISTS idx_recognition_attempts_time ON recognition_attempts(timestamp);
         """
     )
 
@@ -110,6 +129,20 @@ def init_db():
     _ensure_column(conn, "attendance_log", "kiosk_id", "kiosk_id TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "attendance_log", "synced", "synced INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "attendance_log", "note", "note TEXT")
+
+    _ensure_column(conn, "recognition_attempts", "timestamp", "timestamp TEXT NOT NULL DEFAULT (datetime('now'))")
+    _ensure_column(conn, "recognition_attempts", "kiosk_id", "kiosk_id TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "recognition_attempts", "face_detected", "face_detected INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "recognition_attempts", "candidate_worker_id", "candidate_worker_id INTEGER")
+    _ensure_column(conn, "recognition_attempts", "candidate_worker_name", "candidate_worker_name TEXT")
+    _ensure_column(conn, "recognition_attempts", "best_score", "best_score REAL")
+    _ensure_column(conn, "recognition_attempts", "second_best_score", "second_best_score REAL")
+    _ensure_column(conn, "recognition_attempts", "score_margin", "score_margin REAL")
+    _ensure_column(conn, "recognition_attempts", "decision", "decision TEXT NOT NULL DEFAULT 'unknown'")
+    _ensure_column(conn, "recognition_attempts", "threshold", "threshold REAL")
+    _ensure_column(conn, "recognition_attempts", "liveness_confirmed", "liveness_confirmed INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "recognition_attempts", "model_version", "model_version TEXT")
+    _ensure_column(conn, "recognition_attempts", "synced", "synced INTEGER NOT NULL DEFAULT 0")
 
     worker_columns = {row["name"] for row in conn.execute("PRAGMA table_info(workers)").fetchall()}
     if "face_encoding" in worker_columns:
@@ -451,6 +484,102 @@ def mark_synced(log_ids: list[int]):
     conn = _get_conn()
     placeholders = ",".join("?" for _ in log_ids)
     conn.execute(f"UPDATE attendance_log SET synced = 1 WHERE id IN ({placeholders})", log_ids)
+    conn.commit()
+
+
+def _optional_float(value) -> Optional[float]:
+    if value is None:
+        return None
+    return float(value)
+
+
+def log_recognition_attempt(
+    *,
+    decision: str,
+    timestamp: Optional[str] = None,
+    kiosk_id: Optional[str] = None,
+    face_detected: bool = False,
+    candidate_worker_id: Optional[int] = None,
+    candidate_worker_name: Optional[str] = None,
+    best_score: Optional[float] = None,
+    second_best_score: Optional[float] = None,
+    score_margin: Optional[float] = None,
+    threshold: Optional[float] = None,
+    liveness_confirmed: bool = False,
+    model_version: Optional[str] = None,
+) -> int:
+    """Store a non-image recognition telemetry attempt for calibration sync."""
+    conn = _get_conn()
+    timestamp = timestamp or datetime.now().isoformat(timespec="seconds")
+    cursor = conn.execute(
+        """
+        INSERT INTO recognition_attempts
+            (
+                timestamp, kiosk_id, face_detected, candidate_worker_id, candidate_worker_name,
+                best_score, second_best_score, score_margin, decision, threshold,
+                liveness_confirmed, model_version, synced
+            )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        """,
+        (
+            timestamp,
+            kiosk_id or config.KIOSK_ID,
+            1 if face_detected else 0,
+            int(candidate_worker_id) if candidate_worker_id is not None else None,
+            candidate_worker_name,
+            _optional_float(best_score),
+            _optional_float(second_best_score),
+            _optional_float(score_margin),
+            decision,
+            _optional_float(threshold),
+            1 if liveness_confirmed else 0,
+            model_version,
+        ),
+    )
+    conn.commit()
+    attempt_id = int(cursor.lastrowid)
+    logger.info(
+        "Recognition attempt logged: decision=%s candidate=%s score=%s threshold=%s",
+        decision,
+        candidate_worker_name or "unknown",
+        f"{best_score:.3f}" if best_score is not None else "n/a",
+        f"{threshold:.3f}" if threshold is not None else "n/a",
+    )
+    return attempt_id
+
+
+def get_unsynced_recognition_attempts(limit: int = 100) -> list[dict]:
+    """Return unsynced recognition telemetry rows without any face image data."""
+    conn = _get_conn()
+    rows = conn.execute(
+        """
+        SELECT
+            id, timestamp, kiosk_id, face_detected, candidate_worker_id, candidate_worker_name,
+            best_score, second_best_score, score_margin, decision, threshold,
+            liveness_confirmed, model_version
+        FROM recognition_attempts
+        WHERE synced = 0
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        (int(limit),),
+    ).fetchall()
+    attempts: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        item["face_detected"] = bool(item["face_detected"])
+        item["liveness_confirmed"] = bool(item["liveness_confirmed"])
+        attempts.append(item)
+    return attempts
+
+
+def mark_recognition_attempts_synced(attempt_ids: list[int]):
+    """Mark selected recognition telemetry attempts as synced."""
+    if not attempt_ids:
+        return
+    conn = _get_conn()
+    placeholders = ",".join("?" for _ in attempt_ids)
+    conn.execute(f"UPDATE recognition_attempts SET synced = 1 WHERE id IN ({placeholders})", attempt_ids)
     conn.commit()
 
 

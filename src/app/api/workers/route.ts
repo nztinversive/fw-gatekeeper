@@ -14,6 +14,10 @@ async function requireWorkerRead(req: NextRequest) {
   return (await hasValidPortalSession(req, ['admin', 'enrollment'])) ? null : unauthorizedApiResponse();
 }
 
+async function requireDashboardWorkerRead(req: NextRequest) {
+  return (await hasValidPortalSession(req, ['admin', 'enrollment', 'viewer'])) ? null : unauthorizedApiResponse();
+}
+
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
   if (id) {
@@ -26,10 +30,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(safeWorker);
   }
 
+  const dashboardScope = req.nextUrl.searchParams.get('scope') === 'dashboard';
+  const includeEncodings = req.nextUrl.searchParams.get('include_encodings') === 'true';
+  if (dashboardScope && !includeEncodings) {
+    const unauthorized = await requireDashboardWorkerRead(req);
+    if (unauthorized) return unauthorized;
+
+    const workers = await convex.query(api.workers.list, { includeEncodings: false });
+    return NextResponse.json(workers.map((worker: any) => ({
+      id: worker.id,
+      name: worker.name,
+      employee_id: worker.employee_id,
+      department: worker.department,
+      photo_url: worker.photo_url,
+      has_face_encoding: worker.has_face_encoding,
+      encoding_status: worker.encoding_status,
+      enrolled_at: worker.enrolled_at,
+      active: worker.active,
+    })));
+  }
+
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;
 
-  const includeEncodings = req.nextUrl.searchParams.get('include_encodings') === 'true';
   const workers = await convex.query(api.workers.list, { includeEncodings });
   return NextResponse.json(workers.map((worker: any) => ({
     id: worker.id,

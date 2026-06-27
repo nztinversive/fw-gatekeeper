@@ -1,0 +1,774 @@
+'use client';
+
+import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useToast } from '@/components/Toast';
+import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
+import { createLocalIsoTimestamp, getLocalDateString } from '@/lib/date';
+import {
+  AttendanceCorrectionAction,
+  ShiftException,
+  ShiftExceptionsResponse,
+  ShiftExceptionSeverity,
+  ShiftExceptionStatus,
+} from '@/lib/types';
+
+const typeLabels: Record<string, string> = {
+  missing_arrival: 'Missing arrival',
+  late_arrival: 'Late arrival',
+  missing_clock_out: 'Still clocked in',
+  scan_sequence: 'Bad scan sequence',
+  recognition_review: 'Recognition review',
+};
+
+const severityStyles: Record<ShiftExceptionSeverity, string> = {
+  critical: 'bg-red-400/10 text-red-300 border-red-400/20',
+  warning: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+  info: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
+};
+
+const statusStyles: Record<ShiftExceptionStatus, string> = {
+  open: 'bg-gold/10 text-gold border-gold/20',
+  reviewed: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
+  ignored: 'bg-slate-400/10 text-slate-300 border-slate-400/20',
+  resolved: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
+};
+
+type CorrectionDraft = {
+  exception: ShiftException;
+  action: AttendanceCorrectionAction;
+  correctedTime: string;
+  reason: string;
+  reasonWasSuggested: boolean;
+  supervisorName: string;
+};
+
+type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+
+function titleCase(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return 'No scan';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function escapeCsv(value: unknown) {
+  const text = String(value ?? '');
+  if (!/[",\n]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function canCorrectException(exception: ShiftException) {
+  if (!exception.worker_id) return false;
+  if (exception.type === 'scan_sequence') return Boolean(exception.attendance_id);
+  return exception.type === 'missing_arrival' || exception.type === 'missing_clock_out';
+}
+
+function timeFromTimestamp(value?: string | null) {
+  const match = value?.match(/T(\d{2}:\d{2})/);
+  return match?.[1] || '';
+}
+
+function suggestedCorrection(exception: ShiftException): Pick<CorrectionDraft, 'action' | 'correctedTime'> {
+  if (exception.type === 'missing_arrival') {
+    return { action: 'add_clock_in', correctedTime: exception.scheduled_start || '06:00' };
+  }
+  if (exception.type === 'missing_clock_out') {
+    return { action: 'add_clock_out', correctedTime: exception.scheduled_end || timeFromTimestamp(exception.last_seen) || '14:30' };
+  }
+  if (exception.type === 'scan_sequence' && exception.attendance_id) {
+    return { action: 'void_event', correctedTime: timeFromTimestamp(exception.last_seen || exception.first_seen) };
+  }
+  return { action: 'add_clock_in', correctedTime: timeFromTimestamp(exception.last_seen || exception.first_seen) || exception.scheduled_start || '06:00' };
+}
+
+function suggestedCorrectionReason(exception: ShiftException, suggestion: Pick<CorrectionDraft, 'action' | 'correctedTime'>) {
+  const worker = exception.worker_name || 'Unknown worker';
+  const issue = typeLabels[exception.type] || titleCase(exception.type);
+  const schedule = exception.schedule_name ? ` on ${exception.schedule_name}` : '';
+  const source = `Source exception ${exception.key}.`;
+
+  if (suggestion.action === 'add_clock_in') {
+    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-in at ${suggestion.correctedTime}. ${source}`;
+  }
+
+  if (suggestion.action === 'add_clock_out') {
+    return `${issue}: supervisor verified ${worker}${schedule} should have a clock-out at ${suggestion.correctedTime}. ${source}`;
+  }
+
+  const sourceEvent = exception.attendance_id ? ` source event ${exception.attendance_id}` : ' selected source scan event';
+  return `${issue}: supervisor verified ${worker}'s${sourceEvent} should be voided from effective attendance. ${source}`;
+}
+
+function suggestedReviewNotes(exception: ShiftException) {
+  const worker = exception.worker_name || 'Unknown worker';
+  const issue = typeLabels[exception.type] || titleCase(exception.type);
+  const source = `Source exception ${exception.key}.`;
+  const notes = [
+    {
+      label: 'Source reviewed',
+      note: `${issue}: supervisor reviewed source evidence for ${worker}. ${source}`,
+    },
+  ];
+
+  if (canCorrectException(exception)) {
+    notes.push({
+      label: 'Correction reviewed',
+      note: `${issue}: supervisor reviewed attendance correction path for ${worker}. ${source}`,
+    });
+  }
+
+  if (exception.type === 'recognition_review') {
+    notes.push({
+      label: 'Recognition reviewed',
+      note: `${issue}: supervisor reviewed the recognition attempt context. ${source}`,
+    });
+  }
+
+  notes.push({
+    label: 'No correction needed',
+    note: `${issue}: no attendance correction needed after supervisor review for ${worker}. ${source}`,
+  });
+
+  return notes;
+}
+
+function appendReviewNote(existingNote: string, suggestion: string) {
+  const current = existingNote.trim();
+  if (!current) return suggestion;
+  if (current.includes(suggestion)) return current;
+  return `${current}\n${suggestion}`;
+}
+
+function timestampFor(date: string, time: string) {
+  return createLocalIsoTimestamp(date, time);
+}
+
+function csvFor(exceptions: ShiftException[]) {
+  const headers = [
+    'Status',
+    'Severity',
+    'Type',
+    'Worker',
+    'Department',
+    'Kiosk',
+    'First Seen',
+    'Last Seen',
+    'Schedule',
+    'Scheduled Start',
+    'Scheduled End',
+    'Description',
+    'Note',
+  ];
+  const rows = exceptions.map((exception) => [
+    exception.status,
+    exception.severity,
+    typeLabels[exception.type] || titleCase(exception.type),
+    exception.worker_name || '',
+    exception.department || '',
+    exception.kiosk_name || exception.kiosk_id || '',
+    exception.first_seen || '',
+    exception.last_seen || '',
+    exception.schedule_name || '',
+    exception.scheduled_start || '',
+    exception.scheduled_end || '',
+    exception.description,
+    exception.review_note || '',
+  ]);
+  return [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+}
+
+function validDateParam(value: string | null) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function validSeverityParam(value: string | null): ShiftExceptionSeverity | 'all' {
+  return value === 'critical' || value === 'warning' || value === 'info' ? value : 'all';
+}
+
+function validStatusParam(value: string | null): ShiftExceptionStatus | 'all' {
+  return value === 'open' || value === 'reviewed' || value === 'resolved' || value === 'ignored' || value === 'all' ? value : 'open';
+}
+
+function canOperateExceptions(role: PortalRole | undefined) {
+  return role === 'admin' || role === 'enrollment';
+}
+
+function exceptionRowId(key: string) {
+  return `exception-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+function ExceptionsPageContent() {
+  const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const queryDepartment = searchParams.get('department') || 'all';
+  const queryType = searchParams.get('type') || 'all';
+  const querySeverity = validSeverityParam(searchParams.get('severity'));
+  const queryStatus = validStatusParam(searchParams.get('status'));
+  const queryExceptionKey = searchParams.get('exception_key') || '';
+  const queryIntent = searchParams.get('intent') || '';
+  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const [date, setDate] = useState(queryDate);
+  const [payload, setPayload] = useState<ShiftExceptionsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [department, setDepartment] = useState(queryDepartment);
+  const [type, setType] = useState(queryType);
+  const [severity, setSeverity] = useState<ShiftExceptionSeverity | 'all'>(querySeverity);
+  const [status, setStatus] = useState<ShiftExceptionStatus | 'all'>(queryStatus);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [correctionDraft, setCorrectionDraft] = useState<CorrectionDraft | null>(null);
+  const [handledIntentKey, setHandledIntentKey] = useState('');
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const canOperate = canOperateExceptions(currentRole);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-role', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && typeof payload?.role === 'string') {
+          setCurrentRole(payload.role);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setDate(queryDate);
+    setDepartment(queryDepartment);
+    setType(queryType);
+    setSeverity(querySeverity);
+    setStatus(queryStatus);
+  }, [queryDate, queryDepartment, querySeverity, queryStatus, queryType]);
+
+  const fetchExceptions = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/shift-exceptions?date=${date}`, { cache: 'no-store' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to load exceptions');
+      setPayload(body);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load exceptions');
+      setPayload(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [date]);
+
+  useEffect(() => {
+    fetchExceptions();
+  }, [fetchExceptions]);
+
+  const exceptions = payload?.exceptions ?? [];
+  const departments = useMemo(() => {
+    const values = exceptions.flatMap((exception) => (exception.department ? [exception.department] : []));
+    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+  }, [exceptions]);
+  const types = useMemo(() => {
+    const values = exceptions.map((exception) => exception.type);
+    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+  }, [exceptions]);
+
+  const filtered = useMemo(() => {
+    return exceptions.filter((exception) => {
+      const departmentMatches = department === 'all' || exception.department === department;
+      const typeMatches = type === 'all' || exception.type === type;
+      const severityMatches = severity === 'all' || exception.severity === severity;
+      const statusMatches = status === 'all' || exception.status === status;
+      return departmentMatches && typeMatches && severityMatches && statusMatches;
+    });
+  }, [department, exceptions, severity, status, type]);
+
+  function updateReview(exception: ShiftException, nextStatus: ShiftExceptionStatus) {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can update exception reviews.', 'error');
+      return;
+    }
+    setPendingKey(exception.key);
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/shift-exceptions', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            exception_key: exception.key,
+            date: exception.date,
+            type: exception.type,
+            status: nextStatus,
+            note: noteDrafts[exception.key] || exception.review_note || undefined,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || 'Failed to update exception');
+        toast(`Exception marked ${titleCase(nextStatus)}`);
+        await fetchExceptions();
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Failed to update exception', 'error');
+      } finally {
+        setPendingKey(null);
+      }
+    });
+  }
+
+  function openCorrection(exception: ShiftException) {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can correct attendance.', 'error');
+      return;
+    }
+    const suggestion = suggestedCorrection(exception);
+    const existingReason = noteDrafts[exception.key] || exception.review_note || '';
+    setCorrectionDraft({
+      exception,
+      action: suggestion.action,
+      correctedTime: suggestion.correctedTime,
+      reason: existingReason || suggestedCorrectionReason(exception, suggestion),
+      reasonWasSuggested: !existingReason,
+      supervisorName: '',
+    });
+  }
+
+  function updateCorrectionDraft(next: Partial<Pick<CorrectionDraft, 'action' | 'correctedTime'>>) {
+    setCorrectionDraft((current) => {
+      if (!current) return current;
+      const updated = { ...current, ...next };
+      return {
+        ...updated,
+        reason: current.reasonWasSuggested
+          ? suggestedCorrectionReason(updated.exception, updated)
+          : updated.reason,
+      };
+    });
+  }
+
+  function applySuggestedReviewNote(exception: ShiftException, note: string) {
+    setNoteDrafts((current) => ({
+      ...current,
+      [exception.key]: appendReviewNote(current[exception.key] ?? exception.review_note ?? '', note),
+    }));
+  }
+
+  useEffect(() => {
+    if (!canOperate || !queryExceptionKey || queryIntent !== 'correct' || handledIntentKey === queryExceptionKey || correctionDraft) return;
+    const target = filtered.find((exception) => exception.key === queryExceptionKey);
+    if (!target || !canCorrectException(target) || target.status !== 'open') return;
+    openCorrection(target);
+    setHandledIntentKey(queryExceptionKey);
+  }, [canOperate, correctionDraft, filtered, handledIntentKey, queryExceptionKey, queryIntent]);
+
+  useEffect(() => {
+    if (!queryExceptionKey || !filtered.some((exception) => exception.key === queryExceptionKey)) return;
+    document.getElementById(exceptionRowId(queryExceptionKey))?.scrollIntoView({ block: 'center' });
+  }, [filtered, queryExceptionKey]);
+
+  async function submitCorrection() {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can save attendance corrections.', 'error');
+      return;
+    }
+    if (!correctionDraft?.exception.worker_id) return;
+    if (!correctionDraft.reason.trim()) {
+      toast('Correction reason required', 'error');
+      return;
+    }
+    if (correctionDraft.action !== 'void_event' && !correctionDraft.correctedTime) {
+      toast('Correction time required', 'error');
+      return;
+    }
+
+    setSavingCorrection(true);
+    try {
+      const res = await fetch('/api/attendance-corrections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          worker_id: correctionDraft.exception.worker_id,
+          action: correctionDraft.action,
+          corrected_timestamp: correctionDraft.action === 'void_event' ? undefined : timestampFor(date, correctionDraft.correctedTime),
+          original_attendance_id: correctionDraft.action === 'void_event' ? correctionDraft.exception.attendance_id : undefined,
+          related_exception_key: correctionDraft.exception.key,
+          reason: correctionDraft.reason,
+          supervisor_name: correctionDraft.supervisorName,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'Failed to save correction');
+      toast(body?.demo_write ? 'Demo attendance correction saved locally' : 'Attendance correction saved');
+      setCorrectionDraft(null);
+      await fetchExceptions();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to save correction', 'error');
+    } finally {
+      setSavingCorrection(false);
+    }
+  }
+
+  function exportCsv() {
+    const blob = new Blob([csvFor(filtered)], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gatekeeper-exceptions-${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const summary = payload?.summary;
+
+  return (
+    <div className="animate-fade-in space-y-6 pb-24 md:pb-8">
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <p className="section-label mb-2">Supervisor workflow</p>
+          <h1 className="page-title text-slate-100">
+            Shift <span className="text-gold">Exceptions</span>
+          </h1>
+          <p className="text-sm text-slate-400 mt-2 max-w-2xl leading-6">
+            Daily breakdown sheet for late arrivals, missing scans, bad scan sequences, and recognition reviews.
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button type="button" onClick={fetchExceptions} className="btn-secondary" disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button type="button" onClick={exportCsv} className="btn-primary" disabled={filtered.length === 0}>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <DemoWriteModeBanner />
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          ['Open', summary?.open ?? 0, 'text-gold'],
+          ['Critical', summary?.critical ?? 0, 'text-red-300'],
+          ['Warning', summary?.warning ?? 0, 'text-amber-300'],
+          ['Info', summary?.info ?? 0, 'text-blue-300'],
+          ['Filtered', filtered.length, 'text-slate-100'],
+        ].map(([label, value, tone]) => (
+          <div key={label} className="rounded-xl border border-navy-600/50 bg-navy-900/35 p-4">
+            <p className="text-xs text-slate-500">{label}</p>
+            <p className={`mt-1 font-display text-2xl ${tone}`}>{value}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="glass-card p-5">
+        <div className="grid gap-3 md:grid-cols-5">
+          <label className="space-y-1.5">
+            <span className="section-label block">Date</span>
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input-field" />
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Department</span>
+            <select value={department} onChange={(event) => setDepartment(event.target.value)} className="input-field">
+              <option value="all">All departments</option>
+              {departments.map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Type</span>
+            <select value={type} onChange={(event) => setType(event.target.value)} className="input-field">
+              <option value="all">All types</option>
+              {types.map((value) => (
+                <option key={value} value={value}>{typeLabels[value] || titleCase(value)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Severity</span>
+            <select value={severity} onChange={(event) => setSeverity(event.target.value as ShiftExceptionSeverity | 'all')} className="input-field">
+              <option value="all">All severity</option>
+              <option value="critical">Critical</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="section-label block">Status</span>
+            <select value={status} onChange={(event) => setStatus(event.target.value as ShiftExceptionStatus | 'all')} className="input-field">
+              <option value="all">All statuses</option>
+              <option value="open">Open</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="resolved">Resolved</option>
+              <option value="ignored">Ignored</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      {payload?.backend_unavailable && (
+        <div role="status" className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
+          {payload.warning || 'Shift exception storage is waiting for deployment.'}
+        </div>
+      )}
+
+      {loading && !payload ? (
+        <div className="glass-card p-6 text-sm text-slate-400">Loading shift exceptions...</div>
+      ) : filtered.length === 0 ? (
+        <div className="glass-card p-8 text-center">
+          <h2 className="font-display text-xl text-slate-100">No exceptions in this view</h2>
+          <p className="mt-2 text-sm text-slate-400">Adjust filters or pick another date to inspect the daily breakdown sheet.</p>
+        </div>
+      ) : (
+        <section className="glass-card overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-navy-600/50 px-5 py-4">
+            <div>
+              <h2 className="font-display font-semibold text-slate-100">Exception queue</h2>
+              <p className="text-xs font-mono text-slate-500">{filtered.length} rows in current view</p>
+            </div>
+            {loading && <span className="text-xs text-slate-500">Refreshing...</span>}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1120px] text-left">
+              <thead>
+                <tr className="border-b border-navy-600/50 text-[11px] uppercase tracking-wider text-slate-500">
+                  <th className="px-4 py-3 font-medium">Issue</th>
+                  <th className="px-4 py-3 font-medium">Severity</th>
+                  <th className="px-4 py-3 font-medium">Worker</th>
+                  <th className="px-4 py-3 font-medium">Schedule</th>
+                  <th className="px-4 py-3 font-medium">Last seen</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Note</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-navy-600/35">
+                {filtered.map((exception) => {
+                  const controlsDisabled = isPending && pendingKey === exception.key;
+                  const targeted = queryExceptionKey === exception.key;
+                  return (
+                    <tr
+                      id={exceptionRowId(exception.key)}
+                      key={exception.key}
+                      className={`align-top text-sm text-slate-300 hover:bg-navy-800/35 ${targeted ? 'bg-gold/5 ring-1 ring-inset ring-gold/30' : ''}`}
+                    >
+                      <td className="px-4 py-4">
+                        <p className="font-medium text-slate-100">{exception.title}</p>
+                        <p className="mt-1 max-w-lg text-xs leading-5 text-slate-500">{exception.description}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="badge border border-navy-600/50 bg-navy-900/60 text-slate-400">
+                            {typeLabels[exception.type] || titleCase(exception.type)}
+                          </span>
+                          {exception.links.activity_log && (
+                            <Link href={exception.links.activity_log} className="text-xs text-gold hover:text-gold-light">Activity</Link>
+                          )}
+                          {exception.links.recognition_lab && (
+                            <Link href={exception.links.recognition_lab} className="text-xs text-gold hover:text-gold-light">Recognition Lab</Link>
+                          )}
+                          {exception.links.kiosk && (
+                            <Link href={exception.links.kiosk} className="text-xs text-gold hover:text-gold-light">Kiosks</Link>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`badge border ${severityStyles[exception.severity]}`}>{titleCase(exception.severity)}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="font-medium text-slate-100">{exception.worker_name || 'No worker'}</p>
+                        <p className="mt-1 text-xs font-mono text-slate-500">{exception.department || 'No department'}</p>
+                        {exception.kiosk_name || exception.kiosk_id ? (
+                          <p className="mt-1 text-xs text-slate-500">{exception.kiosk_name || exception.kiosk_id}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="text-sm text-slate-200">{exception.schedule_name || 'No schedule'}</p>
+                        <p className="mt-1 text-xs font-mono text-slate-500">
+                          {exception.scheduled_start || '--:--'} - {exception.scheduled_end || '--:--'}
+                        </p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="text-xs text-slate-400">{formatDateTime(exception.last_seen || exception.first_seen)}</p>
+                        <p className="mt-1 text-xs font-mono text-slate-500">{exception.event_count} event{exception.event_count === 1 ? '' : 's'}</p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`badge border ${statusStyles[exception.status]}`}>{titleCase(exception.status)}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <textarea
+                          rows={2}
+                          value={noteDrafts[exception.key] ?? exception.review_note ?? ''}
+                          onChange={(event) => {
+                            if (!canOperate) return;
+                            setNoteDrafts((current) => ({ ...current, [exception.key]: event.target.value }));
+                          }}
+                          placeholder={canOperate ? 'Optional note' : 'Review note'}
+                          readOnly={!canOperate}
+                          className="input-field min-h-[72px] min-w-[190px] resize-y text-xs"
+                        />
+                        {canOperate && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {suggestedReviewNotes(exception).map((suggestion) => (
+                              <button
+                                key={suggestion.label}
+                                type="button"
+                                className="rounded-full border border-navy-600/60 bg-navy-900/70 px-2.5 py-1 text-[10px] text-slate-300 hover:border-gold/40 hover:text-gold"
+                                onClick={() => applySuggestedReviewNote(exception, suggestion.note)}
+                              >
+                                {suggestion.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex flex-col gap-2">
+                          {canOperate ? (
+                            <>
+                              <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'reviewed')}>
+                                Reviewed
+                              </button>
+                              <button type="button" className="btn-primary text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'resolved')}>
+                                Resolved
+                              </button>
+                              {canCorrectException(exception) && (
+                                <button type="button" className="btn-secondary text-xs" disabled={controlsDisabled} onClick={() => openCorrection(exception)}>
+                                  Correct attendance
+                                </button>
+                              )}
+                              <button type="button" className="btn-ghost text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'ignored')}>
+                                Ignore
+                              </button>
+                              {exception.status !== 'open' && (
+                                <button type="button" className="btn-ghost text-xs" disabled={controlsDisabled} onClick={() => updateReview(exception, 'open')}>
+                                  Reopen
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <button type="button" className="btn-secondary text-xs" disabled>
+                              Review-only
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {correctionDraft && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-4 py-6 backdrop-blur-sm md:items-center">
+          <section className="w-full max-w-2xl rounded-2xl border border-navy-600/70 bg-navy-950 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="section-label mb-2">Supervisor correction</p>
+                <h2 className="font-display text-2xl text-slate-100">Correct attendance</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">{correctionDraft.exception.title}</p>
+              </div>
+              <button type="button" className="btn-ghost text-xs" onClick={() => setCorrectionDraft(null)} disabled={savingCorrection}>
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="section-label block">Worker</span>
+                <input value={correctionDraft.exception.worker_name || 'Unknown worker'} readOnly className="input-field" />
+              </label>
+              <label className="space-y-1.5">
+                <span className="section-label block">Action</span>
+                <select
+                  value={correctionDraft.action}
+                  onChange={(event) => updateCorrectionDraft({ action: event.target.value as AttendanceCorrectionAction })}
+                  className="input-field"
+                >
+                  <option value="add_clock_in">Add clock-in</option>
+                  <option value="add_clock_out">Add clock-out</option>
+                  {correctionDraft.exception.attendance_id && <option value="void_event">Void mistaken event</option>}
+                </select>
+              </label>
+              {correctionDraft.action !== 'void_event' ? (
+                <label className="space-y-1.5">
+                  <span className="section-label block">Corrected time</span>
+                  <input
+                    type="time"
+                    value={correctionDraft.correctedTime}
+                    onChange={(event) => updateCorrectionDraft({ correctedTime: event.target.value })}
+                    className="input-field font-mono"
+                  />
+                </label>
+              ) : (
+                <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100/85">
+                  This will void raw event <span className="font-mono text-amber-100">{correctionDraft.exception.attendance_id}</span> from the effective attendance record. The kiosk row remains in the audit trail.
+                </div>
+              )}
+              <label className="space-y-1.5">
+                <span className="section-label block">Supervisor name</span>
+                <input
+                  value={correctionDraft.supervisorName}
+                  onChange={(event) => setCorrectionDraft((current) => current ? { ...current, supervisorName: event.target.value } : current)}
+                  placeholder="Optional"
+                  className="input-field"
+                />
+              </label>
+            </div>
+
+            <label className="mt-4 block space-y-1.5">
+              <span className="section-label block">Correction reason</span>
+              <textarea
+                rows={4}
+                value={correctionDraft.reason}
+                onChange={(event) => setCorrectionDraft((current) => current ? { ...current, reason: event.target.value, reasonWasSuggested: false } : current)}
+                placeholder="Required: document what the supervisor verified."
+                className="input-field resize-y"
+              />
+            </label>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <button type="button" className="btn-secondary" onClick={() => setCorrectionDraft(null)} disabled={savingCorrection}>
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" onClick={submitCorrection} disabled={savingCorrection || !correctionDraft.reason.trim()}>
+                {savingCorrection ? 'Saving...' : 'Save correction'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ExceptionsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ExceptionsPageContent />
+    </Suspense>
+  );
+}

@@ -18,11 +18,41 @@ const links = [
     ),
   },
   {
+    href: '/briefing',
+    label: 'Briefing',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875A2.625 2.625 0 016.375 2.25h11.25a2.625 2.625 0 012.625 2.625v14.25a2.625 2.625 0 01-2.625 2.625H6.375a2.625 2.625 0 01-2.625-2.625V4.875z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 7.5h7.5M8.25 11.25h7.5M8.25 15h3.75" />
+      </svg>
+    ),
+  },
+  {
     href: '/log',
     label: 'Activity Log',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/exceptions',
+    label: 'Exceptions',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 12h9.75M10.5 18h9.75M3.75 6h.008v.008H3.75V6zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 6h.008v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 6h.008v.008H3.75V18zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/closeout',
+    label: 'Closeout',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15.75 9" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 4.5h15v15h-15v-15z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h7.5M8.25 17.25h7.5" />
       </svg>
     ),
   },
@@ -42,6 +72,16 @@ const links = [
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/calibration/recognition',
+    label: 'Recognition Lab',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25A2.25 2.25 0 016 3h3.75v3H6v3.75H3.75v-4.5zM14.25 3H18a2.25 2.25 0 012.25 2.25v4.5H18V6h-3.75V3zM3.75 14.25H6V18h3.75v3H6A2.25 2.25 0 013.75 18v-3.75zM18 14.25h2.25V18A2.25 2.25 0 0118 20.25h-3.75v-3H18v-3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15.75 9" />
       </svg>
     ),
   },
@@ -99,7 +139,7 @@ const primaryMobileLinks = ['/', '/workers', '/enroll'];
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { signOut } = useAuthActions();
+  const authActions = useAuthActions();
   const currentMember = useQuery(api.portalMembers.current);
   const visibleLinks = links.filter((link) => !link.adminOnly || currentMember?.role === 'admin');
   const mobilePrimaryLinks = visibleLinks.filter((link) => primaryMobileLinks.includes(link.href));
@@ -116,7 +156,9 @@ export default function Sidebar() {
     try {
       const legacyLogout = await fetch('/api/auth/logout', { method: 'POST' });
       legacyLogoutOk = legacyLogout.ok;
-      await signOut();
+      if (authActions?.signOut) {
+        await authActions.signOut();
+      }
     } catch {
       setLogoutError('Sign out failed. Please try again.');
       router.refresh();

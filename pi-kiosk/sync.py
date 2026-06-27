@@ -41,6 +41,19 @@ def _build_idempotency_key(log: dict, server_id: str) -> str:
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
+def _build_attempt_idempotency_key(attempt: dict) -> str:
+    raw_key = "|".join(
+        [
+            "recognition_attempt",
+            str(attempt.get("kiosk_id") or config.KIOSK_ID or ""),
+            str(attempt.get("id") or ""),
+            str(attempt.get("timestamp") or ""),
+            str(attempt.get("decision") or ""),
+        ]
+    )
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+
 def sync_attendance() -> bool:
     """POST unsynced gatekeeper logs to server. Returns True on success."""
     logs = database.get_unsynced_logs()
@@ -114,6 +127,74 @@ def sync_attendance() -> bool:
             return False
     except requests.RequestException:
         logger.exception("Attendance sync request failed")
+        return False
+
+
+def sync_recognition_attempts() -> bool:
+    """POST unsynced recognition calibration attempts to server."""
+    attempts = database.get_unsynced_recognition_attempts()
+    if not attempts:
+        return True
+
+    payload_attempts = []
+    synced_attempt_ids = []
+    server_id_cache: dict[int, Optional[str]] = {}
+
+    for attempt in attempts:
+        local_worker_id = attempt.get("candidate_worker_id")
+        candidate_server_id = None
+        if local_worker_id is not None:
+            local_worker_id = int(local_worker_id)
+            if local_worker_id not in server_id_cache:
+                server_id_cache[local_worker_id] = database.get_server_id(local_worker_id)
+            candidate_server_id = server_id_cache[local_worker_id]
+
+        payload_attempts.append(
+            {
+                "localAttemptId": attempt.get("id"),
+                "sourceAttemptId": f"{attempt.get('kiosk_id') or config.KIOSK_ID}:{attempt.get('id')}",
+                "timestamp": attempt.get("timestamp"),
+                "kioskId": attempt.get("kiosk_id") or config.KIOSK_ID,
+                "faceDetected": attempt.get("face_detected"),
+                "candidateWorkerId": candidate_server_id,
+                "candidateLocalWorkerId": local_worker_id,
+                "candidateWorkerName": attempt.get("candidate_worker_name"),
+                "bestScore": attempt.get("best_score"),
+                "secondBestScore": attempt.get("second_best_score"),
+                "scoreMargin": attempt.get("score_margin"),
+                "score": attempt.get("best_score"),
+                "secondScore": attempt.get("second_best_score"),
+                "margin": attempt.get("score_margin"),
+                "decision": attempt.get("decision"),
+                "threshold": attempt.get("threshold"),
+                "livenessConfirmed": attempt.get("liveness_confirmed"),
+                "livenessPassed": attempt.get("liveness_confirmed"),
+                "modelVersion": attempt.get("model_version"),
+                "idempotencyKey": _build_attempt_idempotency_key(attempt),
+            }
+        )
+        synced_attempt_ids.append(int(attempt["id"]))
+
+    try:
+        r = requests.post(
+            f"{config.SERVER_URL}{config.RECOGNITION_ATTEMPTS_ENDPOINT}",
+            json={"kiosk_id": config.KIOSK_ID, "attempts": payload_attempts},
+            headers=_auth_headers(),
+            timeout=15,
+        )
+        if 200 <= r.status_code < 300:
+            database.mark_recognition_attempts_synced(synced_attempt_ids)
+            logger.info("Synced %d recognition attempts to server", len(synced_attempt_ids))
+            return True
+
+        logger.warning(
+            "Recognition attempt sync failed with status=%d body=%s",
+            r.status_code,
+            r.text[:1000],
+        )
+        return False
+    except requests.RequestException:
+        logger.exception("Recognition attempt sync request failed")
         return False
 
 
@@ -237,6 +318,7 @@ class SyncWorker:
                         if self._recognizer:
                             self._recognizer.reload_faces()
                     sync_attendance()
+                    sync_recognition_attempts()
                 else:
                     logger.debug("Server offline, skipping sync")
             except Exception as e:

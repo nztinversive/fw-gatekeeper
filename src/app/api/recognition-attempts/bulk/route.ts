@@ -1,0 +1,96 @@
+export const dynamic = 'force-dynamic';
+
+import { NextRequest, NextResponse } from 'next/server';
+import convex from '@/lib/convex';
+import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
+import { api } from '../../../../../convex/_generated/api';
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === 'true') return true;
+  if (value === 0 || value === 'false') return false;
+  return undefined;
+}
+
+function normalizeAttempt(raw: any, bulkKioskId?: string) {
+  const bestScore = optionalNumber(raw.best_score) ?? optionalNumber(raw.bestScore) ?? optionalNumber(raw.score) ?? optionalNumber(raw.confidence);
+  const secondBestScore = optionalNumber(raw.second_best_score) ?? optionalNumber(raw.secondBestScore) ?? optionalNumber(raw.second_score) ?? optionalNumber(raw.secondScore);
+  const scoreMargin = optionalNumber(raw.score_margin) ?? optionalNumber(raw.scoreMargin) ?? optionalNumber(raw.margin);
+
+  return {
+    sourceAttemptId:
+      optionalString(raw.source_attempt_id) ||
+      optionalString(raw.sourceAttemptId) ||
+      optionalString(raw.idempotency_key) ||
+      optionalString(raw.idempotencyKey) ||
+      optionalString(raw.id),
+    kioskId: optionalString(raw.kiosk_id) || optionalString(raw.kioskId) || bulkKioskId || 'unknown-kiosk',
+    timestamp: optionalString(raw.timestamp) || optionalString(raw.created_at) || optionalString(raw.createdAt) || new Date().toISOString(),
+    faceDetected:
+      optionalBoolean(raw.face_detected) ??
+      optionalBoolean(raw.faceDetected) ??
+      (bestScore !== undefined || optionalString(raw.candidate_worker_name) !== undefined),
+    candidateWorkerId:
+      optionalString(raw.candidate_worker_id) ||
+      optionalString(raw.candidateWorkerId) ||
+      optionalString(raw.worker_id) ||
+      optionalString(raw.workerId),
+    candidateWorkerName:
+      optionalString(raw.candidate_worker_name) ||
+      optionalString(raw.candidateWorkerName) ||
+      optionalString(raw.worker_name) ||
+      optionalString(raw.workerName),
+    bestScore,
+    secondBestScore,
+    scoreMargin,
+    decision: optionalString(raw.decision) || 'unknown',
+    threshold:
+      optionalNumber(raw.threshold) ??
+      optionalNumber(raw.match_threshold) ??
+      optionalNumber(raw.matchThreshold) ??
+      0.3,
+    livenessConfirmed:
+      optionalBoolean(raw.liveness_confirmed) ??
+      optionalBoolean(raw.livenessConfirmed) ??
+      optionalBoolean(raw.liveness_passed) ??
+      optionalBoolean(raw.livenessPassed),
+    modelVersion:
+      optionalString(raw.model_version) ||
+      optionalString(raw.modelVersion),
+    imageQuality: optionalNumber(raw.image_quality) ?? optionalNumber(raw.imageQuality),
+    faceQuality: optionalNumber(raw.face_quality) ?? optionalNumber(raw.faceQuality),
+    brightness: optionalNumber(raw.brightness),
+    blur: optionalNumber(raw.blur),
+  };
+}
+
+export async function POST(req: NextRequest) {
+  if (!hasValidKioskKey(req)) {
+    return unauthorizedApiResponse();
+  }
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const attempts = body.attempts || body.events || body.logs;
+    const bulkKioskId = optionalString(body.kiosk_id) || optionalString(body.kioskId);
+
+    if (!Array.isArray(attempts)) {
+      return NextResponse.json({ error: 'attempts (or events/logs) array required' }, { status: 400 });
+    }
+
+    const mapped = attempts.map((attempt: any) => normalizeAttempt(attempt, bulkKioskId));
+    const result = await convex.mutation((api as any).recognitionAttempts.bulkIngest, { attempts: mapped });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    console.error('Recognition attempts bulk POST error:', error);
+    return NextResponse.json({ error: 'Failed to record recognition attempt batch' }, { status: 500 });
+  }
+}
