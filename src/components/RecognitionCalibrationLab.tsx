@@ -46,6 +46,8 @@ const reviewStyles: Record<RecognitionReviewStatus, string> = {
   ignored: 'bg-navy-700/70 text-slate-400 border-navy-600/50',
 };
 
+type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+
 function decisionStyle(decision: RecognitionDecision) {
   if (decision.startsWith('accepted')) return 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20';
   if (decision === 'near_miss') return 'bg-gold/10 text-gold border-gold/20';
@@ -89,6 +91,10 @@ function validConfidenceParam(value: string | null): RecognitionConfidenceBand |
   return value === 'high' || value === 'medium' || value === 'low' || value === 'all' ? value : 'all';
 }
 
+function canOperateRecognition(role: PortalRole | undefined) {
+  return role === 'admin' || role === 'enrollment';
+}
+
 function RecognitionCalibrationLabContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -97,6 +103,7 @@ function RecognitionCalibrationLabContent() {
   const queryReviewStatus = validReviewParam(searchParams.get('review_status'));
   const queryConfidenceBand = validConfidenceParam(searchParams.get('confidence_band'));
   const queryKioskId = searchParams.get('kiosk_id') || '';
+  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [date, setDate] = useState(queryDate);
   const [decision, setDecision] = useState<RecognitionDecision | 'all'>(queryDecision);
   const [reviewStatus, setReviewStatus] = useState<RecognitionReviewStatus | 'all'>(queryReviewStatus);
@@ -115,6 +122,23 @@ function RecognitionCalibrationLabContent() {
     setConfidenceBand(queryConfidenceBand);
     setKioskId(queryKioskId);
   }, [queryConfidenceBand, queryDate, queryDecision, queryKioskId, queryReviewStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-role', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && typeof payload?.role === 'string') {
+          setCurrentRole(payload.role);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ date, limit: '150' });
@@ -148,12 +172,17 @@ function RecognitionCalibrationLabContent() {
 
   const attempts = payload?.attempts ?? [];
   const summary = payload?.summary;
+  const canOperate = canOperateRecognition(currentRole);
   const kiosks = useMemo(() => {
     const ids = attempts.flatMap((attempt) => (attempt.kiosk_id ? [attempt.kiosk_id] : []));
     return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
   }, [attempts]);
 
   function reviewAttempt(attempt: RecognitionAttempt, nextStatus: RecognitionReviewStatus) {
+    if (!canOperate) {
+      toast('Only admin or enrollment roles can update recognition reviews.', 'error');
+      return;
+    }
     setPendingReviewId(attempt.id);
     startReviewTransition(async () => {
       try {
@@ -329,22 +358,34 @@ function RecognitionCalibrationLabContent() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => reviewAttempt(attempt, 'confirmed')}
-                          disabled={controlsDisabled}
-                          className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-400/10 disabled:opacity-50"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => reviewAttempt(attempt, 'ignored')}
-                          disabled={controlsDisabled}
-                          className="rounded-lg border border-navy-600/60 bg-navy-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-slate-500 disabled:opacity-50"
-                        >
-                          Ignore
-                        </button>
+                        {canOperate ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => reviewAttempt(attempt, 'confirmed')}
+                              disabled={controlsDisabled}
+                              className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-400/10 disabled:opacity-50"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => reviewAttempt(attempt, 'ignored')}
+                              disabled={controlsDisabled}
+                              className="rounded-lg border border-navy-600/60 bg-navy-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-slate-500 disabled:opacity-50"
+                            >
+                              Ignore
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="rounded-lg border border-navy-600/60 bg-navy-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 disabled:opacity-70"
+                          >
+                            Review-only
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

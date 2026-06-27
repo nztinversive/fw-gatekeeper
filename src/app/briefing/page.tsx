@@ -117,6 +117,14 @@ function stripHrefParams(href: string, keysToStrip: string[]) {
   return nextQuery ? `${path}?${nextQuery}` : path;
 }
 
+function buildHref(path: string, params: Record<string, string | number | null | undefined>) {
+  const query = Object.entries(params)
+    .filter((entry): entry is [string, string | number] => entry[1] !== null && entry[1] !== undefined && entry[1] !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return query ? `${path}?${query}` : path;
+}
+
 function canOperateBriefingAction(role: PortalRole | undefined, href: string) {
   if (role === 'admin') return true;
   if (role !== 'enrollment') return false;
@@ -127,6 +135,10 @@ function getReviewHref(href: string, date: string) {
   if (href.startsWith('/exceptions')) return stripHrefParams(href, ['intent']);
   if (href === '/kiosks' || href === '/schedules') return `/briefing?date=${date}`;
   return href;
+}
+
+function getKioskTrustHref(role: PortalRole | undefined, date: string) {
+  return role === 'admin' ? '/kiosks' : buildHref('/briefing', { date });
 }
 
 function ShiftBriefingPageContent() {
@@ -203,6 +215,23 @@ function ShiftBriefingPageContent() {
       return departmentMatches && statusMatches;
     });
   }, [department, payload, status]);
+  const reviewLinks = useMemo(() => {
+    const departmentFilter = department === 'all' ? undefined : department;
+    return [
+      {
+        label: 'Exceptions',
+        href: buildHref('/exceptions', { date, status: 'open', department: departmentFilter }),
+      },
+      { label: 'Activity Log', href: buildHref('/log', { date }) },
+      { label: 'Workers', href: '/workers' },
+      { label: 'Schedules', href: '/schedules' },
+      {
+        label: 'Recognition Lab',
+        href: buildHref('/calibration/recognition', { date, review_status: 'unreviewed' }),
+      },
+      { label: 'Kiosks', href: getKioskTrustHref(currentRole, date) },
+    ];
+  }, [currentRole, date, department]);
 
   function exportCsv() {
     const csv = workerCsv(date, filteredWorkers);
@@ -461,7 +490,9 @@ function ShiftBriefingPageContent() {
                 {payload?.kiosks.total ?? 0} registered kiosk{payload?.kiosks.total === 1 ? '' : 's'} contribute to today's briefing confidence.
               </p>
             </div>
-            <Link href="/kiosks" className="btn-ghost text-xs">Open</Link>
+            <Link href={getKioskTrustHref(currentRole, date)} className="btn-ghost text-xs">
+              {currentRole === 'admin' ? 'Open' : 'Review'}
+            </Link>
           </div>
           <div className="grid grid-cols-2 gap-3 mt-5">
             {[
@@ -486,14 +517,7 @@ function ShiftBriefingPageContent() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 mt-5">
-            {[
-              ['Exceptions', '/exceptions'],
-              ['Activity Log', '/log'],
-              ['Workers', '/workers'],
-              ['Schedules', '/schedules'],
-              ['Recognition Lab', '/calibration/recognition'],
-              ['Kiosks', '/kiosks'],
-            ].map(([label, href]) => (
+            {reviewLinks.map(({ label, href }) => (
               <Link key={href} href={href} className="rounded-xl border border-navy-600/50 bg-navy-900/35 px-4 py-3 text-sm text-slate-300 hover:text-gold hover:border-gold/25 transition-all">
                 {label}
               </Link>

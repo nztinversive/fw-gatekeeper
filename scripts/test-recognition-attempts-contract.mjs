@@ -10,6 +10,7 @@ const auth = read('src/lib/auth.ts');
 const apiRoute = read('src/app/api/recognition-attempts/route.ts');
 const bulkRoute = read('src/app/api/recognition-attempts/bulk/route.ts');
 const page = read('src/app/calibration/recognition/page.tsx');
+const lab = read('src/components/RecognitionCalibrationLab.tsx');
 const sidebar = read('src/components/Sidebar.tsx');
 
 assert.match(schema, /recognitionAttempts:\s*defineTable/, 'Schema must define recognitionAttempts.');
@@ -44,7 +45,14 @@ assert.match(bulkRoute, /hasValidKioskKey/, 'Bulk recognition attempt upload mus
 assert.match(bulkRoute, /recognitionAttempts\.bulkIngest/, 'Bulk recognition attempt API must call the Convex bulkIngest mutation.');
 assert.match(apiRoute, /recognitionAttempts\.listByDate/, 'Recognition attempt API must call the Convex listByDate query.');
 assert.match(apiRoute, /recognitionAttempts\.updateReview/, 'Recognition attempt review API must call the Convex updateReview mutation.');
+assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'Recognition attempt reads must allow viewer portal members.');
+assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment'\]\)/, 'Recognition attempt review writes must remain admin/enrollment only.');
 assert.match(page, /RecognitionCalibrationLab/, 'Recognition calibration page must render the lab component.');
+assert.match(lab, /\/api\/portal-role/, 'Recognition Lab should resolve portal role before exposing review write controls.');
+assert.match(lab, /function canOperateRecognition/, 'Recognition Lab should centralize write-role checks.');
+assert.match(lab, /return role === 'admin' \|\| role === 'enrollment'/, 'Recognition Lab writes should remain limited to admin and enrollment roles.');
+assert.match(lab, /if \(!canOperate\)[\s\S]*Only admin or enrollment roles can update recognition reviews/, 'Recognition review mutations should be guarded client-side for read-only roles.');
+assert.match(lab, /canOperate \?[\s\S]*Confirm[\s\S]*Ignore[\s\S]*Review-only/, 'Recognition Lab controls should render as review-only for viewers.');
 assert.match(sidebar, /\/calibration\/recognition/, 'Sidebar must link to the recognition calibration lab.');
 
 console.log('Recognition attempts contract passed');
