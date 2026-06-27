@@ -449,7 +449,7 @@ function ShiftBriefingPageContent() {
                 <span className="text-xs font-mono text-slate-500">{trustBrief?.closeout_risks.length ?? 0}</span>
               </div>
               <div className="mt-3 space-y-2">
-                {trustBrief?.closeout_risks.length ? trustBrief.closeout_risks.slice(0, 5).map((risk) => (
+                {trustBrief?.closeout_risks.length ? trustBrief.closeout_risks.map((risk) => (
                   <Link key={risk.id} href={getRoleSafeRiskHref(risk, currentRole, date)} className="block rounded-xl border border-navy-600/50 bg-navy-900/35 p-3 hover:border-gold/25 transition-colors">
                     <div className="flex items-start justify-between gap-3">
                       <div>

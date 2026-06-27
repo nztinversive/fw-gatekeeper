@@ -97,6 +97,8 @@ assert.match(page, /sourceCounts\?\.missing_clock_outs/, 'Briefing page should r
 assert.match(page, /sourceCounts\?\.corrections/, 'Briefing page should render attendance correction source counts.');
 assert.match(page, /Readiness blockers/, 'Briefing page should render readiness blockers.');
 assert.match(page, /Closeout risks/, 'Briefing page should render closeout risks.');
+assert.match(page, /trustBrief\.closeout_risks\.map\(\(risk\)/, 'Briefing page should render every closeout risk instead of truncating warnings behind info-only audit items.');
+assert.doesNotMatch(page, /closeout_risks\.slice\(/, 'Briefing page must not blindly truncate closeout risks.');
 assert.match(page, /getRoleSafeRiskHref/, 'Briefing risk links should reuse role-safe briefing handoffs.');
 assert.match(page, /trustBrief\.source_labels\.map/, 'Briefing page should render deterministic source labels.');
 assert.match(page, /Primary action/, 'Briefing page should render the shared primary action above briefing details.');
