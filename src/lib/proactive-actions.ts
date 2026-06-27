@@ -378,6 +378,12 @@ function canRoleOperate(role: string | null, source: ProactiveActionSource) {
   return false;
 }
 
+function canActionOperate(action: ProactiveAction, role: string | null) {
+  if (!canRoleOperate(role, action.source)) return false;
+  if (role === 'enrollment' && action.source === 'enrollment') return action.href.startsWith('/enroll?worker_id=');
+  return true;
+}
+
 function getReviewHref(action: ProactiveAction, date: string | null) {
   const briefingHref = buildHref('/briefing', { date });
   if (action.source === 'exceptions') return stripHrefParams(action.href, ['intent']);
@@ -422,7 +428,7 @@ function getOperateCta(action: ProactiveAction, role: string | null) {
 function applyRoleActionability(actions: ProactiveAction[], role: BuildProactiveActionsInput['currentRole'], date: string | null) {
   const normalizedRole = normalizeRole(role);
   return actions.map((action) => {
-    const canOperate = canRoleOperate(normalizedRole, action.source);
+    const canOperate = canActionOperate(action, normalizedRole);
     const actionability: ProactiveActionActionability = {
       access: canOperate ? 'operate' : 'review',
       canOperate,

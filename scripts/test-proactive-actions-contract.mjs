@@ -538,6 +538,25 @@ assert.deepEqual(
   { access: 'review', canOperate: false, role: 'enrollment' },
   'Enrollment actionability should mark kiosk actions as review-only.',
 );
+const enrollmentRosterFailureActions = buildProactiveActions({
+  date: '2026-06-26',
+  signalFailures: [{
+    key: 'workers',
+    label: 'Worker roster',
+    href: '/workers',
+    message: 'Worker roster could not refresh: upstream timeout',
+  }],
+  currentRole: 'enrollment',
+});
+const enrollmentRosterFailure = findAction(enrollmentRosterFailureActions, 'signal-failure-workers');
+assert.equal(enrollmentRosterFailure.href, '/briefing?date=2026-06-26', 'Enrollment users should not be sent to generic enrollment when the worker roster signal has no exact worker target.');
+assert.equal(enrollmentRosterFailure.cta, 'Inspect briefing', 'Enrollment worker-roster failures should use review-safe CTA copy.');
+assert.deepEqual(
+  plain(enrollmentRosterFailure.actionability),
+  { access: 'review', canOperate: false, role: 'enrollment' },
+  'Enrollment users can operate exact enrollment handoffs, but not non-targeted worker-roster failures.',
+);
+assert.equal(buildProactiveShiftTrustPlan(enrollmentRosterFailureActions).label, 'Review this first: Worker roster unavailable', 'Worker-roster failure trust plans should use review-safe lead copy for enrollment users.');
 
 const viewerActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'viewer' });
 assert.deepEqual(actionKeys(viewerActions), actionKeys(rankedActions), 'Viewer role must not change proactive action ranking.');
