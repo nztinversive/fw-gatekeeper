@@ -85,6 +85,67 @@ function canOperateCloseout(role: PortalRole | undefined) {
   return role === 'admin' || role === 'enrollment';
 }
 
+function getCloseoutNextStep({
+  payload,
+  completed,
+  acknowledgedBlockers,
+  notes,
+  sourceBlockerCount,
+  canComplete,
+  canOperate,
+}: {
+  payload: ShiftCloseoutResponse | null;
+  completed: boolean;
+  acknowledgedBlockers: boolean;
+  notes: string;
+  sourceBlockerCount: number;
+  canComplete: boolean;
+  canOperate: boolean;
+}) {
+  if (!payload || completed || payload.backend_unavailable) return null;
+
+  if (sourceBlockerCount > 0 && acknowledgedBlockers && !notes.trim()) {
+    return {
+      label: canOperate ? 'Add acknowledgement note' : 'Acknowledgement note needed',
+      description: 'Source blockers are acknowledged. Document the reason in closeout notes before completing the shift record.',
+      href: null,
+      cta: canOperate ? 'Add notes below' : 'Review notes below',
+      exact: false,
+      requiresAcknowledgement: true,
+    };
+  }
+
+  const firstBlocker = payload.blockers[0];
+  if (firstBlocker) {
+    const proof = firstBlocker.proof;
+    return {
+      label: `Review first: ${firstBlocker.label}`,
+      description: proof
+        ? `${proof.count} ${proof.label} keep closeout blocked. ${proof.exact ? 'This opens the exact source row.' : 'Review the source evidence before acknowledgement.'}`
+        : firstBlocker.description,
+      href: proof?.href || firstBlocker.href,
+      cta: proof?.exact ? 'Open exact source' : 'Open proof',
+      exact: Boolean(proof?.exact),
+      requiresAcknowledgement: sourceBlockerCount > 0,
+    };
+  }
+
+  if (canComplete) {
+    return {
+      label: canOperate ? 'Ready for signoff' : 'Ready for supervisor signoff',
+      description: canOperate
+        ? 'Checklist evidence is clear. Complete closeout from the supervisor signoff controls when notes look right.'
+        : 'Checklist evidence is clear. An admin or enrollment user can complete closeout from the supervisor signoff controls.',
+      href: null,
+      cta: canOperate ? 'Use signoff controls' : 'Review signoff',
+      exact: false,
+      requiresAcknowledgement: false,
+    };
+  }
+
+  return null;
+}
+
 function ShiftCloseoutPageContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -162,6 +223,15 @@ function ShiftCloseoutPageContent() {
     : blockerCount
       ? 'Review the blocked checklist items or add an acknowledgement note before completing the closeout.'
       : 'Checklist is clear. Add supervisor notes and complete the daily record.';
+  const nextStep = getCloseoutNextStep({
+    payload,
+    completed,
+    acknowledgedBlockers,
+    notes,
+    sourceBlockerCount,
+    canComplete,
+    canOperate,
+  });
   const suggestedNote = payload?.suggested_note || '';
   const suggestedNoteApplied = Boolean(suggestedNote) && notes.trim() === suggestedNote.trim();
 
@@ -268,6 +338,34 @@ function ShiftCloseoutPageContent() {
             </div>
           ))}
         </div>
+        {nextStep && (
+          <div className="mt-5 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="section-label text-gold">Next closeout step</p>
+                <h3 className="mt-1 font-display text-base font-semibold text-slate-100">{nextStep.label}</h3>
+                <p className="mt-1 text-sm leading-5 text-slate-400">{nextStep.description}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {nextStep.exact && (
+                    <span className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">Exact source</span>
+                  )}
+                  {nextStep.requiresAcknowledgement && (
+                    <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">Acknowledgement required</span>
+                  )}
+                </div>
+              </div>
+              {nextStep.href ? (
+                <Link href={nextStep.href} className="btn-primary shrink-0 self-start text-xs md:self-auto">
+                  {nextStep.cta}
+                </Link>
+              ) : (
+                <span className="btn-secondary pointer-events-none shrink-0 self-start text-xs opacity-70 md:self-auto">
+                  {nextStep.cta}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
