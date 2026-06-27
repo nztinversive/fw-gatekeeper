@@ -6,7 +6,7 @@ import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
-import { buildProactiveActions, buildProactiveShiftTrustPlan } from '@/lib/proactive-actions';
+import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionOutcomeChips } from '@/lib/proactive-actions';
 import type { ProactiveAction, ProactiveSignalFreshness } from '@/lib/proactive-actions';
 
 interface WorkerWithStatus {
@@ -816,6 +816,7 @@ export default function Dashboard() {
               }[item.priority];
               const actionFreshnessCopy = getActionFreshnessCopy(item.freshness);
               const evidenceChips = getActionEvidenceChips(item);
+              const outcomeChips = getProactiveActionOutcomeChips(item);
               return (
                 <div key={item.key} className={`rounded-2xl border p-4 ${tone}`}>
                   <div className="flex items-start justify-between gap-3">
@@ -843,6 +844,13 @@ export default function Dashboard() {
                           ))}
                         </div>
                       )}
+                      <div className="mt-3 flex flex-wrap gap-2" aria-label={`${item.label} outcomes`}>
+                        {outcomeChips.map((chip) => (
+                          <span key={chip} className="badge border border-gold/15 bg-gold/5 text-[10px] text-gold">
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
                       {(item.blocksReadiness || item.blocksCloseout) && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {item.blocksReadiness && (

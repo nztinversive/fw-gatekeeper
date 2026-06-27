@@ -25,7 +25,12 @@ new Script(executableSource, { filename: 'src/lib/proactive-actions.ts' }).runIn
   console,
 });
 
-const { buildProactiveActions, buildProactiveShiftTrustPlan, PROACTIVE_ACTION_PRIORITY_RANK } = module.exports;
+const {
+  buildProactiveActions,
+  buildProactiveShiftTrustPlan,
+  getProactiveActionOutcomeChips,
+  PROACTIVE_ACTION_PRIORITY_RANK,
+} = module.exports;
 
 const actionKeys = (actions) => JSON.parse(JSON.stringify(actions.map((action) => action.key)));
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -429,6 +434,21 @@ assert.equal(viewerTrustPlan.label, 'Review this first: Kiosk sync warning', 'Vi
 assert.equal(viewerTrustPlan.href, '/', 'Viewer shift trust plan should inherit the role-safe review href.');
 assert.equal(viewerTrustPlan.cta, 'Inspect readiness', 'Viewer shift trust plan should inherit the role-safe review CTA.');
 assert.equal(viewerTrustPlan.access, 'review', 'Viewer shift trust plan should expose review access.');
+assert.deepEqual(
+  plain(getProactiveActionOutcomeChips(findAction(adminActions, 'system-health-0'))),
+  ['Clears shift readiness', 'Clears closeout trust'],
+  'Operating users should see the outcomes an action clears.',
+);
+assert.deepEqual(
+  plain(getProactiveActionOutcomeChips(findAction(viewerActions, 'system-health-0'))),
+  ['Review shift readiness', 'Review closeout trust'],
+  'Review-only users should not see copy implying they can clear readiness or closeout trust.',
+);
+assert.deepEqual(
+  plain(getProactiveActionOutcomeChips(findAction(adminActions, 'shift-closeout-pending'))),
+  ['Clears closeout trust'],
+  'Blocked closeout actions should emphasize closeout trust before signoff.',
+);
 
 const dashboardSource = read('src/app/page.tsx');
 const portalRoleRoute = read('src/app/api/portal-role/route.ts');
@@ -441,6 +461,8 @@ assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action
 assert.match(dashboardSource, /getActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from existing action evidence.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Dashboard evidence chips should be labelled for assistive technology.');
 assert.match(dashboardSource, /item\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
+assert.match(dashboardSource, /getProactiveActionOutcomeChips/, 'Dashboard action cards should derive outcome chips from the shared proactive action semantics.');
+assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} outcomes`\}/, 'Dashboard outcome chips should be labelled for assistive technology.');
 assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');
 assert.match(portalRoleRoute, /hasValidAdminSession/, 'Portal role API should treat legacy admin-cookie sessions as admin.');
 assert.match(portalRoleRoute, /getPortalMemberForToken/, 'Portal role API should resolve Convex portal member roles.');

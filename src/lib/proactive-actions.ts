@@ -498,6 +498,16 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
   };
 }
 
+export function getProactiveActionOutcomeChips(action: Pick<ProactiveAction, 'blocksReadiness' | 'blocksCloseout' | 'priority' | 'actionability'>) {
+  const chips: string[] = [];
+  const actionVerb = action.actionability.canOperate ? 'Clears' : 'Review';
+  if (action.blocksReadiness) chips.push(`${actionVerb} shift readiness`);
+  if (action.blocksCloseout) chips.push(`${actionVerb} closeout trust`);
+  if (chips.length === 0 && action.priority === CLOSEOUT_PRIORITY) chips.push(`${actionVerb} closeout signoff`);
+  if (chips.length === 0) chips.push('Supports supervisor review');
+  return chips;
+}
+
 export function buildProactiveActions(input: BuildProactiveActionsInput = {}): ProactiveAction[] {
   const actions: DraftProactiveAction[] = [];
   const signalFailures = Array.isArray(input.signalFailures) ? input.signalFailures : [];
