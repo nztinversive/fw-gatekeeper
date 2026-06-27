@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { listEffectiveAttendanceByTimestampRange } from "./attendance";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
-import { listRecognitionAttemptsByFactoryDate } from "./recognitionAttempts";
+import { listAllRecognitionAttemptsByFactoryDate } from "./recognitionAttempts";
 
 const LOW_MARGIN_THRESHOLD = 0.08;
 
@@ -176,7 +176,7 @@ export async function buildShiftExceptions(ctx: any, date: string) {
       .query("exceptionReviews")
       .withIndex("by_date", (q: any) => q.eq("date", date))
       .collect(),
-    listRecognitionAttemptsByFactoryDate(ctx, { date, limit: 1000 }),
+    listAllRecognitionAttemptsByFactoryDate(ctx, { date }),
   ]);
 
   const reviewsByKey = new Map(reviews.map((review: any) => [review.exceptionKey, review]));

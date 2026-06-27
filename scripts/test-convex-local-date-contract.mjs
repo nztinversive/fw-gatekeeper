@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildConservativeFactoryLocalTimestampRanges,
   getFactoryLocalDateKey,
+  getFactoryLocalTimestamp,
   getNextFactoryLocalDateKey,
   getPreviousFactoryLocalDateKey,
   isValidFactoryLocalDateKey,
@@ -46,6 +47,9 @@ for (const [label, timestamp, expectedDate] of cases) {
 assert.equal(getFactoryLocalDateKey('2026-06-27T04:30:00Z', { timeZone: 'America/Chicago' }), '2026-06-26');
 assert.equal(getFactoryLocalDateKey('not-a-timestamp', central), null);
 assert.equal(getFactoryLocalDateKey(null, central), null);
+assert.equal(getFactoryLocalTimestamp('2026-06-27T04:30:00Z', central), '2026-06-26T23:30:00');
+assert.equal(getFactoryLocalTimestamp('2026-06-27T04:30:00Z', { timeZone: 'America/Chicago' }), '2026-06-26T23:30:00');
+assert.equal(getFactoryLocalTimestamp('2026-06-26T23:30:00', central), '2026-06-26T23:30:00');
 
 const selectedDate = '2026-06-26';
 const selectedDateTimestamps = [
@@ -103,11 +107,13 @@ assert.doesNotMatch(helper, /from ["']convex\//, 'Local date helper should stay 
 const attendance = read('convex/attendance.ts');
 assert.match(attendance, /buildConservativeFactoryLocalTimestampRanges/, 'Attendance date reads should use conservative indexed ranges.');
 assert.match(attendance, /timestampBelongsToFactoryLocalDate/, 'Attendance date reads should post-filter by factory local date.');
+assert.match(attendance, /getFactoryLocalTimestamp/, 'Attendance date reads should normalize absolute timestamps to factory local time before schedule checks.');
 assert.doesNotMatch(attendance, /gte\("timestamp", start\)\.lt\("timestamp", end\)/, 'Attendance date reads should not use a narrow string-prefix day range.');
 assert.match(attendance, /new Map<string, any>\(\)/, 'Attendance date reads should dedupe overlapping conservative ranges.');
 
 const recognitionAttempts = read('convex/recognitionAttempts.ts');
 assert.match(recognitionAttempts, /listRecognitionAttemptsByFactoryDate/, 'Recognition attempts should expose a reusable factory-date reader.');
+assert.match(recognitionAttempts, /listAllRecognitionAttemptsByFactoryDate/, 'Recognition attempts should expose an uncapped factory-date reader for closeout blockers.');
 assert.match(recognitionAttempts, /buildConservativeFactoryLocalTimestampRanges/, 'Recognition attempts should use conservative indexed ranges for date reads.');
 assert.match(recognitionAttempts, /timestampBelongsToFactoryLocalDate/, 'Recognition attempts should post-filter by factory local date.');
 assert.match(recognitionAttempts, /applyLimit:\s*false/, 'Recognition attempts should filter the widened factory-date range before applying the requested limit.');
@@ -115,7 +121,8 @@ assert.doesNotMatch(recognitionAttempts, /conservativeLimit/, 'Recognition attem
 assert.match(recognitionAttempts, /listRecognitionAttemptsByFactoryDate\(ctx,\s*\{[\s\S]*date/, 'listByDate should use the factory-date reader.');
 
 const shiftExceptions = read('convex/shiftExceptions.ts');
-assert.match(shiftExceptions, /listRecognitionAttemptsByFactoryDate/, 'Shift exceptions should share the recognition factory-date reader.');
+assert.match(shiftExceptions, /listAllRecognitionAttemptsByFactoryDate\(ctx,\s*\{\s*date\s*\}\)/, 'Shift exceptions should use the uncapped recognition factory-date reader.');
+assert.doesNotMatch(shiftExceptions, /limit:\s*1000/, 'Shift exceptions should not cap recognition blockers before closeout.');
 assert.doesNotMatch(shiftExceptions, /recognitionAttempts"\)\s*\.withIndex\("by_timestamp"[\s\S]*gte\("timestamp", date\)/, 'Shift exceptions should not use a narrow recognition timestamp date range.');
 
 const attendanceCorrections = read('convex/attendanceCorrections.ts');

@@ -194,9 +194,21 @@ export async function listRecognitionAttemptsByFactoryDate(
     limit?: number;
   },
 ) {
+  const rows = await listAllRecognitionAttemptsByFactoryDate(ctx, args);
+  const limit = clampLimit(args.limit);
+  return rows.slice(0, limit);
+}
+
+export async function listAllRecognitionAttemptsByFactoryDate(
+  ctx: any,
+  args: {
+    date: string;
+    kioskId?: string;
+    reviewed?: boolean;
+  },
+) {
   const rowsById = new Map<string, any>();
   const kioskId = normalizeOptionalText(args.kioskId);
-  const limit = clampLimit(args.limit);
 
   for (const range of buildConservativeFactoryLocalTimestampRanges(args.date)) {
     const rows = await listRangeInternal(ctx, {
@@ -213,8 +225,7 @@ export async function listRecognitionAttemptsByFactoryDate(
   }
 
   return Array.from(rowsById.values())
-    .sort((a: any, b: any) => String(b.timestamp).localeCompare(String(a.timestamp)))
-    .slice(0, limit);
+    .sort((a: any, b: any) => String(b.timestamp).localeCompare(String(a.timestamp)));
 }
 
 export const bulkIngest = mutation({

@@ -77,6 +77,39 @@ function getDateKeyFromAbsoluteTimestamp(timestamp: string, options: FactoryLoca
   return year && month && day ? `${year}-${month}-${day}` : null;
 }
 
+function getTimestampFromAbsoluteTimestamp(timestamp: string, options: FactoryLocalDateOptions) {
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  if (options.utcOffsetMinutes !== undefined) {
+    const localTime = new Date(parsed.getTime() + options.utcOffsetMinutes * 60 * 1000);
+    return localTime.toISOString().slice(0, 19);
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: options.timeZone || DEFAULT_FACTORY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = formatter.formatToParts(parsed);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+  const second = parts.find((part) => part.type === "second")?.value;
+  return year && month && day && hour && minute && second
+    ? `${year}-${month}-${day}T${hour}:${minute}:${second}`
+    : null;
+}
+
 export function getFactoryLocalDateKey(
   timestamp: string | null | undefined,
   options: FactoryLocalDateOptions = {},
@@ -92,6 +125,22 @@ export function getFactoryLocalDateKey(
 
   const datePrefix = trimmed.slice(0, 10);
   return isValidFactoryLocalDateKey(datePrefix) ? datePrefix : null;
+}
+
+export function getFactoryLocalTimestamp(
+  timestamp: string | null | undefined,
+  options: FactoryLocalDateOptions = {},
+) {
+  if (typeof timestamp !== "string") {
+    return null;
+  }
+
+  const trimmed = timestamp.trim();
+  if (ABSOLUTE_TIMESTAMP_RE.test(trimmed)) {
+    return getTimestampFromAbsoluteTimestamp(trimmed, options);
+  }
+
+  return trimmed || null;
 }
 
 export function timestampBelongsToFactoryLocalDate(

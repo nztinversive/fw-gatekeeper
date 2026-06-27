@@ -30,6 +30,8 @@ assert.match(exceptions, /missing_clock_out/, 'Shift exceptions must include mis
 assert.match(exceptions, /scan_sequence/, 'Shift exceptions must include bad scan sequence cases.');
 assert.match(exceptions, /recognition_review/, 'Shift exceptions must include recognition review cases.');
 assert.match(exceptions, /LOW_MARGIN_THRESHOLD/, 'Recognition backlog should include low-margin accepted attempts.');
+assert.match(exceptions, /listAllRecognitionAttemptsByFactoryDate\(ctx,\s*\{\s*date\s*\}\)/, 'Recognition review blockers should scan the full factory-date backlog for closeout.');
+assert.doesNotMatch(exceptions, /limit:\s*1000/, 'Recognition review blockers should not be capped for closeout.');
 assert.match(exceptions, /const attemptId = String\(attempt\.id \|\| attempt\._id\)/, 'Recognition review exceptions should preserve the exact serialized recognition attempt id.');
 assert.match(exceptions, /recognitionNumber\(attempt,\s*"score_margin",\s*"scoreMargin"\)/, 'Recognition review exceptions should read serialized score margins.');
 assert.match(exceptions, /recognitionText\(attempt,\s*"candidate_worker_name",\s*"candidateWorkerName"\)/, 'Recognition review exceptions should read serialized candidate names.');

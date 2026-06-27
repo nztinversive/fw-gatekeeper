@@ -3,8 +3,17 @@ import { v } from "convex/values";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
 import {
   buildConservativeFactoryLocalTimestampRanges,
+  getFactoryLocalTimestamp,
   timestampBelongsToFactoryLocalDate,
 } from "./localDate";
+
+function withFactoryLocalTimestamp(record: any) {
+  const timestamp = getFactoryLocalTimestamp(record?.timestamp);
+  if (!timestamp || timestamp === record?.timestamp) {
+    return record;
+  }
+  return { ...record, timestamp };
+}
 
 export async function listAttendanceByTimestampRange(
   ctx: any,
@@ -24,7 +33,7 @@ export async function listAttendanceByTimestampRange(
     const rows = await query.collect();
     for (const row of rows) {
       if (timestampBelongsToFactoryLocalDate(row.timestamp, date)) {
-        rowsById.set(String(row._id), row);
+        rowsById.set(String(row._id), withFactoryLocalTimestamp(row));
       }
     }
   }
@@ -72,7 +81,7 @@ export async function listEffectiveAttendanceByTimestampRange(
       workerId: correction.workerId,
       eventType: correction.eventType,
       kioskId: "supervisor_correction",
-      timestamp: correction.correctedTimestamp,
+      timestamp: getFactoryLocalTimestamp(correction.correctedTimestamp) || correction.correctedTimestamp,
       idempotencyKey: `correction:${String(correction._id)}`,
       synced: true,
       workerName: undefined,
