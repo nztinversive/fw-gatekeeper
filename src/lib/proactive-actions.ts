@@ -781,8 +781,8 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       label: source === 'service' ? 'Face service warning' : 'Kiosk sync warning',
       value: '!',
       description: warning,
-      href: '/kiosks',
-      cta: 'Open kiosks',
+      href: source === 'service' ? '/enroll' : '/kiosks',
+      cta: source === 'service' ? 'Review face service' : 'Open kiosks',
       source,
       evidence: {
         warning,

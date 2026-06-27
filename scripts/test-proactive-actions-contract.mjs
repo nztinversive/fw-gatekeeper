@@ -181,6 +181,8 @@ assert.deepEqual(
   ['Service warning'],
   'Service warning evidence chips should not borrow kiosk fleet-count chips from the same health payload.',
 );
+assert.equal(findAction(rankedActions, 'system-health-1').href, '/enroll', 'Face-service warning actions should send operators to enrollment readiness instead of kiosk management.');
+assert.equal(findAction(rankedActions, 'system-health-1').cta, 'Review face service', 'Face-service warning actions should name the face-service review handoff.');
 
 const invalidEnrollment = findAction(rankedActions, 'invalid-face');
 assert.equal(invalidEnrollment.description, '1 worker needs re-enrollment because their face data is not kiosk-valid.');
