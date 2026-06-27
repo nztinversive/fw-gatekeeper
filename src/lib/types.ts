@@ -223,6 +223,55 @@ export interface ShiftBriefingActionItem {
   href: string;
 }
 
+export type ShiftTrustBriefStatus = 'ready' | 'attention' | 'blocked';
+export type ShiftTrustBriefRiskCategory = 'kiosk' | 'enrollment' | 'schedule' | 'exception' | 'correction' | 'attendance';
+
+export interface ShiftTrustBriefRisk {
+  id: string;
+  category: ShiftTrustBriefRiskCategory;
+  severity: ShiftBriefingActionPriority;
+  label: string;
+  description: string;
+  count: number;
+  href: string;
+  exact: boolean;
+}
+
+export interface ShiftTrustBriefPrimaryAction extends ShiftBriefingActionItem {
+  cta: string;
+  source_label: string;
+  proof_label: string;
+  exact: boolean;
+}
+
+export interface ShiftTrustBriefSourceCounts {
+  expected: number;
+  present: number;
+  late: number;
+  missing: number;
+  open_exceptions: number;
+  critical_exceptions: number;
+  recognition_reviews: number;
+  missing_clock_outs: number;
+  corrections: number;
+  kiosk_warnings: number;
+}
+
+export interface ShiftTrustBrief {
+  readiness_status: ShiftTrustBriefStatus;
+  summary_sentence: string;
+  primary_action: ShiftTrustBriefPrimaryAction | null;
+  readiness_blockers: ShiftTrustBriefRisk[];
+  closeout_risks: ShiftTrustBriefRisk[];
+  source_counts: ShiftTrustBriefSourceCounts;
+  generated_at: string;
+  freshness: {
+    label: string;
+    generated_at: string;
+  };
+  source_labels: string[];
+}
+
 export interface ShiftBriefingKiosk {
   id: string;
   name: string;
@@ -260,6 +309,7 @@ export interface ShiftBriefingResponse {
     active_today: number;
     total_active: number;
   };
+  shift_trust_brief: ShiftTrustBrief;
   backend_unavailable?: boolean;
   warning?: string;
 }

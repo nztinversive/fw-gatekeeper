@@ -11,6 +11,8 @@ import {
   ShiftBriefingDepartment,
   ShiftBriefingResponse,
   ShiftBriefingWorker,
+  ShiftTrustBriefRisk,
+  ShiftTrustBriefStatus,
   WorkerCoverageStatus,
 } from '@/lib/types';
 
@@ -33,6 +35,12 @@ const priorityStyles: Record<ShiftBriefingActionPriority, string> = {
   critical: 'bg-red-400/10 text-red-300 border-red-400/20',
   warning: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
   info: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
+};
+
+const readinessStyles: Record<ShiftTrustBriefStatus, string> = {
+  ready: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
+  attention: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+  blocked: 'bg-red-400/10 text-red-300 border-red-400/20',
 };
 
 type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
@@ -167,21 +175,34 @@ function getBriefingNextStep(
   role: PortalRole | undefined,
   date: string,
 ) {
-  if (!payload?.action_items.length || payload.backend_unavailable) return null;
-  const action = payload.action_items[0];
+  const action = payload?.shift_trust_brief?.primary_action || payload?.action_items[0];
+  if (!action || payload?.backend_unavailable) return null;
   const canOperateAction = canOperateBriefingAction(role, action.href);
   const href = canOperateAction ? action.href : getReviewHref(action.href, date);
   const exact = hrefHasExactSource(href);
+  const actionCta = 'cta' in action && typeof action.cta === 'string' ? action.cta : 'Open action';
+  const sourceLabel = 'source_label' in action && typeof action.source_label === 'string' ? action.source_label : 'Briefing evidence';
+  const proofLabel = 'proof_label' in action && typeof action.proof_label === 'string'
+    ? action.proof_label
+    : exact
+      ? 'Exact source'
+      : 'Source view';
 
   return {
     label: `${canOperateAction ? 'Open first' : 'Review first'}: ${action.label}`,
     description: action.description,
     href,
-    cta: canOperateAction ? 'Open action' : 'Review source',
+    cta: canOperateAction ? actionCta : 'Review source',
     priority: action.priority,
     exact,
     reviewOnly: !canOperateAction,
+    sourceLabel,
+    proofLabel,
   };
+}
+
+function getRoleSafeRiskHref(risk: ShiftTrustBriefRisk, role: PortalRole | undefined, date: string) {
+  return canOperateBriefingAction(role, risk.href) ? risk.href : getReviewHref(risk.href, date);
 }
 
 function ShiftBriefingPageContent() {
@@ -288,7 +309,8 @@ function ShiftBriefingPageContent() {
   }
 
   const summary = payload?.summary;
-  const presentPercent = summary?.expected ? Math.round((summary.present / summary.expected) * 100) : 0;
+  const trustBrief = payload?.shift_trust_brief;
+  const sourceCounts = trustBrief?.source_counts;
   const riskLabel = !payload
     ? 'Loading briefing'
     : summary?.expected === 0
@@ -300,6 +322,8 @@ function ShiftBriefingPageContent() {
           : 'Coverage on track';
   const nextStep = getBriefingNextStep(payload, currentRole, date);
   const hasExportableBriefing = filteredWorkers.length > 0 || Boolean(payload?.action_items.length);
+  const readinessLabel = trustBrief ? titleCase(trustBrief.readiness_status) : riskLabel;
+  const readinessTone = trustBrief ? readinessStyles[trustBrief.readiness_status] : 'bg-slate-400/10 text-slate-300 border-slate-400/20';
 
   return (
     <div className="animate-fade-in space-y-6 pb-24 md:pb-8">
@@ -329,24 +353,39 @@ function ShiftBriefingPageContent() {
       <section className="glass-card p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="section-label mb-2">Briefing status</p>
-            <h2 className="font-display text-2xl text-slate-100">{riskLabel}</h2>
-            <p className="text-sm text-slate-400 mt-2">
-              Generated {formatGeneratedAt(payload?.generated_at)} for {date}. {payload?.schedules.active_today ?? 0} schedule{payload?.schedules.active_today === 1 ? '' : 's'} active today.
+            <p className="section-label mb-2">Morning Readiness Brief</p>
+            <h2 className="font-display text-2xl text-slate-100">{readinessLabel}</h2>
+            <p className="text-sm text-slate-400 mt-2 max-w-3xl leading-6">
+              {trustBrief?.summary_sentence || `${riskLabel}. Generated ${formatGeneratedAt(payload?.generated_at)} for ${date}.`}
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="badge border border-navy-500/60 bg-navy-950/35 text-[10px] text-slate-400">
+                {trustBrief?.freshness.label || 'Generated from briefing evidence'}
+              </span>
+              <span className="badge border border-navy-500/60 bg-navy-950/35 text-[10px] text-slate-400">
+                Generated {formatGeneratedAt(trustBrief?.generated_at || payload?.generated_at)}
+              </span>
+              <span className="badge border border-navy-500/60 bg-navy-950/35 text-[10px] text-slate-400">
+                {payload?.schedules.active_today ?? 0} active schedule{payload?.schedules.active_today === 1 ? '' : 's'}
+              </span>
+            </div>
           </div>
-          <span className="badge bg-gold/10 text-gold border border-gold/20">
-            {presentPercent}% present
+          <span className={`badge border ${readinessTone}`}>
+            {readinessLabel}
           </span>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 mt-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5 mt-5">
           {[
-            ['Expected', summary?.expected ?? 0, 'text-slate-100'],
-            ['Present', summary?.present ?? 0, 'text-emerald-300'],
-            ['Late', summary?.late ?? 0, 'text-amber-300'],
-            ['Missing', summary?.missing ?? 0, 'text-red-300'],
-            ['Open Exceptions', summary?.open_exceptions ?? 0, 'text-gold'],
-            ['Kiosk Warnings', summary?.kiosk_warnings ?? 0, 'text-blue-300'],
+            ['Expected', sourceCounts?.expected ?? summary?.expected ?? 0, 'text-slate-100'],
+            ['Present', sourceCounts?.present ?? summary?.present ?? 0, 'text-emerald-300'],
+            ['Late', sourceCounts?.late ?? summary?.late ?? 0, 'text-amber-300'],
+            ['Missing', sourceCounts?.missing ?? summary?.missing ?? 0, 'text-red-300'],
+            ['Open Exceptions', sourceCounts?.open_exceptions ?? summary?.open_exceptions ?? 0, 'text-gold'],
+            ['Critical Exceptions', sourceCounts?.critical_exceptions ?? 0, 'text-red-300'],
+            ['Recognition Reviews', sourceCounts?.recognition_reviews ?? summary?.recognition_reviews ?? 0, 'text-blue-300'],
+            ['Missing Clock-Outs', sourceCounts?.missing_clock_outs ?? 0, 'text-amber-300'],
+            ['Corrections', sourceCounts?.corrections ?? 0, 'text-slate-200'],
+            ['Kiosk Warnings', sourceCounts?.kiosk_warnings ?? summary?.kiosk_warnings ?? 0, 'text-blue-300'],
           ].map(([label, value, tone]) => (
             <div key={label} className="rounded-xl border border-navy-600/50 bg-navy-900/35 p-4">
               <p className="text-xs text-slate-500">{label}</p>
@@ -358,11 +397,13 @@ function ShiftBriefingPageContent() {
           <div className="mt-5 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <p className="section-label text-gold">Next briefing step</p>
+                <p className="section-label text-gold">Primary action</p>
                 <h3 className="mt-1 font-display text-base font-semibold text-slate-100">{nextStep.label}</h3>
                 <p className="mt-1 text-sm leading-5 text-slate-400">{nextStep.description}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className={`badge border ${priorityStyles[nextStep.priority]}`}>{titleCase(nextStep.priority)}</span>
+                  <span className="badge border border-navy-500/60 bg-navy-950/35 text-[10px] text-slate-400">{nextStep.sourceLabel}</span>
+                  <span className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">{nextStep.proofLabel}</span>
                   {nextStep.exact && (
                     <span className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">Exact source</span>
                   )}
@@ -377,6 +418,65 @@ function ShiftBriefingPageContent() {
             </div>
           </div>
         )}
+        {trustBrief ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-display text-sm font-semibold text-slate-100">Readiness blockers</h3>
+                <span className="text-xs font-mono text-slate-500">{trustBrief?.readiness_blockers.length ?? 0}</span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {trustBrief?.readiness_blockers.length ? trustBrief.readiness_blockers.map((blocker) => (
+                  <Link key={blocker.id} href={getRoleSafeRiskHref(blocker, currentRole, date)} className="block rounded-xl border border-navy-600/50 bg-navy-900/35 p-3 hover:border-gold/25 transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-display text-sm font-medium text-slate-100">{blocker.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{blocker.description}</p>
+                      </div>
+                      <span className={`badge border text-[10px] ${priorityStyles[blocker.severity]}`}>{blocker.count}</span>
+                    </div>
+                  </Link>
+                )) : (
+                  <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-3 text-sm text-emerald-200">
+                    No readiness blockers from schedules, kiosk trust, enrollment, attendance, or critical exceptions.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-display text-sm font-semibold text-slate-100">Closeout risks</h3>
+                <span className="text-xs font-mono text-slate-500">{trustBrief?.closeout_risks.length ?? 0}</span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {trustBrief?.closeout_risks.length ? trustBrief.closeout_risks.slice(0, 5).map((risk) => (
+                  <Link key={risk.id} href={getRoleSafeRiskHref(risk, currentRole, date)} className="block rounded-xl border border-navy-600/50 bg-navy-900/35 p-3 hover:border-gold/25 transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-display text-sm font-medium text-slate-100">{risk.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{risk.description}</p>
+                      </div>
+                      <span className={`badge border text-[10px] ${priorityStyles[risk.severity]}`}>{risk.count}</span>
+                    </div>
+                  </Link>
+                )) : (
+                  <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-3 text-sm text-emerald-200">
+                    No closeout risks from missing clock-outs, recognition reviews, kiosk warnings, open exceptions, or corrections.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {trustBrief?.source_labels.length ? (
+          <div className="mt-5 flex flex-wrap gap-2" aria-label="Morning readiness sources">
+            {trustBrief.source_labels.map((label) => (
+              <span key={label} className="rounded border border-navy-500/60 bg-navy-950/35 px-2 py-1 text-[10px] font-mono text-slate-400">
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {payload?.warning && (

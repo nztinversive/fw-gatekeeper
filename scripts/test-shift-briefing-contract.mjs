@@ -22,6 +22,16 @@ assert.match(briefing, /getScheduleForWorker/, 'Shift briefing should match work
 assert.match(briefing, /departments/, 'Shift briefing response must include department coverage rows.');
 assert.match(briefing, /action_items/, 'Shift briefing response must include prioritized action items.');
 assert.match(briefing, /kiosks/, 'Shift briefing response must include kiosk trust data.');
+assert.match(briefing, /function buildShiftTrustBrief/, 'Shift briefing should build a shared deterministic shift trust brief.');
+assert.match(briefing, /shift_trust_brief:\s*shiftTrustBrief/, 'Shift briefing response must include the shared shift trust brief object.');
+assert.match(briefing, /const summarySentence = `\$\{statusLead\}: \$\{input\.summary\.present\}\/\$\{input\.summary\.expected\} expected workers are present/, 'Shift trust brief summary must be a deterministic source-count sentence.');
+assert.match(briefing, /primaryAction = input\.actionItems\[0\]/, 'Shift trust brief primary action must consume the first ranked action item instead of creating a second ranking system.');
+assert.match(briefing, /readiness_blockers:\s*readinessBlockers/, 'Shift trust brief must expose readiness blockers.');
+assert.match(briefing, /closeout_risks:\s*closeoutRisks/, 'Shift trust brief must expose closeout risks.');
+assert.match(briefing, /source_counts:\s*\{[\s\S]*critical_exceptions:[\s\S]*missing_clock_outs:[\s\S]*corrections:[\s\S]*kiosk_warnings:/, 'Shift trust brief source counts should include exceptions, clock-outs, corrections, and kiosk warnings.');
+assert.match(briefing, /ctx\.db[\s\S]*\.query\("attendanceCorrections"\)[\s\S]*\.withIndex\("by_date"/, 'Shift trust brief should count existing audited attendance corrections without rewriting kiosk evidence.');
+assert.match(briefing, /readinessStatus: ShiftTrustBriefStatus = hasCriticalBlocker[\s\S]*\? "blocked"[\s\S]*\? "attention"[\s\S]*: "ready"/, 'Shift trust brief readiness status must be deterministic.');
+assert.match(briefing, /source_labels:\s*\[[\s\S]*"Effective attendance"[\s\S]*"Kiosk sync records"[\s\S]*"Attendance corrections"[\s\S]*"Ranked briefing actions"/, 'Shift trust brief should label the deterministic evidence sources.');
 assert.match(briefing, /No schedule is active today/, 'Shift briefing should explain missing schedule coverage.');
 assert.match(briefing, /getCoverageActionStatus/, 'Briefing coverage actions must choose a precise worker status filter.');
 assert.match(briefing, /function getExceptionIntent/, 'Briefing exception actions should classify direct correction intents.');
@@ -50,6 +60,9 @@ assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',
 assert.match(apiRoute, /FunctionPathNotFound/, 'Briefing route should degrade gracefully while Convex functions deploy.');
 assert.match(apiRoute, /date must use YYYY-MM-DD format/, 'Briefing route must validate date format.');
 assert.match(apiRoute, /recognition_reviews:\s*0/, 'Briefing fallback summary should include recognition review counts.');
+assert.match(apiRoute, /shift_trust_brief:\s*\{/, 'Briefing fallback response should include the shift trust brief contract.');
+assert.match(apiRoute, /summary_sentence:\s*`Morning readiness needs attention:/, 'Briefing fallback shift trust brief should keep deterministic readiness copy.');
+assert.match(apiRoute, /source_counts:\s*\{[\s\S]*corrections:\s*0,[\s\S]*kiosk_warnings:\s*0/, 'Briefing fallback shift trust brief should include zeroed source counts.');
 
 assert.match(page, /\/api\/shift-briefing\?date=\$\{date\}/, 'Briefing page must fetch the shift briefing API.');
 assert.match(page, /Shift <span className="text-gold">Coverage<\/span>/, 'Briefing page must render the Shift Coverage surface.');
@@ -67,11 +80,21 @@ assert.match(page, /href === '\/kiosks' \|\| href === '\/schedules'[\s\S]*`\/bri
 assert.match(page, /function getKioskTrustHref[\s\S]*role === 'admin' \? '\/kiosks' : buildHref\('\/briefing', \{ date \}\)/, 'Non-admin kiosk trust links should stay in the dated briefing context.');
 assert.match(page, /function hrefHasExactSource/, 'Briefing next step should detect exact source handoffs from existing action hrefs.');
 assert.match(page, /function getBriefingNextStep/, 'Briefing page should derive one next briefing step from existing action items.');
-assert.match(page, /const action = payload\.action_items\[0\]/, 'Briefing next step should consume the first prioritized action instead of creating a second ranking system.');
+assert.match(page, /payload\?\.shift_trust_brief\?\.primary_action \|\| payload\?\.action_items\[0\]/, 'Briefing next step should consume the shared primary action and fall back to the first prioritized action.');
 assert.match(page, /canOperateBriefingAction\(role, action\.href\)/, 'Briefing next step should use the same role actionability rules as action cards.');
 assert.match(page, /href = canOperateAction \? action\.href : getReviewHref\(action\.href, date\)/, 'Briefing next step should reuse role-safe operate/review hrefs.');
 assert.match(page, /label:\s*`\$\{canOperateAction \? 'Open first' : 'Review first'\}: \$\{action\.label\}`/, 'Briefing next step copy should distinguish operate and review modes.');
-assert.match(page, /Next briefing step/, 'Briefing page should render a next-step summary above briefing details.');
+assert.match(page, /Morning Readiness Brief/, 'Briefing page should render the Morning Readiness Brief above briefing details.');
+assert.match(page, /trustBrief\?\.summary_sentence/, 'Briefing page should render the deterministic shift trust summary sentence.');
+assert.match(page, /trustBrief\?\.freshness\.label/, 'Briefing page should render brief freshness/source context.');
+assert.match(page, /sourceCounts\?\.critical_exceptions/, 'Briefing page should render critical exception source counts.');
+assert.match(page, /sourceCounts\?\.missing_clock_outs/, 'Briefing page should render missing clock-out source counts.');
+assert.match(page, /sourceCounts\?\.corrections/, 'Briefing page should render attendance correction source counts.');
+assert.match(page, /Readiness blockers/, 'Briefing page should render readiness blockers.');
+assert.match(page, /Closeout risks/, 'Briefing page should render closeout risks.');
+assert.match(page, /getRoleSafeRiskHref/, 'Briefing risk links should reuse role-safe briefing handoffs.');
+assert.match(page, /trustBrief\.source_labels\.map/, 'Briefing page should render deterministic source labels.');
+assert.match(page, /Primary action/, 'Briefing page should render the shared primary action above briefing details.');
 assert.match(page, /nextStep\.href/, 'Briefing next-step CTA should use the derived source href.');
 assert.match(page, /nextStep\.exact/, 'Briefing next-step summary should visibly distinguish exact source handoffs.');
 assert.match(page, /nextStep\.reviewOnly/, 'Briefing next-step summary should label review-only handoffs.');
@@ -107,6 +130,10 @@ assert.match(types, /interface ShiftBriefingResponse/, 'Shared types must define
 assert.match(types, /interface ShiftBriefingDepartment/, 'Shared types must define ShiftBriefingDepartment.');
 assert.match(types, /interface ShiftBriefingActionItem/, 'Shared types must define ShiftBriefingActionItem.');
 assert.match(types, /recognition_reviews:\s*number/, 'Shared briefing summary types must include recognition review counts.');
+assert.match(types, /export type ShiftTrustBriefStatus = 'ready' \| 'attention' \| 'blocked'/, 'Shared types must define deterministic shift trust statuses.');
+assert.match(types, /interface ShiftTrustBriefSourceCounts[\s\S]*missing_clock_outs: number;[\s\S]*corrections: number;[\s\S]*kiosk_warnings: number;/, 'Shared types must define shift trust source counts.');
+assert.match(types, /interface ShiftTrustBrief[\s\S]*readiness_status: ShiftTrustBriefStatus;[\s\S]*primary_action: ShiftTrustBriefPrimaryAction \| null;[\s\S]*readiness_blockers: ShiftTrustBriefRisk\[\];[\s\S]*closeout_risks: ShiftTrustBriefRisk\[\];/, 'Shared types must define the shift trust brief contract.');
+assert.match(types, /shift_trust_brief: ShiftTrustBrief;/, 'ShiftBriefingResponse must include the shift trust brief.');
 
 assert.match(packageJson, /"test:shift-briefing":\s*"node scripts\/test-shift-briefing-contract\.mjs"/, 'package.json must expose test:shift-briefing.');
 
