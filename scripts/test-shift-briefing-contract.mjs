@@ -52,6 +52,16 @@ assert.match(page, /function buildHref/, 'Briefing page should build contextual 
 assert.match(page, /href\.startsWith\('\/exceptions'\)[\s\S]*stripHrefParams\(href, \['intent'\]\)/, 'Viewer exception briefing actions should preserve row context but remove correction intent.');
 assert.match(page, /href === '\/kiosks' \|\| href === '\/schedules'[\s\S]*`\/briefing\?date=\$\{date\}`/, 'Review-only admin-heavy briefing actions should remain in the dated briefing context.');
 assert.match(page, /function getKioskTrustHref[\s\S]*role === 'admin' \? '\/kiosks' : buildHref\('\/briefing', \{ date \}\)/, 'Non-admin kiosk trust links should stay in the dated briefing context.');
+assert.match(page, /function hrefHasExactSource/, 'Briefing next step should detect exact source handoffs from existing action hrefs.');
+assert.match(page, /function getBriefingNextStep/, 'Briefing page should derive one next briefing step from existing action items.');
+assert.match(page, /const action = payload\.action_items\[0\]/, 'Briefing next step should consume the first prioritized action instead of creating a second ranking system.');
+assert.match(page, /canOperateBriefingAction\(role, action\.href\)/, 'Briefing next step should use the same role actionability rules as action cards.');
+assert.match(page, /href = canOperateAction \? action\.href : getReviewHref\(action\.href, date\)/, 'Briefing next step should reuse role-safe operate/review hrefs.');
+assert.match(page, /label:\s*`\$\{canOperateAction \? 'Open first' : 'Review first'\}: \$\{action\.label\}`/, 'Briefing next step copy should distinguish operate and review modes.');
+assert.match(page, /Next briefing step/, 'Briefing page should render a next-step summary above briefing details.');
+assert.match(page, /nextStep\.href/, 'Briefing next-step CTA should use the derived source href.');
+assert.match(page, /nextStep\.exact/, 'Briefing next-step summary should visibly distinguish exact source handoffs.');
+assert.match(page, /nextStep\.reviewOnly/, 'Briefing next-step summary should label review-only handoffs.');
 assert.match(page, /const canOperateAction = canOperateBriefingAction\(currentRole, item\.href\)/, 'Briefing action cards should decide operate/review state per item.');
 assert.match(page, /href=\{canOperateAction \? item\.href : getReviewHref\(item\.href, date\)\}/, 'Briefing action cards should downgrade hrefs for read-only roles.');
 assert.match(page, /Review-only/, 'Briefing action cards should label read-only action handoffs.');

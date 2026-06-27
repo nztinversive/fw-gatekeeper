@@ -141,6 +141,32 @@ function getKioskTrustHref(role: PortalRole | undefined, date: string) {
   return role === 'admin' ? '/kiosks' : buildHref('/briefing', { date });
 }
 
+function hrefHasExactSource(href: string) {
+  return href.includes('exception_key=') || href.includes('attempt_id=');
+}
+
+function getBriefingNextStep(
+  payload: ShiftBriefingResponse | null,
+  role: PortalRole | undefined,
+  date: string,
+) {
+  if (!payload?.action_items.length || payload.backend_unavailable) return null;
+  const action = payload.action_items[0];
+  const canOperateAction = canOperateBriefingAction(role, action.href);
+  const href = canOperateAction ? action.href : getReviewHref(action.href, date);
+  const exact = hrefHasExactSource(href);
+
+  return {
+    label: `${canOperateAction ? 'Open first' : 'Review first'}: ${action.label}`,
+    description: action.description,
+    href,
+    cta: canOperateAction ? 'Open action' : 'Review source',
+    priority: action.priority,
+    exact,
+    reviewOnly: !canOperateAction,
+  };
+}
+
 function ShiftBriefingPageContent() {
   const searchParams = useSearchParams();
   const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
@@ -255,6 +281,7 @@ function ShiftBriefingPageContent() {
         : summary?.late || summary?.missing || summary?.kiosk_warnings
           ? 'Review before shift'
           : 'Coverage on track';
+  const nextStep = getBriefingNextStep(payload, currentRole, date);
 
   return (
     <div className="animate-fade-in space-y-6 pb-24 md:pb-8">
@@ -309,6 +336,29 @@ function ShiftBriefingPageContent() {
             </div>
           ))}
         </div>
+        {nextStep && (
+          <div className="mt-5 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="section-label text-gold">Next briefing step</p>
+                <h3 className="mt-1 font-display text-base font-semibold text-slate-100">{nextStep.label}</h3>
+                <p className="mt-1 text-sm leading-5 text-slate-400">{nextStep.description}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className={`badge border ${priorityStyles[nextStep.priority]}`}>{titleCase(nextStep.priority)}</span>
+                  {nextStep.exact && (
+                    <span className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">Exact source</span>
+                  )}
+                  {nextStep.reviewOnly && (
+                    <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review-only</span>
+                  )}
+                </div>
+              </div>
+              <Link href={nextStep.href} className="btn-primary shrink-0 self-start text-xs md:self-auto">
+                {nextStep.cta}
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
 
       {payload?.warning && (
