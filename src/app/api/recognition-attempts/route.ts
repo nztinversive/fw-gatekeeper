@@ -147,6 +147,7 @@ export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const reviewStatus = optionalString(searchParams.get('review_status'));
+    const attemptId = optionalString(searchParams.get('attempt_id'));
     const date = resolveRequestDate(searchParams);
     if (!isValidLocalDateString(date)) {
       return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
@@ -154,30 +155,42 @@ export async function GET(req: NextRequest) {
     const result = await convex.query((api as any).recognitionAttempts.listByDate, {
       date,
       kioskId: optionalString(searchParams.get('kiosk_id')),
-      reviewed: reviewStatus === 'unreviewed' ? false : reviewStatus && reviewStatus !== 'all' ? true : undefined,
-      limit: Number(searchParams.get('limit') || 100),
+      reviewed: attemptId ? undefined : reviewStatus === 'unreviewed' ? false : reviewStatus && reviewStatus !== 'all' ? true : undefined,
+      limit: attemptId ? 1000 : Number(searchParams.get('limit') || 100),
     });
+    const targetAttempt = attemptId
+      ? await convex.query((api as any).recognitionAttempts.getById, { id: attemptId, date })
+      : null;
 
-    let response = normalizeResponse(result);
+    const rawAttempts = Array.isArray(result) ? result : result?.attempts || result?.rows || [];
+    let response = normalizeResponse(targetAttempt ? { attempts: [targetAttempt, ...rawAttempts] } : result);
+    if (attemptId) {
+      const deduped = new Map(response.attempts.map((attempt) => [attempt.id, attempt]));
+      response = { ...response, attempts: Array.from(deduped.values()) };
+    }
     const decision = optionalString(searchParams.get('decision'));
     const confidenceBand = optionalString(searchParams.get('confidence_band'));
     response = {
       attempts: response.attempts.filter((attempt) => {
         const decisionMatches =
+          attemptId ||
           !decision ||
           decision === 'all' ||
           attempt.decision === decision ||
           (decision === 'accepted' && attempt.decision.startsWith('accepted')) ||
           (decision === 'rejected' && attempt.decision.startsWith('rejected'));
         const reviewMatches =
+          attemptId ||
           !reviewStatus ||
           reviewStatus === 'all' ||
           attempt.review_status === reviewStatus;
+        const attemptMatches = !attemptId || attempt.id === attemptId;
         const confidenceMatches =
+          attemptId ||
           !confidenceBand ||
           confidenceBand === 'all' ||
           attempt.confidence_band === confidenceBand;
-        return decisionMatches && reviewMatches && confidenceMatches;
+        return attemptMatches && decisionMatches && reviewMatches && confidenceMatches;
       }),
       summary: response.summary,
     };

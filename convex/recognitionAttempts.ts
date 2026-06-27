@@ -276,6 +276,21 @@ export const listByDate = query({
   },
 });
 
+export const getById = query({
+  args: {
+    id: v.id("recognitionAttempts"),
+    date: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const attempt = await ctx.db.get(args.id);
+    if (!attempt) return null;
+    if (args.date && !timestampBelongsToFactoryLocalDate(attempt.timestamp, args.date)) {
+      return null;
+    }
+    return serializeAttempt(attempt);
+  },
+});
+
 export const listRange = query({
   args: {
     startTimestamp: v.string(),

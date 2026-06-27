@@ -30,6 +30,8 @@ assert.match(exceptions, /missing_clock_out/, 'Shift exceptions must include mis
 assert.match(exceptions, /scan_sequence/, 'Shift exceptions must include bad scan sequence cases.');
 assert.match(exceptions, /recognition_review/, 'Shift exceptions must include recognition review cases.');
 assert.match(exceptions, /LOW_MARGIN_THRESHOLD/, 'Recognition backlog should include low-margin accepted attempts.');
+assert.match(exceptions, /const attemptId = String\(attempt\.id\)/, 'Recognition review exceptions should preserve the exact serialized recognition attempt id.');
+assert.match(exceptions, /recognition_lab:\s*buildHref\("\/calibration\/recognition",\s*\{\s*date,\s*review_status:\s*"all",\s*attempt_id:\s*attemptId/, 'Recognition review source links should deep-link to the exact Recognition Lab row without reviewed-status filtering.');
 
 assert.match(apiRoute, /shiftExceptions\.summary/, 'GET /api/shift-exceptions must call the Convex summary query.');
 assert.match(apiRoute, /shiftExceptions\.review/, 'PATCH /api/shift-exceptions must call the Convex review mutation.');

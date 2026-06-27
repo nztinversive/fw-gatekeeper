@@ -74,6 +74,14 @@ function normalizeText(value?: string | null) {
   return trimmed || undefined;
 }
 
+function buildHref(path: string, params: Record<string, string | null | undefined>) {
+  const query = Object.entries(params)
+    .filter((entry): entry is [string, string] => entry[1] !== null && entry[1] !== undefined && entry[1] !== "")
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+  return query ? `${path}?${query}` : path;
+}
+
 function parseScheduleDays(days: string): number[] {
   try {
     const parsed = JSON.parse(days);
@@ -333,7 +341,8 @@ export async function buildShiftExceptions(ctx: any, date: string) {
     if (attempt.reviewed && !lowMarginAccepted && !riskyDecision) continue;
     if (!riskyDecision && !lowMarginAccepted && attempt.reviewed) continue;
 
-    const key = `${date}:recognition_review:${String(attempt._id)}`;
+    const attemptId = String(attempt.id);
+    const key = `${date}:recognition_review:${attemptId}`;
     const candidate = attempt.candidateWorkerName || "Unknown person";
     const kioskName = await resolveKioskName(attempt.kioskId);
     exceptions.push(createException({
@@ -357,7 +366,11 @@ export async function buildShiftExceptions(ctx: any, date: string) {
       attendance_id: null,
       links: {
         activity_log: `/log?date=${date}`,
-        recognition_lab: `/calibration/recognition?date=${date}`,
+        recognition_lab: buildHref("/calibration/recognition", {
+          date,
+          review_status: "all",
+          attempt_id: attemptId,
+        }),
         kiosk: "/kiosks",
       },
     }));

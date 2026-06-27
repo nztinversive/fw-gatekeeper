@@ -95,6 +95,10 @@ function canOperateRecognition(role: PortalRole | undefined) {
   return role === 'admin' || role === 'enrollment';
 }
 
+function recognitionAttemptRowId(id: string) {
+  return `recognition-attempt-${id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
 function RecognitionCalibrationLabContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -103,6 +107,7 @@ function RecognitionCalibrationLabContent() {
   const queryReviewStatus = validReviewParam(searchParams.get('review_status'));
   const queryConfidenceBand = validConfidenceParam(searchParams.get('confidence_band'));
   const queryKioskId = searchParams.get('kiosk_id') || '';
+  const queryAttemptId = searchParams.get('attempt_id') || '';
   const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [date, setDate] = useState(queryDate);
   const [decision, setDecision] = useState<RecognitionDecision | 'all'>(queryDecision);
@@ -141,13 +146,14 @@ function RecognitionCalibrationLabContent() {
   }, []);
 
   const queryString = useMemo(() => {
-    const params = new URLSearchParams({ date, limit: '150' });
+    const params = new URLSearchParams({ date, limit: queryAttemptId ? '1000' : '150' });
     if (decision !== 'all') params.set('decision', decision);
     if (reviewStatus !== 'all') params.set('review_status', reviewStatus);
     if (confidenceBand !== 'all') params.set('confidence_band', confidenceBand);
     if (kioskId.trim()) params.set('kiosk_id', kioskId.trim());
+    if (queryAttemptId) params.set('attempt_id', queryAttemptId);
     return params.toString();
-  }, [confidenceBand, date, decision, kioskId, reviewStatus]);
+  }, [confidenceBand, date, decision, kioskId, queryAttemptId, reviewStatus]);
 
   const fetchAttempts = useCallback(async () => {
     setLoading(true);
@@ -177,6 +183,11 @@ function RecognitionCalibrationLabContent() {
     const ids = attempts.flatMap((attempt) => (attempt.kiosk_id ? [attempt.kiosk_id] : []));
     return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
   }, [attempts]);
+
+  useEffect(() => {
+    if (!queryAttemptId || !attempts.some((attempt) => attempt.id === queryAttemptId)) return;
+    document.getElementById(recognitionAttemptRowId(queryAttemptId))?.scrollIntoView({ block: 'center' });
+  }, [attempts, queryAttemptId]);
 
   function reviewAttempt(attempt: RecognitionAttempt, nextStatus: RecognitionReviewStatus) {
     if (!canOperate) {
@@ -328,8 +339,13 @@ function RecognitionCalibrationLabContent() {
             <tbody className="divide-y divide-navy-600/35">
               {attempts.map((attempt) => {
                 const controlsDisabled = isReviewPending && pendingReviewId === attempt.id;
+                const targeted = queryAttemptId === attempt.id;
                 return (
-                  <tr key={attempt.id} className="text-sm text-slate-300 hover:bg-navy-800/35">
+                  <tr
+                    id={recognitionAttemptRowId(attempt.id)}
+                    key={attempt.id}
+                    className={`text-sm text-slate-300 hover:bg-navy-800/35 ${targeted ? 'bg-gold/5 ring-1 ring-inset ring-gold/30' : ''}`}
+                  >
                     <td className="px-4 py-3 text-xs text-slate-400">{formatDateTime(attempt.timestamp)}</td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-100">{attempt.candidate_worker_name || 'No candidate'}</p>
