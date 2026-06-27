@@ -168,12 +168,25 @@ assert.deepEqual(plain(statsSignalFailure.freshness), {
 
 const invalidEnrollment = findAction(rankedActions, 'invalid-face');
 assert.equal(invalidEnrollment.description, '1 worker needs re-enrollment because their face data is not kiosk-valid.');
+assert.equal(invalidEnrollment.href, '/enroll?worker_id=w2', 'Invalid enrollment actions should deep-link to the first affected worker enrollment flow.');
+assert.equal(invalidEnrollment.cta, 'Enroll face', 'Invalid enrollment actions should send operators directly to face enrollment.');
 assert.equal(invalidEnrollment.blocksReadiness, true, 'Invalid enrollment blocks readiness.');
-assert.deepEqual(invalidEnrollment.evidence.workerIds, ['w2'], 'Invalid enrollment evidence should name affected workers.');
+assert.deepEqual(plain(invalidEnrollment.evidence), {
+  count: 1,
+  firstWorkerId: 'w2',
+  workerIds: ['w2'],
+}, 'Invalid enrollment evidence should name affected workers and the exact first handoff target.');
 
 const missingEnrollment = findAction(rankedActions, 'missing-face');
 assert.equal(missingEnrollment.description, '1 worker is missing face data for kiosk recognition.');
+assert.equal(missingEnrollment.href, '/enroll?worker_id=w3', 'Missing enrollment actions should deep-link to the first affected worker enrollment flow.');
+assert.equal(missingEnrollment.cta, 'Enroll face', 'Missing enrollment actions should send operators directly to face enrollment.');
 assert.equal(missingEnrollment.priority, 'warning', 'Missing enrollment remains a warning action.');
+assert.deepEqual(plain(missingEnrollment.evidence), {
+  count: 1,
+  firstWorkerId: 'w3',
+  workerIds: ['w3'],
+}, 'Missing enrollment evidence should name affected workers and the exact first handoff target.');
 
 const exceptions = findAction(rankedActions, 'shift-exceptions');
 assert.equal(exceptions.description, '3 exceptions need supervisor review, including 1 critical.');
@@ -433,6 +446,7 @@ assert.deepEqual(
   { access: 'operate', canOperate: true, role: 'admin' },
   'Admin actionability should allow operations across proactive sources.',
 );
+assert.equal(findAction(adminActions, 'invalid-face').href, '/enroll?worker_id=w2', 'Admins should land on the exact invalid-face worker enrollment flow.');
 
 const enrollmentActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'enrollment' });
 assert.deepEqual(actionKeys(enrollmentActions), actionKeys(rankedActions), 'Enrollment role must not change proactive action ranking.');
@@ -448,7 +462,8 @@ assert.deepEqual(
   'Enrollment users should retain face-enrollment actionability.',
 );
 assert.equal(findAction(enrollmentActions, 'invalid-face').cta, 'Enroll face', 'Enrollment users should be sent to the enrollment workflow.');
-assert.equal(findAction(enrollmentActions, 'invalid-face').href, '/enroll', 'Enrollment users should not be sent to the admin-heavy workers page.');
+assert.equal(findAction(enrollmentActions, 'invalid-face').href, '/enroll?worker_id=w2', 'Enrollment users should not be sent to the admin-heavy workers page or a generic enrollment flow when exact worker evidence exists.');
+assert.equal(findAction(enrollmentActions, 'missing-face').href, '/enroll?worker_id=w3', 'Enrollment users should land on the exact missing-face worker enrollment flow.');
 assert.equal(findAction(enrollmentActions, 'system-health-0').cta, 'Inspect readiness', 'Enrollment users should inspect admin-only kiosk readiness instead of being sent to operate it.');
 assert.equal(findAction(enrollmentActions, 'system-health-0').href, '/briefing?date=2026-06-26', 'Enrollment users should keep dated briefing context when kiosk readiness is review-only.');
 assert.equal(findAction(enrollmentActions, 'schedule-warning').href, '/briefing?date=2026-06-26', 'Enrollment users should keep dated briefing context when schedule actions are review-only.');

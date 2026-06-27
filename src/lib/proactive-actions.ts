@@ -332,6 +332,14 @@ function buildHref(path: string, params: Record<string, string | number | null |
   return query ? `${path}?${query}` : path;
 }
 
+function getFirstWorkerId(workers: ProactiveWorker[]) {
+  return workers.find((worker) => worker.id)?.id || null;
+}
+
+function getEnrollmentHref(workers: ProactiveWorker[]) {
+  return buildHref('/enroll', { worker_id: getFirstWorkerId(workers) });
+}
+
 function stripHrefParams(href: string, keysToStrip: string[]) {
   const [path, query = ''] = href.split('?');
   if (!query) return href;
@@ -392,7 +400,7 @@ function getReviewCta(action: ProactiveAction) {
 }
 
 function getOperateHref(action: ProactiveAction, role: string | null) {
-  if (role === 'enrollment' && action.source === 'enrollment') return '/enroll';
+  if (role === 'enrollment' && action.source === 'enrollment') return action.href.startsWith('/enroll') ? action.href : '/enroll';
   return action.href;
 }
 
@@ -582,6 +590,8 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
 
   const missingFaceWorkers = workers.filter((worker) => worker.encoding_status === 'missing' || (!worker.encoding_status && !worker.has_face_encoding));
   const invalidFaceWorkers = workers.filter((worker) => worker.encoding_status === 'invalid');
+  const firstInvalidFaceWorkerId = getFirstWorkerId(invalidFaceWorkers);
+  const firstMissingFaceWorkerId = getFirstWorkerId(missingFaceWorkers);
 
   if (invalidFaceWorkers.length > 0) {
     actions.push({
@@ -591,11 +601,12 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       label: 'Invalid face data',
       value: invalidFaceWorkers.length,
       description: `${plural(invalidFaceWorkers.length, 'worker')} ${verb(invalidFaceWorkers.length, 'needs', 'need')} re-enrollment because their face data is not kiosk-valid.`,
-      href: '/workers',
-      cta: 'Review now',
+      href: getEnrollmentHref(invalidFaceWorkers),
+      cta: 'Enroll face',
       source: 'enrollment',
       evidence: {
         count: invalidFaceWorkers.length,
+        firstWorkerId: firstInvalidFaceWorkerId,
         workerIds: invalidFaceWorkers.map((worker) => worker.id),
       },
       freshness: getFreshness(signalFreshness, ['workers', 'enrollment']),
@@ -612,11 +623,12 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       label: 'Face enrollment needed',
       value: missingFaceWorkers.length,
       description: `${plural(missingFaceWorkers.length, 'worker')} ${verb(missingFaceWorkers.length, 'is', 'are')} missing face data for kiosk recognition.`,
-      href: '/workers',
-      cta: 'Review now',
+      href: getEnrollmentHref(missingFaceWorkers),
+      cta: 'Enroll face',
       source: 'enrollment',
       evidence: {
         count: missingFaceWorkers.length,
+        firstWorkerId: firstMissingFaceWorkerId,
         workerIds: missingFaceWorkers.map((worker) => worker.id),
       },
       freshness: getFreshness(signalFreshness, ['workers', 'enrollment']),
