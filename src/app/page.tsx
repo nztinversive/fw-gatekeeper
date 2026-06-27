@@ -475,8 +475,10 @@ export default function Dashboard() {
   });
   const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
   const canOpenAdminOps = currentRole === 'admin';
+  const canOpenEnrollmentOps = currentRole === 'admin' || currentRole === 'enrollment';
   const opsKioskHref = canOpenAdminOps ? '/kiosks' : `/briefing?date=${actionDate}`;
   const opsKioskCta = canOpenAdminOps ? 'Fix kiosk sync' : 'Review kiosk readiness';
+  const opsEnrollmentHref = canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
   const opsExceptionsHref = `/exceptions?date=${actionDate}&status=open`;
 
   const offlineKioskCount = systemHealth
@@ -544,7 +546,7 @@ export default function Dashboard() {
       title: warning.includes('Face service') ? 'Face service needs attention' : 'Kiosk sync needs attention',
       description: warning,
       timestamp: systemHealth?.checked_at || null,
-      href: warning.includes('Face service') ? '/enroll' : '/kiosks',
+      href: warning.includes('Face service') ? opsEnrollmentHref : opsKioskHref,
     })),
     ...attendanceEvents.map((event) => ({
       id: event.id || `${event.worker_id}-${event.timestamp}-${event.event_type}`,

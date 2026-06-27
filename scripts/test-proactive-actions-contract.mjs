@@ -507,10 +507,13 @@ assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best actio
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
 assert.match(dashboardSource, /const opsKioskHref = canOpenAdminOps \? '\/kiosks' : `\/briefing\?date=\$\{actionDate\}`/, 'Today Ops kiosk CTA should keep non-admin users in dated briefing review context.');
 assert.match(dashboardSource, /const opsKioskCta = canOpenAdminOps \? 'Fix kiosk sync' : 'Review kiosk readiness'/, 'Today Ops kiosk CTA copy should distinguish admin operation from review mode.');
+assert.match(dashboardSource, /const canOpenEnrollmentOps = currentRole === 'admin' \|\| currentRole === 'enrollment'/, 'Dashboard should distinguish enrollment-capable users from review-only users.');
+assert.match(dashboardSource, /const opsEnrollmentHref = canOpenEnrollmentOps \? '\/enroll' : `\/briefing\?date=\$\{actionDate\}`/, 'Face-service warning links should keep review-only users in dated briefing context.');
 assert.match(dashboardSource, /const opsExceptionsHref = `\/exceptions\?date=\$\{actionDate\}&status=open`/, 'Today Ops exceptions CTA should preserve dated open-exception context.');
 assert.match(dashboardSource, /href=\{opsKioskHref\}[\s\S]*\{opsKioskCta\}/, 'Today Ops should render the role-safe kiosk CTA target and copy.');
 assert.match(dashboardSource, /href=\{opsExceptionsHref\}[\s\S]*Review exceptions/, 'Today Ops should render the dated open-exception CTA.');
 assert.match(dashboardSource, /label: 'Kiosks online'[\s\S]*href: opsKioskHref/, 'Today Ops kiosk readiness tile should use the same role-safe kiosk review target.');
+assert.match(dashboardSource, /href: warning\.includes\('Face service'\) \? opsEnrollmentHref : opsKioskHref/, 'Recent Events system warnings should reuse role-safe kiosk and enrollment review targets.');
 assert.match(dashboardSource, /getActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from existing action evidence.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Dashboard evidence chips should be labelled for assistive technology.');
 assert.match(dashboardSource, /item\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
