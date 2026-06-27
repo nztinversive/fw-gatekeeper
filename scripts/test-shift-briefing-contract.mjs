@@ -76,13 +76,14 @@ assert.match(page, /searchParams\.get\('department'\)/, 'Briefing page should in
 assert.match(page, /searchParams\.get\('status'\)/, 'Briefing page should initialize worker status filtering from query params.');
 assert.match(page, /\/api\/portal-role/, 'Briefing page should resolve portal role before exposing direct action intent.');
 assert.match(page, /function canOperateBriefingAction/, 'Briefing page should centralize per-action role checks.');
-assert.match(page, /role === 'admin'[\s\S]*role !== 'enrollment'[\s\S]*href\.startsWith\('\/exceptions'\) \|\| href\.startsWith\('\/briefing'\)/, 'Enrollment briefing actions should be limited to exceptions and briefing filters.');
+assert.match(page, /role === 'admin'[\s\S]*role !== 'enrollment'[\s\S]*href\.startsWith\('\/exceptions'\) \|\| href\.startsWith\('\/briefing'\) \|\| href\.startsWith\('\/enroll\?worker_id='\)/, 'Enrollment briefing actions should be limited to exceptions, briefing filters, and exact worker enrollment handoffs.');
 assert.match(page, /function stripHrefParams/, 'Briefing page should be able to strip write intent from review links.');
 assert.match(page, /function buildHref/, 'Briefing page should build contextual source links without hand-rolled query strings.');
 assert.match(page, /href\.startsWith\('\/exceptions'\)[\s\S]*stripHrefParams\(href, \['intent'\]\)/, 'Viewer exception briefing actions should preserve row context but remove correction intent.');
-assert.match(page, /href === '\/kiosks' \|\| href === '\/schedules'[\s\S]*`\/briefing\?date=\$\{date\}`/, 'Review-only admin-heavy briefing actions should remain in the dated briefing context.');
+assert.match(page, /href === '\/kiosks' \|\| href === '\/schedules' \|\| href\.startsWith\('\/enroll'\)[\s\S]*`\/briefing\?date=\$\{date\}`/, 'Review-only admin-heavy and enrollment briefing actions should remain in the dated briefing context.');
 assert.match(page, /function getKioskTrustHref[\s\S]*role === 'admin' \? '\/kiosks' : buildHref\('\/briefing', \{ date \}\)/, 'Non-admin kiosk trust links should stay in the dated briefing context.');
 assert.match(page, /function hrefHasExactSource/, 'Briefing next step should detect exact source handoffs from existing action hrefs.');
+assert.match(page, /href\.includes\('worker_id='\)/, 'Briefing exact-source detection should include worker-specific enrollment handoffs.');
 assert.match(page, /function getBriefingNextStep/, 'Briefing page should derive one next briefing step from existing action items.');
 assert.match(page, /payload\?\.shift_trust_brief\?\.primary_action \|\| payload\?\.action_items\[0\]/, 'Briefing next step should consume the shared primary action and fall back to the first prioritized action.');
 assert.match(page, /canOperateBriefingAction\(role, action\.href\)/, 'Briefing next step should use the same role actionability rules as action cards.');

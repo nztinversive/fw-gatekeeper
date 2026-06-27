@@ -153,12 +153,12 @@ function buildHref(path: string, params: Record<string, string | number | null |
 function canOperateBriefingAction(role: PortalRole | undefined, href: string) {
   if (role === 'admin') return true;
   if (role !== 'enrollment') return false;
-  return href.startsWith('/exceptions') || href.startsWith('/briefing');
+  return href.startsWith('/exceptions') || href.startsWith('/briefing') || href.startsWith('/enroll?worker_id=');
 }
 
 function getReviewHref(href: string, date: string) {
   if (href.startsWith('/exceptions')) return stripHrefParams(href, ['intent']);
-  if (href === '/kiosks' || href === '/schedules') return `/briefing?date=${date}`;
+  if (href === '/kiosks' || href === '/schedules' || href.startsWith('/enroll')) return `/briefing?date=${date}`;
   return href;
 }
 
@@ -167,7 +167,7 @@ function getKioskTrustHref(role: PortalRole | undefined, date: string) {
 }
 
 function hrefHasExactSource(href: string) {
-  return href.includes('exception_key=') || href.includes('attempt_id=');
+  return href.includes('exception_key=') || href.includes('attempt_id=') || href.includes('worker_id=');
 }
 
 function getBriefingNextStep(
