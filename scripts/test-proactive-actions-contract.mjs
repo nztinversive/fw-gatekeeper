@@ -176,7 +176,8 @@ assert.equal(closeout.href, '/closeout?date=2026-06-26', 'Closeout actions shoul
 const notArrived = findAction(rankedActions, 'not-arrived');
 assert.equal(notArrived.priority, 'info', 'Not-arrived attendance is informational after closeout work.');
 assert.equal(notArrived.description, '2 active workers have no clock-in scans today.');
-assert.equal(notArrived.href, '/log?date=2026-06-26', 'Attendance actions should deep-link to the dated activity log.');
+assert.equal(notArrived.href, '/briefing?date=2026-06-26&status=missing', 'Attendance actions should deep-link to the dated missing-worker briefing filter.');
+assert.equal(notArrived.cta, 'Review missing', 'Not-arrived actions should point supervisors at the missing-worker review.');
 
 const focusedExceptionActions = buildProactiveActions({
   date: '2026-06-26',
@@ -416,6 +417,8 @@ assert.equal(findAction(viewerActions, 'invalid-face').cta, 'Inspect briefing', 
 assert.equal(findAction(viewerActions, 'invalid-face').href, '/briefing', 'Viewers should not be sent to worker operations for enrollment issues.');
 assert.equal(findAction(viewerActions, 'system-health-0').cta, 'Inspect readiness', 'Viewers should inspect kiosk readiness instead of operating it.');
 assert.equal(findAction(viewerActions, 'system-health-0').href, '/', 'Viewers should not be sent to the admin-only kiosk page.');
+assert.equal(findAction(viewerActions, 'not-arrived').cta, 'Review missing', 'Viewers should get read-safe missing-worker copy.');
+assert.equal(findAction(viewerActions, 'not-arrived').href, '/briefing?date=2026-06-26&status=missing', 'Viewer attendance actions should keep the dated missing-worker briefing filter.');
 assert.deepEqual(
   plain(findAction(viewerActions, 'shift-closeout-pending').actionability),
   { access: 'review', canOperate: false, role: 'viewer' },

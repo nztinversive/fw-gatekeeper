@@ -357,7 +357,7 @@ function getReviewHref(action: ProactiveAction) {
   if (action.source === 'exceptions') return stripHrefParams(action.href, ['intent']);
   if (action.source === 'closeout') return action.href;
   if (action.source === 'schedule') return '/briefing';
-  if (action.source === 'attendance') return '/briefing';
+  if (action.source === 'attendance') return action.href;
   if (action.source === 'enrollment') return '/briefing';
   if (action.source === 'kiosk' || action.source === 'service') return '/';
   return action.href === '/kiosks' || action.href === '/workers' || action.href === '/schedules' ? '/' : action.href;
@@ -366,6 +366,7 @@ function getReviewHref(action: ProactiveAction) {
 function getReviewCta(action: ProactiveAction) {
   if (action.key === 'missing-clock-outs') return 'Review clock-outs';
   if (action.key === 'recognition-review') return 'Review recognition';
+  if (action.key === 'not-arrived') return 'Review missing';
   if (action.source === 'exceptions') return 'Review exceptions';
   if (action.source === 'closeout') return 'Review closeout';
   if (action.source === 'schedule') return 'Inspect briefing';
@@ -833,8 +834,8 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       label: 'Not arrived today',
       value: notArrived,
       description: `${plural(notArrived, 'active worker')} ${verb(notArrived, 'has', 'have')} no clock-in scans today.`,
-      href: buildHref('/log', { date: actionDate }),
-      cta: 'Review attendance',
+      href: buildHref('/briefing', { date: actionDate, status: 'missing' }),
+      cta: 'Review missing',
       source: 'attendance',
       evidence: {
         count: notArrived,
