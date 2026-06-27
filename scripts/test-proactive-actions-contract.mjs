@@ -135,6 +135,7 @@ assert.deepEqual(
     href: '/kiosks',
     cta: 'Open kiosks',
     evidenceChips: ['1 offline kiosk'],
+    outcomeChips: ['Clears shift readiness', 'Clears closeout trust'],
     proofLink: null,
     tone: 'red',
     access: 'operate',
@@ -567,6 +568,11 @@ assert.equal(viewerTrustPlan.href, '/briefing?date=2026-06-26', 'Viewer shift tr
 assert.equal(viewerTrustPlan.cta, 'Inspect readiness', 'Viewer shift trust plan should inherit the role-safe review CTA.');
 assert.equal(viewerTrustPlan.access, 'review', 'Viewer shift trust plan should expose review access.');
 assert.deepEqual(
+  plain(viewerTrustPlan.outcomeChips),
+  ['Review shift readiness', 'Review closeout trust'],
+  'Viewer shift trust plan should use review-safe outcome copy instead of unlock/clear language.',
+);
+assert.deepEqual(
   plain(getProactiveActionOutcomeChips(findAction(adminActions, 'system-health-0'))),
   ['Clears shift readiness', 'Clears closeout trust'],
   'Operating users should see the outcomes an action clears.',
@@ -593,6 +599,7 @@ assert.match(dashboardSource, /Next best action/, 'Dashboard should label the ne
 assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best action should reuse the selected action href.');
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
 assert.match(dashboardSource, /shiftTrustPlan\.evidenceChips\.length[\s\S]*aria-label=\{`\$\{shiftTrustPlan\.label\} evidence`\}[\s\S]*shiftTrustPlan\.evidenceChips\.map/, 'Dashboard next-best action should render the selected action evidence chips.');
+assert.match(dashboardSource, /shiftTrustPlan\.outcomeChips\.map[\s\S]*\{chip\}/, 'Dashboard next-best action should render role-aware outcome chips from the selected action.');
 assert.match(dashboardSource, /shiftTrustPlan\.proofLink[\s\S]*href=\{shiftTrustPlan\.proofLink\.href\}[\s\S]*\{shiftTrustPlan\.proofLink\.label\}/, 'Dashboard next-best action should render exact source proof links when the selected action has proof.');
 assert.match(dashboardSource, /const opsKioskHref = canOpenAdminOps \? '\/kiosks' : `\/briefing\?date=\$\{actionDate\}`/, 'Today Ops kiosk CTA should keep non-admin users in dated briefing review context.');
 assert.match(dashboardSource, /const opsKioskCta = canOpenAdminOps \? 'Fix kiosk sync' : 'Review kiosk readiness'/, 'Today Ops kiosk CTA copy should distinguish admin operation from review mode.');

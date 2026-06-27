@@ -753,9 +753,9 @@ export default function Dashboard() {
                   </div>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {shiftTrustPlan.unlocks.map((unlock) => (
-                    <span key={unlock} className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">
-                      Unlocks {unlock.toLowerCase()}
+                  {shiftTrustPlan.outcomeChips.map((chip) => (
+                    <span key={chip} className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">
+                      {chip}
                     </span>
                   ))}
                   {shiftTrustPlan.staleLabel && (

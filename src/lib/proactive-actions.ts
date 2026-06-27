@@ -144,6 +144,7 @@ export interface ProactiveShiftTrustPlan {
   href: string;
   cta: string;
   evidenceChips: string[];
+  outcomeChips: string[];
   proofLink: ProactiveActionProofLink | null;
   tone: ProactiveActionTone;
   access: ProactiveActionAccess;
@@ -568,6 +569,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
   const staleCopy = staleLabel ? ` ${staleLabel}.` : '';
   const unlocks = getPlanUnlocks(firstAction);
   const evidenceChips = getProactiveActionEvidenceChips(firstAction);
+  const outcomeChips = getProactiveActionOutcomeChips(firstAction);
   const proofLink = getProactiveActionProofLink(firstAction);
 
   return {
@@ -577,6 +579,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
     href: firstAction.href,
     cta: firstAction.cta,
     evidenceChips,
+    outcomeChips,
     proofLink,
     tone: firstAction.tone,
     access: firstAction.actionability.access,
