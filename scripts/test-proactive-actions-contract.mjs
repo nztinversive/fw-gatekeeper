@@ -218,9 +218,15 @@ assert.deepEqual(plain(clockOutAction.evidence), {
 }, 'Missing clock-out evidence should preserve the exception type mix.');
 const recognitionReviewAction = findAction(focusedExceptionActions, 'recognition-review');
 assert.equal(recognitionReviewAction.description, '1 recognition exception needs supervisor review before closeout.');
-assert.equal(recognitionReviewAction.href, '/exceptions?date=2026-06-26&status=open&type=recognition_review', 'Recognition review actions should deep-link to the filtered open exception queue.');
+assert.equal(recognitionReviewAction.href, '/exceptions?date=2026-06-26&status=open&type=recognition_review&exception_key=2026-06-26%3Arecognition_review%3Aa1', 'Recognition review actions should deep-link to the first filtered source exception.');
 assert.equal(recognitionReviewAction.cta, 'Review recognition');
 assert.equal(recognitionReviewAction.blocksCloseout, true, 'Recognition review should remain closeout work.');
+assert.deepEqual(plain(recognitionReviewAction.evidence), {
+  type: 'recognition_review',
+  count: 1,
+  firstExceptionKey: '2026-06-26:recognition_review:a1',
+  byType: { missing_clock_out: 2, recognition_review: 2 },
+}, 'Recognition review evidence should preserve the exact source exception key when available.');
 
 const focusedViewerActions = buildProactiveActions({
   date: '2026-06-26',
@@ -245,7 +251,7 @@ const focusedViewerActions = buildProactiveActions({
 assert.equal(findAction(focusedViewerActions, 'missing-clock-outs').cta, 'Review clock-outs', 'Viewer clock-out actions should keep the focused CTA.');
 assert.equal(findAction(focusedViewerActions, 'missing-clock-outs').href, '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2', 'Viewer clock-out actions should keep exact row context without write intent.');
 assert.equal(findAction(focusedViewerActions, 'recognition-review').cta, 'Review recognition', 'Viewer recognition actions should keep the focused CTA.');
-assert.equal(findAction(focusedViewerActions, 'recognition-review').href, '/exceptions?date=2026-06-26&status=open&type=recognition_review', 'Viewer recognition actions should keep the precise recognition queue filter.');
+assert.equal(findAction(focusedViewerActions, 'recognition-review').href, '/exceptions?date=2026-06-26&status=open&type=recognition_review&exception_key=2026-06-26%3Arecognition_review%3Aa1', 'Viewer recognition actions should keep exact source exception context.');
 
 const resolvedTypeOnlyActions = buildProactiveActions({
   date: '2026-06-26',
@@ -293,6 +299,9 @@ assert.deepEqual(actionKeys(allOpenTypeSummaryActions), [
   'recognition-review',
   'shift-exceptions',
 ], 'When every summarized exception is open, by_type should be safe to use as the fallback focused action source.');
+const fallbackRecognitionReviewAction = findAction(allOpenTypeSummaryActions, 'recognition-review');
+assert.equal(fallbackRecognitionReviewAction.href, '/exceptions?date=2026-06-26&status=open&type=recognition_review', 'Summary-only recognition actions should not invent an exact exception key.');
+assert.equal(fallbackRecognitionReviewAction.evidence.firstExceptionKey, null, 'Summary-only recognition evidence should keep exact source absence explicit.');
 
 const staleFreshnessPayload = {
   stats: {

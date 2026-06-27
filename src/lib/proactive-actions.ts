@@ -663,6 +663,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     const missingClockOuts = getOpenExceptionTypeCount(shiftExceptions, 'missing_clock_out');
     const recognitionReviews = getOpenExceptionTypeCount(shiftExceptions, 'recognition_review');
     const firstMissingClockOutKey = getFirstOpenExceptionKey(shiftExceptions, 'missing_clock_out');
+    const firstRecognitionReviewKey = getFirstOpenExceptionKey(shiftExceptions, 'recognition_review');
     const priority = criticalExceptions > 0 ? CRITICAL_PRIORITY : WARNING_PRIORITY;
     if (missingClockOuts > 0) {
       actions.push({
@@ -705,12 +706,14 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           date: actionDate,
           status: 'open',
           type: 'recognition_review',
+          exception_key: firstRecognitionReviewKey,
         }),
         cta: 'Review recognition',
         source: 'exceptions',
         evidence: {
           type: 'recognition_review',
           count: recognitionReviews,
+          firstExceptionKey: firstRecognitionReviewKey,
           byType: shiftExceptions?.summary?.by_type || null,
         },
         freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
