@@ -42,6 +42,57 @@ function isMissingConvexFunction(error: unknown) {
   return message.includes('FunctionPathNotFound') || message.includes('Could not find public function');
 }
 
+function typeLabel(value: unknown) {
+  const type = typeof value === 'string' && value.trim() ? value.trim() : 'exception';
+  return type.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function sourceHref(exception: any) {
+  return exception?.links?.activity_log || exception?.links?.recognition_lab || exception?.links?.kiosk || null;
+}
+
+function fallbackSuggestedResolution(exception: any) {
+  const key = typeof exception?.key === 'string' && exception.key.trim() ? exception.key : 'unknown-exception';
+  const issue = typeLabel(exception?.type);
+  const worker = typeof exception?.worker_name === 'string' && exception.worker_name.trim()
+    ? exception.worker_name.trim()
+    : 'Unknown worker';
+  const href = sourceHref(exception);
+
+  return {
+    action: 'review_only',
+    label: 'Review exception',
+    cta: 'Review source',
+    reason: `${issue}: supervisor should review source evidence for ${worker}. Source exception ${key}.`,
+    corrected_time: null,
+    original_attendance_id: null,
+    href,
+    source_href: href,
+    requires_worker: false,
+    requires_original_event: false,
+    can_apply: false,
+    disabled_reason: 'Suggested correction details are waiting for the updated Convex exception payload; review the source evidence before applying corrections.',
+    source_exception_key: key,
+  };
+}
+
+function hasSuggestedResolution(exception: any) {
+  return exception?.suggested_resolution && typeof exception.suggested_resolution === 'object';
+}
+
+function normalizeShiftExceptionsPayload(payload: any) {
+  if (!payload || !Array.isArray(payload.exceptions)) return payload;
+  return {
+    ...payload,
+    exceptions: payload.exceptions.map((exception: any) => ({
+      ...exception,
+      suggested_resolution: hasSuggestedResolution(exception)
+        ? exception.suggested_resolution
+        : fallbackSuggestedResolution(exception),
+    })),
+  };
+}
+
 export async function GET(req: NextRequest) {
   if (!(await hasValidPortalSession(req, ['admin', 'enrollment', 'viewer']))) {
     return unauthorizedApiResponse();
@@ -54,7 +105,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const payload = await convex.query((api as any).shiftExceptions.summary, { date });
-    return NextResponse.json(payload);
+    return NextResponse.json(normalizeShiftExceptionsPayload(payload));
   } catch (error) {
     if (isMissingConvexFunction(error)) {
       return NextResponse.json(emptyResponse(date, {
