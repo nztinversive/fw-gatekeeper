@@ -217,7 +217,7 @@ assert.equal(exceptions.href, '/exceptions?date=2026-06-26&status=open&severity=
 const closeout = findAction(rankedActions, 'shift-closeout-pending');
 assert.equal(closeout.priority, 'closeout', 'Closeout should rank after warning actions.');
 assert.equal(closeout.severity, 'warning', 'Closeout with blockers should still show warning severity.');
-assert.equal(closeout.description, '1 closeout checklist item needs acknowledgement.');
+assert.equal(closeout.description, '1 closeout checklist item needs acknowledgement: Critical exceptions.');
 assert.equal(closeout.cta, 'Close shift', 'Legacy closeout CTA should remain operational when no role is supplied.');
 assert.equal(closeout.href, '/closeout?date=2026-06-26', 'Closeout actions should preserve the selected date.');
 assert.equal(closeout.evidence.firstBlockerLabel, 'Critical exceptions', 'Closeout evidence should preserve the first blocker label.');
@@ -281,8 +281,39 @@ assert.deepEqual(plain(closeoutProofPlan.proofLink), {
 }, 'Shift trust plan should expose exact closeout proof links for operating roles.');
 assert.deepEqual(
   plain(closeoutProofPlan.evidenceChips),
-  ['1 blocker', 'Exact source ready', 'Needs acknowledgement'],
-  'Shift trust plan should carry compact evidence chips for the selected closeout action.',
+  ['1 blocker', 'Missing clock-outs', 'Exact source ready'],
+  'Shift trust plan should carry the first closeout blocker label before source-proof chips.',
+);
+assert.equal(closeoutProofPlan.description, '1 closeout checklist item needs acknowledgement: Missing clock-outs.', 'Shift trust plan should name the closeout blocker that should be handled first.');
+const multiBlockerCloseoutPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
+  date: '2026-06-26',
+  shiftCloseout: {
+    date: '2026-06-26',
+    closeout: null,
+    blockers: [
+      {
+        id: 'missing-clock-outs',
+        label: 'Missing clock-outs',
+        proof: {
+          label: 'missing clock-out exceptions',
+          count: 2,
+          href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out',
+          exact: false,
+        },
+      },
+      {
+        id: 'recognition-review',
+        label: 'Recognition reviews',
+      },
+    ],
+    can_complete: false,
+  },
+}));
+assert.equal(multiBlockerCloseoutPlan.description, '2 closeout checklist items need acknowledgement. Start with Missing clock-outs.', 'Multi-blocker closeout plans should point supervisors at the first blocker without hiding the total count.');
+assert.deepEqual(
+  plain(multiBlockerCloseoutPlan.evidenceChips),
+  ['2 blockers', 'Missing clock-outs', 'Source proof ready'],
+  'Multi-blocker closeout evidence chips should include the first blocker and grouped proof status.',
 );
 const viewerCloseoutProofPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
   date: '2026-06-26',

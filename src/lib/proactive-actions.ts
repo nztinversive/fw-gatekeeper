@@ -540,6 +540,13 @@ function pluralChip(count: number, singular: string, pluralValue?: string) {
   return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
 }
 
+function getCloseoutBlockerDescription(blockerCount: number, firstBlockerLabel: string | null) {
+  const acknowledgement = `${plural(blockerCount, 'closeout checklist item')} ${verb(blockerCount, 'needs', 'need')} acknowledgement`;
+  if (!firstBlockerLabel) return `${acknowledgement}.`;
+  if (blockerCount === 1) return `${acknowledgement}: ${firstBlockerLabel}.`;
+  return `${acknowledgement}. Start with ${firstBlockerLabel}.`;
+}
+
 function getSignalEvidenceChip(signal: unknown) {
   if (signal === 'workers') return 'Roster signal';
   if (signal === 'attendance') return 'Attendance signal';
@@ -589,6 +596,7 @@ export function getProactiveActionEvidenceChips(
   } else if (action.source === 'closeout') {
     const blockerCount = evidenceNumber(evidence, 'blockerCount');
     if (blockerCount !== null) chips.push(blockerCount > 0 ? pluralChip(blockerCount, 'blocker') : 'No blockers');
+    if (evidence.firstBlockerLabel) chips.push(String(evidence.firstBlockerLabel));
     const firstBlockerProof = evidence.firstBlockerProof;
     if (firstBlockerProof && typeof firstBlockerProof === 'object') {
       const proof = firstBlockerProof as Partial<{ exact: boolean }>;
@@ -967,6 +975,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     } else {
       const blockerCount = shiftCloseout?.blockers?.length || 0;
       const firstBlocker = shiftCloseout?.blockers?.[0] || null;
+      const firstBlockerLabel = firstBlocker?.label || null;
       actions.push({
         key: 'shift-closeout-pending',
         priority: CLOSEOUT_PRIORITY,
@@ -974,7 +983,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         label: 'Shift closeout pending',
         value: blockerCount || '!',
         description: blockerCount > 0
-          ? `${plural(blockerCount, 'closeout checklist item')} ${verb(blockerCount, 'needs', 'need')} acknowledgement.`
+          ? getCloseoutBlockerDescription(blockerCount, firstBlockerLabel)
           : 'Complete the supervisor closeout when the shift is ready to sign off.',
         href: buildHref('/closeout', { date: actionDate }),
         cta: 'Close shift',
@@ -982,7 +991,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
         evidence: {
           blockerCount,
           canComplete: Boolean(shiftCloseout?.can_complete),
-          firstBlockerLabel: firstBlocker?.label || null,
+          firstBlockerLabel,
           firstBlockerProof: firstBlocker?.proof || null,
           summary: shiftCloseout?.summary || null,
         },
