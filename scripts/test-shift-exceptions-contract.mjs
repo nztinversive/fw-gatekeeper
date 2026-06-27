@@ -63,6 +63,10 @@ assert.match(exceptions, /return \{[\s\S]*action:\s*"review_only"[\s\S]*unknown 
 assert.match(apiRoute, /shiftExceptions\.summary/, 'GET /api/shift-exceptions must call the Convex summary query.');
 assert.match(apiRoute, /shiftExceptions\.review/, 'PATCH /api/shift-exceptions must call the Convex review mutation.');
 assert.match(apiRoute, /FunctionPathNotFound/, 'GET route should degrade gracefully while Convex functions are waiting to deploy.');
+assert.match(apiRoute, /function normalizeShiftExceptionsPayload/, 'GET route should normalize older Convex rows before sending them to the client.');
+assert.match(apiRoute, /fallbackSuggestedResolution/, 'GET route should provide a conservative fallback suggested_resolution while Convex deploys catch up.');
+assert.match(apiRoute, /suggested_resolution:\s*hasSuggestedResolution\(exception\)[\s\S]*fallbackSuggestedResolution\(exception\)/, 'GET route should preserve server suggestions and only backfill missing suggested_resolution objects.');
+assert.match(apiRoute, /action:\s*'review_only'[\s\S]*disabled_reason:\s*'Suggested correction details are waiting for the updated Convex exception payload/, 'Fallback suggested resolutions should be safe review-only actions.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'GET route should allow portal viewers.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment'\]\)/, 'PATCH route should restrict review actions.');
 
