@@ -208,6 +208,7 @@ function getActionEvidenceChips(item: ProactiveAction) {
     if (evidence.firstExceptionKey) chips.push('Exact row ready');
   } else if (item.key === 'recognition-review') {
     if (count !== null) chips.push(pluralChip(count, 'review item'));
+    if (evidence.firstExceptionKey) chips.push('Exact row ready');
   } else if (item.source === 'enrollment') {
     if (count !== null) chips.push(pluralChip(count, 'worker'));
   } else if (item.source === 'kiosk' || item.source === 'service') {

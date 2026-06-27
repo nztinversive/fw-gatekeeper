@@ -440,6 +440,7 @@ assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best actio
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
 assert.match(dashboardSource, /getActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from existing action evidence.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Dashboard evidence chips should be labelled for assistive technology.');
+assert.match(dashboardSource, /item\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
 assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');
 assert.match(portalRoleRoute, /hasValidAdminSession/, 'Portal role API should treat legacy admin-cookie sessions as admin.');
 assert.match(portalRoleRoute, /getPortalMemberForToken/, 'Portal role API should resolve Convex portal member roles.');
