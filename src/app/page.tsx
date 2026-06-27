@@ -6,8 +6,8 @@ import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
-import { buildProactiveActions } from '@/lib/proactive-actions';
-import type { ProactiveSignalFreshness } from '@/lib/proactive-actions';
+import { buildProactiveActions, buildProactiveShiftTrustPlan } from '@/lib/proactive-actions';
+import type { ProactiveAction, ProactiveSignalFreshness } from '@/lib/proactive-actions';
 
 interface WorkerWithStatus {
   id: string;
@@ -187,6 +187,52 @@ function getActionFreshnessCopy(freshness: { status: string; lastSuccessAt?: str
   if (freshness.status !== 'stale' && !freshness.failed && !freshness.unavailable) return null;
   const lastSuccess = formatFreshnessTime(freshness.lastSuccessAt);
   return lastSuccess ? `Using cached data from ${lastSuccess}` : 'Source unavailable';
+}
+
+function evidenceNumber(evidence: Record<string, unknown>, key: string) {
+  const value = evidence[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function pluralChip(count: number, singular: string, pluralValue?: string) {
+  return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
+}
+
+function getActionEvidenceChips(item: ProactiveAction) {
+  const evidence = item.evidence || {};
+  const chips: string[] = [];
+  const count = evidenceNumber(evidence, 'count');
+
+  if (item.key === 'missing-clock-outs') {
+    if (count !== null) chips.push(pluralChip(count, 'clock-out'));
+    if (evidence.firstExceptionKey) chips.push('Exact row ready');
+  } else if (item.key === 'recognition-review') {
+    if (count !== null) chips.push(pluralChip(count, 'review item'));
+  } else if (item.source === 'enrollment') {
+    if (count !== null) chips.push(pluralChip(count, 'worker'));
+  } else if (item.source === 'kiosk' || item.source === 'service') {
+    const kioskCounts = evidence.kioskCounts;
+    if (kioskCounts && typeof kioskCounts === 'object') {
+      const counts = kioskCounts as Partial<Record<'offline' | 'stale' | 'never_synced', number>>;
+      if (counts.offline) chips.push(pluralChip(counts.offline, 'offline kiosk'));
+      if (counts.never_synced) chips.push(pluralChip(counts.never_synced, 'never-synced kiosk'));
+      if (counts.stale) chips.push(pluralChip(counts.stale, 'stale kiosk'));
+    }
+  } else if (item.source === 'exceptions') {
+    const open = evidenceNumber(evidence, 'open');
+    const critical = evidenceNumber(evidence, 'critical');
+    if (open !== null) chips.push(pluralChip(open, 'open exception'));
+    if (critical !== null) chips.push(pluralChip(critical, 'critical item', 'critical items'));
+  } else if (item.source === 'closeout') {
+    const blockerCount = evidenceNumber(evidence, 'blockerCount');
+    if (blockerCount !== null) chips.push(blockerCount > 0 ? pluralChip(blockerCount, 'blocker') : 'No blockers');
+    if (evidence.canComplete === false) chips.push('Needs acknowledgement');
+    if (evidence.canComplete === true) chips.push('Ready to complete');
+  } else if (item.source === 'attendance') {
+    if (count !== null) chips.push(pluralChip(count, 'missing scan'));
+  }
+
+  return chips.slice(0, 3);
 }
 
 export default function Dashboard() {
@@ -412,6 +458,7 @@ export default function Dashboard() {
     shiftCloseout,
     currentRole,
   });
+  const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
 
   const offlineKioskCount = systemHealth
     ? systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced
@@ -712,6 +759,38 @@ export default function Dashboard() {
           </span>
         </div>
 
+        {shiftTrustPlan && (
+          <div className="mb-4 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="section-label text-gold">Next best action</p>
+                <h3 className="mt-1 font-display text-base font-semibold text-slate-100">{shiftTrustPlan.label}</h3>
+                <p className="mt-1 text-sm leading-5 text-slate-400">{shiftTrustPlan.description}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {shiftTrustPlan.unlocks.map((unlock) => (
+                    <span key={unlock} className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">
+                      Unlocks {unlock.toLowerCase()}
+                    </span>
+                  ))}
+                  {shiftTrustPlan.staleLabel && (
+                    <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">
+                      {shiftTrustPlan.staleLabel}
+                    </span>
+                  )}
+                  {shiftTrustPlan.access === 'review' && (
+                    <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">
+                      Review only
+                    </span>
+                  )}
+                </div>
+              </div>
+              <Link href={shiftTrustPlan.href} className="btn-primary shrink-0 self-start text-xs md:self-auto">
+                {shiftTrustPlan.cta}
+              </Link>
+            </div>
+          </div>
+        )}
+
         {actionItems.length === 0 ? (
           <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4 flex items-start gap-3">
             <span className="status-dot-pulse bg-emerald-400 mt-1.5" />
@@ -735,6 +814,7 @@ export default function Dashboard() {
                 info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
               }[item.priority];
               const actionFreshnessCopy = getActionFreshnessCopy(item.freshness);
+              const evidenceChips = getActionEvidenceChips(item);
               return (
                 <div key={item.key} className={`rounded-2xl border p-4 ${tone}`}>
                   <div className="flex items-start justify-between gap-3">
@@ -752,6 +832,15 @@ export default function Dashboard() {
                       <p className="mt-2 text-sm leading-5 text-slate-400">{item.description}</p>
                       {actionFreshnessCopy && (
                         <p className="mt-2 text-xs font-mono text-amber-300/80">{actionFreshnessCopy}</p>
+                      )}
+                      {evidenceChips.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2" aria-label={`${item.label} evidence`}>
+                          {evidenceChips.map((chip) => (
+                            <span key={chip} className="rounded border border-navy-500/60 bg-navy-950/35 px-2 py-1 text-[10px] font-mono text-slate-400">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
                       )}
                       {(item.blocksReadiness || item.blocksCloseout) && (
                         <div className="mt-3 flex flex-wrap gap-2">

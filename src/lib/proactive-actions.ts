@@ -128,6 +128,19 @@ export interface ProactiveAction {
   actionability: ProactiveActionActionability;
 }
 
+export interface ProactiveShiftTrustPlan {
+  actionKey: string;
+  label: string;
+  description: string;
+  href: string;
+  cta: string;
+  tone: ProactiveActionTone;
+  access: ProactiveActionAccess;
+  stale: boolean;
+  staleLabel: string | null;
+  unlocks: string[];
+}
+
 type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'freshness' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
   priority?: ProactiveActionPriority;
   severity?: ProactiveActionSeverity;
@@ -445,6 +458,43 @@ export function rankProactiveActions(actions: DraftProactiveAction[]): Proactive
       a.sort.original - b.sort.original
     ))
     .map(({ sort, ...action }) => action);
+}
+
+function getPlanUnlocks(action: ProactiveAction) {
+  const unlocks: string[] = [];
+  if (action.blocksReadiness) unlocks.push('Shift readiness');
+  if (action.blocksCloseout) unlocks.push('Closeout trust');
+  if (unlocks.length === 0 && action.priority === CLOSEOUT_PRIORITY) unlocks.push('Closeout signoff');
+  if (unlocks.length === 0) unlocks.push('Supervisor review');
+  return unlocks;
+}
+
+function sentenceWithPeriod(value: string) {
+  return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
+}
+
+export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): ProactiveShiftTrustPlan | null {
+  const firstAction = actions[0];
+  if (!firstAction) return null;
+
+  const stale = firstAction.freshness.status === 'stale' || Boolean(firstAction.freshness.failed || firstAction.freshness.unavailable);
+  const lead = firstAction.actionability.canOperate ? 'Do this first' : 'Review this first';
+  const staleLabel = stale ? (firstAction.freshness.lastSuccessAt ? 'Cached evidence' : 'Source unavailable') : null;
+  const staleCopy = staleLabel ? ` ${staleLabel}.` : '';
+  const unlocks = getPlanUnlocks(firstAction);
+
+  return {
+    actionKey: firstAction.key,
+    label: `${lead}: ${firstAction.label}`,
+    description: `${sentenceWithPeriod(firstAction.description)}${staleCopy}`,
+    href: firstAction.href,
+    cta: firstAction.cta,
+    tone: firstAction.tone,
+    access: firstAction.actionability.access,
+    stale,
+    staleLabel,
+    unlocks,
+  };
 }
 
 export function buildProactiveActions(input: BuildProactiveActionsInput = {}): ProactiveAction[] {

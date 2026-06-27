@@ -25,7 +25,7 @@ new Script(executableSource, { filename: 'src/lib/proactive-actions.ts' }).runIn
   console,
 });
 
-const { buildProactiveActions, PROACTIVE_ACTION_PRIORITY_RANK } = module.exports;
+const { buildProactiveActions, buildProactiveShiftTrustPlan, PROACTIVE_ACTION_PRIORITY_RANK } = module.exports;
 
 const actionKeys = (actions) => JSON.parse(JSON.stringify(actions.map((action) => action.key)));
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -108,6 +108,24 @@ assert.deepEqual(actionKeys(rankedActions), [
   'shift-closeout-pending',
   'not-arrived',
 ], 'Critical kiosk/enrollment/exceptions must rank before warnings, closeout, and informational actions.');
+
+const trustPlan = buildProactiveShiftTrustPlan(rankedActions);
+assert.deepEqual(
+  plain(trustPlan),
+  {
+    actionKey: 'system-health-0',
+    label: 'Do this first: Kiosk sync warning',
+    description: 'Main Entry kiosk is offline.',
+    href: '/kiosks',
+    cta: 'Open kiosks',
+    tone: 'red',
+    access: 'operate',
+    stale: false,
+    staleLabel: null,
+    unlocks: ['Shift readiness', 'Closeout trust'],
+  },
+  'Shift trust plan should summarize the already-ranked top action without creating a second ranking system.',
+);
 
 const offlineKiosk = rankedActions[0];
 assert.equal(offlineKiosk.priority, 'critical', 'Offline kiosk warnings must be critical.');
@@ -327,6 +345,25 @@ assertCurrentSignalFailure(findAction(staleFreshnessActions, 'shift-closeout-pen
 assertCurrentSignalFailure(findAction(staleFreshnessActions, 'invalid-face'), ['workers', 'enrollment'], 'Worker roster signal failed now');
 assertCurrentSignalFailure(findAction(staleFreshnessActions, 'not-arrived'), ['attendance'], 'Attendance signal failed now');
 assertCurrentSignalFailure(findAction(staleFreshnessActions, 'schedule-warning'), ['stats', 'schedule'], 'Stats signal failed now');
+assert.equal(
+  buildProactiveShiftTrustPlan(staleFreshnessActions).description,
+  'Main Entry kiosk is offline. Cached evidence.',
+  'Shift trust plan should disclose when its recommendation is based on stale action evidence.',
+);
+assert.equal(buildProactiveShiftTrustPlan(staleFreshnessActions).staleLabel, 'Cached evidence', 'Shift trust plan should distinguish stale cached evidence from source-unavailable evidence.');
+
+const unavailableTrustPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
+  signalFailures: [
+    {
+      key: 'system-health',
+      label: 'Kiosk and system health',
+      href: '/kiosks',
+      message: 'Kiosk and system health could not refresh: 503 Service Unavailable',
+    },
+  ],
+}));
+assert.equal(unavailableTrustPlan.description, 'Kiosk and system health could not refresh: 503 Service Unavailable. Source unavailable.', 'Shift trust plan should avoid claiming cached evidence when no last success exists.');
+assert.equal(unavailableTrustPlan.staleLabel, 'Source unavailable', 'Shift trust plan should label no-cache failures as source unavailable.');
 
 const adminActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'admin' });
 assert.deepEqual(actionKeys(adminActions), actionKeys(rankedActions), 'Admin role must not change proactive action ranking.');
@@ -375,11 +412,22 @@ assert.deepEqual(
   { access: 'review', canOperate: false, role: 'viewer' },
   'Viewer actionability should mark write workflows as review-only.',
 );
+const viewerTrustPlan = buildProactiveShiftTrustPlan(viewerActions);
+assert.equal(viewerTrustPlan.label, 'Review this first: Kiosk sync warning', 'Viewer shift trust plan should use review-safe language.');
+assert.equal(viewerTrustPlan.href, '/', 'Viewer shift trust plan should inherit the role-safe review href.');
+assert.equal(viewerTrustPlan.cta, 'Inspect readiness', 'Viewer shift trust plan should inherit the role-safe review CTA.');
+assert.equal(viewerTrustPlan.access, 'review', 'Viewer shift trust plan should expose review access.');
 
 const dashboardSource = read('src/app/page.tsx');
 const portalRoleRoute = read('src/app/api/portal-role/route.ts');
 const middlewareSource = read('src/middleware.ts');
 assert.match(dashboardSource, /\/api\/portal-role/, 'Dashboard should resolve role through the lightweight portal role API.');
+assert.match(dashboardSource, /buildProactiveShiftTrustPlan/, 'Dashboard should render a single next-best shift trust plan from ranked actions.');
+assert.match(dashboardSource, /Next best action/, 'Dashboard should label the next-best action summary.');
+assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best action should reuse the selected action href.');
+assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
+assert.match(dashboardSource, /getActionEvidenceChips/, 'Dashboard action cards should derive compact evidence chips from existing action evidence.');
+assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Dashboard evidence chips should be labelled for assistive technology.');
 assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');
 assert.match(portalRoleRoute, /hasValidAdminSession/, 'Portal role API should treat legacy admin-cookie sessions as admin.');
 assert.match(portalRoleRoute, /getPortalMemberForToken/, 'Portal role API should resolve Convex portal member roles.');
@@ -443,5 +491,6 @@ const noActions = buildProactiveActions({
 });
 
 assert.deepEqual(JSON.parse(JSON.stringify(noActions)), [], 'Clean payloads without closeout work should return no proactive actions.');
+assert.equal(buildProactiveShiftTrustPlan(noActions), null, 'Clean payloads should not invent a next-best action.');
 
 console.log('Proactive actions contract passed');
