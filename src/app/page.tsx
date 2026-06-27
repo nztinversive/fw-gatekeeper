@@ -220,6 +220,9 @@ function getActionEvidenceChips(item: ProactiveAction) {
     if (evidence.firstExceptionKey) chips.push('Exact row ready');
   } else if (item.source === 'enrollment') {
     if (count !== null) chips.push(pluralChip(count, 'worker'));
+    if (evidence.firstWorkerId) {
+      chips.push(item.actionability.canOperate && item.href.startsWith('/enroll?worker_id=') ? 'Exact worker ready' : 'Worker identified');
+    }
   } else if (item.source === 'kiosk' || item.source === 'service') {
     const kioskCounts = evidence.kioskCounts;
     if (kioskCounts && typeof kioskCounts === 'object') {
@@ -462,6 +465,7 @@ export default function Dashboard() {
   const workerCardsAreStale = isSignalStale(signalFreshness, 'workers') || isSignalStale(signalFreshness, 'attendance');
   const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
   const actionDate = getLocalDateString();
+  const dashboardRole = currentRole || 'viewer';
   const actionItems = buildProactiveActions({
     date: actionDate,
     signalFailures,
@@ -471,11 +475,11 @@ export default function Dashboard() {
     stats,
     shiftExceptions,
     shiftCloseout,
-    currentRole,
+    currentRole: dashboardRole,
   });
   const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
-  const canOpenAdminOps = currentRole === 'admin';
-  const canOpenEnrollmentOps = currentRole === 'admin' || currentRole === 'enrollment';
+  const canOpenAdminOps = dashboardRole === 'admin';
+  const canOpenEnrollmentOps = dashboardRole === 'admin' || dashboardRole === 'enrollment';
   const opsKioskHref = canOpenAdminOps ? '/kiosks' : `/briefing?date=${actionDate}`;
   const opsKioskCta = canOpenAdminOps ? 'Fix kiosk sync' : 'Review kiosk readiness';
   const opsEnrollmentHref = canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
