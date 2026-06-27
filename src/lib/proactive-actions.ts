@@ -519,7 +519,7 @@ function capitalize(value: string) {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
 
-function getStaleEvidenceLabel(freshness: ProactiveActionFreshness) {
+export function getProactiveActionFreshnessLabel(freshness: ProactiveActionFreshness) {
   const subject = getFreshnessSubject(freshness.sourceKeys);
   if (freshness.lastSuccessAt) {
     return subject === 'source' ? 'Cached evidence' : `Cached ${subject} evidence`;
@@ -609,7 +609,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
 
   const stale = firstAction.freshness.status === 'stale' || Boolean(firstAction.freshness.failed || firstAction.freshness.unavailable);
   const lead = firstAction.actionability.canOperate ? 'Do this first' : 'Review this first';
-  const staleLabel = stale ? getStaleEvidenceLabel(firstAction.freshness) : null;
+  const staleLabel = stale ? getProactiveActionFreshnessLabel(firstAction.freshness) : null;
   const staleCopy = staleLabel ? ` ${staleLabel}.` : '';
   const unlocks = getPlanUnlocks(firstAction);
   const evidenceChips = getProactiveActionEvidenceChips(firstAction);

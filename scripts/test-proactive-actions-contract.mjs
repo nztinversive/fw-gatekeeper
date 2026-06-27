@@ -29,6 +29,7 @@ const {
   buildProactiveActions,
   buildProactiveShiftTrustPlan,
   getProactiveActionEvidenceChips,
+  getProactiveActionFreshnessLabel,
   getProactiveActionOutcomeChips,
   getProactiveActionProofLink,
   PROACTIVE_ACTION_PRIORITY_RANK,
@@ -489,6 +490,9 @@ assertCurrentSignalFailure(findAction(staleFreshnessActions, 'shift-closeout-pen
 assertCurrentSignalFailure(findAction(staleFreshnessActions, 'invalid-face'), ['workers', 'enrollment'], 'Worker roster signal failed now');
 assertCurrentSignalFailure(findAction(staleFreshnessActions, 'not-arrived'), ['attendance'], 'Attendance signal failed now');
 assertCurrentSignalFailure(findAction(staleFreshnessActions, 'schedule-warning'), ['stats', 'schedule'], 'Stats signal failed now');
+assert.equal(getProactiveActionFreshnessLabel(findAction(staleFreshnessActions, 'system-health-0').freshness), 'Cached health evidence', 'Shared freshness labels should name cached health evidence for action cards.');
+assert.equal(getProactiveActionFreshnessLabel(findAction(staleFreshnessActions, 'invalid-face').freshness), 'Cached roster evidence', 'Shared freshness labels should name cached roster evidence for action cards.');
+assert.equal(getProactiveActionFreshnessLabel(findAction(staleFreshnessActions, 'not-arrived').freshness), 'Cached attendance evidence', 'Shared freshness labels should name cached attendance evidence for action cards.');
 assert.equal(
   buildProactiveShiftTrustPlan(staleFreshnessActions).description,
   'Main Entry kiosk is offline. Cached health evidence.',
@@ -541,6 +545,14 @@ const unknownUnavailableTrustPlan = buildProactiveShiftTrustPlan(buildProactiveA
 }));
 assert.equal(unknownUnavailableTrustPlan.description, 'Vendor feed could not refresh. Source unavailable.', 'Unknown unavailable sources should preserve the generic source-unavailable fallback.');
 assert.equal(unknownUnavailableTrustPlan.staleLabel, 'Source unavailable', 'Unknown unavailable sources should keep the generic unavailable stale badge.');
+assert.equal(getProactiveActionFreshnessLabel(findAction(buildProactiveActions({
+  signalFailures: [{
+    key: 'vendor-feed',
+    label: 'Vendor feed',
+    href: '/reports',
+    message: 'Vendor feed could not refresh',
+  }],
+}), 'signal-failure-vendor-feed').freshness), 'Source unavailable', 'Unknown action-card freshness labels should preserve the generic unavailable fallback.');
 
 const adminActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'admin' });
 assert.deepEqual(actionKeys(adminActions), actionKeys(rankedActions), 'Admin role must not change proactive action ranking.');
@@ -666,6 +678,10 @@ assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action
 assert.match(dashboardSource, /shiftTrustPlan\.evidenceChips\.length[\s\S]*aria-label=\{`\$\{shiftTrustPlan\.label\} evidence`\}[\s\S]*shiftTrustPlan\.evidenceChips\.map/, 'Dashboard next-best action should render the selected action evidence chips.');
 assert.match(dashboardSource, /shiftTrustPlan\.outcomeChips\.map[\s\S]*\{chip\}/, 'Dashboard next-best action should render role-aware outcome chips from the selected action.');
 assert.match(dashboardSource, /shiftTrustPlan\.proofLink[\s\S]*href=\{shiftTrustPlan\.proofLink\.href\}[\s\S]*\{shiftTrustPlan\.proofLink\.label\}/, 'Dashboard next-best action should render exact source proof links when the selected action has proof.');
+assert.match(dashboardSource, /getProactiveActionFreshnessLabel/, 'Dashboard action cards should derive stale freshness labels from shared proactive action semantics.');
+assert.match(dashboardSource, /const actionFreshnessBadge = getActionFreshnessBadge\(item\.freshness\)/, 'Dashboard action cards should compute source-aware freshness badges per action.');
+assert.match(dashboardSource, /\{actionFreshnessBadge\}/, 'Dashboard action cards should render source-aware freshness badge copy.');
+assert.doesNotMatch(dashboardSource, />Stale data</, 'Dashboard action cards should not render generic stale-data badges.');
 assert.match(dashboardSource, /const opsKioskHref = canOpenAdminOps \? '\/kiosks' : `\/briefing\?date=\$\{actionDate\}`/, 'Today Ops kiosk CTA should keep non-admin users in dated briefing review context.');
 assert.match(dashboardSource, /const opsKioskCta = canOpenAdminOps \? 'Fix kiosk sync' : 'Review kiosk readiness'/, 'Today Ops kiosk CTA copy should distinguish admin operation from review mode.');
 assert.match(dashboardSource, /const canOpenAdminOps = dashboardRole === 'admin'/, 'Dashboard admin-only CTAs should use the review-safe dashboard role fallback.');

@@ -6,8 +6,8 @@ import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
-import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionEvidenceChips, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
-import type { ProactiveSignalFreshness } from '@/lib/proactive-actions';
+import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionEvidenceChips, getProactiveActionFreshnessLabel, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
+import type { ProactiveActionFreshness, ProactiveSignalFreshness } from '@/lib/proactive-actions';
 
 interface WorkerWithStatus {
   id: string;
@@ -192,10 +192,21 @@ function getSignalFreshnessCopy(freshness: SignalFreshnessMap, key: SignalFailur
   return lastSuccess ? `${fallback} from ${lastSuccess}` : `${fallback}; no confirmed refresh`;
 }
 
-function getActionFreshnessCopy(freshness: { status: string; lastSuccessAt?: string | null; failed?: boolean; unavailable?: boolean }) {
-  if (freshness.status !== 'stale' && !freshness.failed && !freshness.unavailable) return null;
+function isActionFreshnessStale(freshness: ProactiveActionFreshness) {
+  return freshness.status === 'stale' || Boolean(freshness.failed || freshness.unavailable);
+}
+
+function getActionFreshnessCopy(freshness: ProactiveActionFreshness) {
+  if (!isActionFreshnessStale(freshness)) return null;
+  const staleLabel = getProactiveActionFreshnessLabel(freshness);
+  if (!freshness.lastSuccessAt) return null;
   const lastSuccess = formatFreshnessTime(freshness.lastSuccessAt);
-  return lastSuccess ? `Using cached data from ${lastSuccess}` : 'Source unavailable';
+  return lastSuccess ? `${staleLabel} from ${lastSuccess}` : null;
+}
+
+function getActionFreshnessBadge(freshness: ProactiveActionFreshness) {
+  if (!isActionFreshnessStale(freshness)) return null;
+  return getProactiveActionFreshnessLabel(freshness);
 }
 
 export default function Dashboard() {
@@ -806,6 +817,7 @@ export default function Dashboard() {
                 closeout: 'border-blue-400/20 bg-blue-400/10 text-blue-300',
                 info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
               }[item.priority];
+              const actionFreshnessBadge = getActionFreshnessBadge(item.freshness);
               const actionFreshnessCopy = getActionFreshnessCopy(item.freshness);
               const evidenceChips = getProactiveActionEvidenceChips(item);
               const outcomeChips = getProactiveActionOutcomeChips(item);
@@ -816,8 +828,8 @@ export default function Dashboard() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`badge border text-[10px] ${priorityTone}`}>{item.priority}</span>
-                        {actionFreshnessCopy && (
-                          <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">Stale data</span>
+                        {actionFreshnessBadge && (
+                          <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">{actionFreshnessBadge}</span>
                         )}
                         {!item.actionability.canOperate && (
                           <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
