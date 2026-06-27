@@ -491,10 +491,10 @@ assertCurrentSignalFailure(findAction(staleFreshnessActions, 'not-arrived'), ['a
 assertCurrentSignalFailure(findAction(staleFreshnessActions, 'schedule-warning'), ['stats', 'schedule'], 'Stats signal failed now');
 assert.equal(
   buildProactiveShiftTrustPlan(staleFreshnessActions).description,
-  'Main Entry kiosk is offline. Cached evidence.',
-  'Shift trust plan should disclose when its recommendation is based on stale action evidence.',
+  'Main Entry kiosk is offline. Cached health evidence.',
+  'Shift trust plan should disclose which cached source evidence supports the recommendation.',
 );
-assert.equal(buildProactiveShiftTrustPlan(staleFreshnessActions).staleLabel, 'Cached evidence', 'Shift trust plan should distinguish stale cached evidence from source-unavailable evidence.');
+assert.equal(buildProactiveShiftTrustPlan(staleFreshnessActions).staleLabel, 'Cached health evidence', 'Shift trust plan should distinguish source-specific cached evidence from unavailable evidence.');
 
 const unavailableTrustPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
   signalFailures: [
@@ -506,13 +506,41 @@ const unavailableTrustPlan = buildProactiveShiftTrustPlan(buildProactiveActions(
     },
   ],
 }));
-assert.equal(unavailableTrustPlan.description, 'Kiosk and system health could not refresh: 503 Service Unavailable. Source unavailable.', 'Shift trust plan should avoid claiming cached evidence when no last success exists.');
-assert.equal(unavailableTrustPlan.staleLabel, 'Source unavailable', 'Shift trust plan should label no-cache failures as source unavailable.');
+assert.equal(unavailableTrustPlan.description, 'Kiosk and system health could not refresh: 503 Service Unavailable. Health signal unavailable.', 'Shift trust plan should avoid claiming cached evidence when no last success exists.');
+assert.equal(unavailableTrustPlan.staleLabel, 'Health signal unavailable', 'Shift trust plan should label no-cache failures by unavailable source signal.');
 assert.deepEqual(
   plain(unavailableTrustPlan.evidenceChips),
   ['Health signal'],
   'Unavailable source trust plans should show which source signal failed.',
 );
+const unknownCachedTrustPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
+  signalFailures: [{
+    key: 'vendor-feed',
+    label: 'Vendor feed',
+    href: '/reports',
+    message: 'Vendor feed could not refresh',
+  }],
+  signalFreshness: {
+    'vendor-feed': {
+      lastSuccessAt: '2026-06-26T13:50:00.000Z',
+      failed: true,
+      current: true,
+      message: 'Vendor feed failed now',
+    },
+  },
+}));
+assert.equal(unknownCachedTrustPlan.description, 'Vendor feed could not refresh. Cached evidence.', 'Unknown stale sources should preserve the generic cached-evidence fallback.');
+assert.equal(unknownCachedTrustPlan.staleLabel, 'Cached evidence', 'Unknown stale sources should keep the generic cached stale badge.');
+const unknownUnavailableTrustPlan = buildProactiveShiftTrustPlan(buildProactiveActions({
+  signalFailures: [{
+    key: 'vendor-feed',
+    label: 'Vendor feed',
+    href: '/reports',
+    message: 'Vendor feed could not refresh',
+  }],
+}));
+assert.equal(unknownUnavailableTrustPlan.description, 'Vendor feed could not refresh. Source unavailable.', 'Unknown unavailable sources should preserve the generic source-unavailable fallback.');
+assert.equal(unknownUnavailableTrustPlan.staleLabel, 'Source unavailable', 'Unknown unavailable sources should keep the generic unavailable stale badge.');
 
 const adminActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'admin' });
 assert.deepEqual(actionKeys(adminActions), actionKeys(rankedActions), 'Admin role must not change proactive action ranking.');
@@ -571,7 +599,10 @@ assert.deepEqual(
   ['Roster signal'],
   'Worker-roster source failures should name the roster signal without implying an exact worker handoff.',
 );
-assert.equal(buildProactiveShiftTrustPlan(enrollmentRosterFailureActions).label, 'Review this first: Worker roster unavailable', 'Worker-roster failure trust plans should use review-safe lead copy for enrollment users.');
+const enrollmentRosterFailurePlan = buildProactiveShiftTrustPlan(enrollmentRosterFailureActions);
+assert.equal(enrollmentRosterFailurePlan.label, 'Review this first: Worker roster unavailable', 'Worker-roster failure trust plans should use review-safe lead copy for enrollment users.');
+assert.equal(enrollmentRosterFailurePlan.description, 'Worker roster could not refresh: upstream timeout. Roster signal unavailable.', 'Worker-roster failure trust plans should name the unavailable roster signal.');
+assert.equal(enrollmentRosterFailurePlan.staleLabel, 'Roster signal unavailable', 'Worker-roster failure trust plans should badge the unavailable roster signal.');
 
 const viewerActions = buildProactiveActions({ ...mixedRiskPayload, currentRole: 'viewer' });
 assert.deepEqual(actionKeys(viewerActions), actionKeys(rankedActions), 'Viewer role must not change proactive action ranking.');
@@ -696,6 +727,7 @@ assert.deepEqual(
   ['Exception signal'],
   'Unavailable exception storage should name the failed exception signal.',
 );
+assert.equal(buildProactiveShiftTrustPlan(backendUnavailableActions).staleLabel, 'Exception signal unavailable', 'Deployment-pending exception storage should name the unavailable source in the next-best stale badge.');
 assert.equal(backendUnavailableActions[1].description, 'Shift closeout is waiting for the Convex functions to deploy.');
 assert.equal(backendUnavailableActions[1].href, '/closeout?date=2026-06-26', 'Unavailable closeout storage should still link to the dated closeout view.');
 assert.deepEqual(

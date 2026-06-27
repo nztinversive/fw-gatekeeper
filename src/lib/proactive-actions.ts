@@ -502,6 +502,31 @@ function getPlanUnlocks(action: ProactiveAction) {
   return unlocks;
 }
 
+function getFreshnessSubject(sourceKeys: string[]) {
+  const keys = new Set(sourceKeys);
+  if (keys.has('workers')) return 'roster';
+  if (keys.has('system-health')) return 'health';
+  if (keys.has('attendance')) return 'attendance';
+  if (keys.has('shift-exceptions')) return 'exception';
+  if (keys.has('shift-closeout')) return 'closeout';
+  if (keys.has('stats')) return 'stats';
+  if (keys.has('kiosk')) return 'kiosk';
+  if (keys.has('schedule')) return 'schedule';
+  return 'source';
+}
+
+function capitalize(value: string) {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
+function getStaleEvidenceLabel(freshness: ProactiveActionFreshness) {
+  const subject = getFreshnessSubject(freshness.sourceKeys);
+  if (freshness.lastSuccessAt) {
+    return subject === 'source' ? 'Cached evidence' : `Cached ${subject} evidence`;
+  }
+  return subject === 'source' ? 'Source unavailable' : `${capitalize(subject)} signal unavailable`;
+}
+
 function sentenceWithPeriod(value: string) {
   return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
 }
@@ -584,7 +609,7 @@ export function buildProactiveShiftTrustPlan(actions: ProactiveAction[]): Proact
 
   const stale = firstAction.freshness.status === 'stale' || Boolean(firstAction.freshness.failed || firstAction.freshness.unavailable);
   const lead = firstAction.actionability.canOperate ? 'Do this first' : 'Review this first';
-  const staleLabel = stale ? (firstAction.freshness.lastSuccessAt ? 'Cached evidence' : 'Source unavailable') : null;
+  const staleLabel = stale ? getStaleEvidenceLabel(firstAction.freshness) : null;
   const staleCopy = staleLabel ? ` ${staleLabel}.` : '';
   const unlocks = getPlanUnlocks(firstAction);
   const evidenceChips = getProactiveActionEvidenceChips(firstAction);
