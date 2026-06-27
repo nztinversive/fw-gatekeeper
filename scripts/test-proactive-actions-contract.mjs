@@ -215,6 +215,13 @@ assert.equal(exceptions.blocksCloseout, true, 'Open exceptions block closeout.')
 assert.equal(exceptions.blocksReadiness, true, 'Critical exceptions block readiness.');
 assert.equal(exceptions.href, '/exceptions?date=2026-06-26&status=open&severity=critical', 'Open exception actions should deep-link to the dated critical exception queue.');
 
+const scheduleWarning = findAction(rankedActions, 'schedule-warning');
+assert.deepEqual(
+  plain(getProactiveActionEvidenceChips(scheduleWarning)),
+  ['Schedule needs review'],
+  'Schedule warning actions should expose a compact shared evidence chip.',
+);
+
 const closeout = findAction(rankedActions, 'shift-closeout-pending');
 assert.equal(closeout.priority, 'closeout', 'Closeout should rank after warning actions.');
 assert.equal(closeout.severity, 'warning', 'Closeout with blockers should still show warning severity.');

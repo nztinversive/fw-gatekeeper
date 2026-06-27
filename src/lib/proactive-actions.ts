@@ -599,6 +599,8 @@ export function getProactiveActionEvidenceChips(
     const critical = evidenceNumber(evidence, 'critical');
     if (open !== null) chips.push(pluralChip(open, 'open exception'));
     if (critical !== null) chips.push(pluralChip(critical, 'critical item', 'critical items'));
+  } else if (action.source === 'schedule') {
+    if (evidence.scheduleWarning) chips.push('Schedule needs review');
   } else if (action.source === 'closeout') {
     const blockerCount = evidenceNumber(evidence, 'blockerCount');
     if (blockerCount !== null) chips.push(blockerCount > 0 ? pluralChip(blockerCount, 'blocker') : 'No blockers');
