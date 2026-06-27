@@ -286,6 +286,20 @@ function ShiftCloseoutPageContent() {
                     <div>
                       <h3 className="font-display font-semibold text-slate-100">{item.label}</h3>
                       <p className="text-sm text-slate-400 mt-2 leading-6">{item.description}</p>
+                      {item.proof && (
+                        <Link
+                          href={item.proof.href}
+                          className="mt-3 inline-flex flex-wrap items-center gap-2 rounded border border-navy-600/50 bg-navy-950/35 px-3 py-2 text-xs text-slate-300 hover:border-gold/30 hover:text-gold"
+                        >
+                          <span className="font-mono text-slate-500">Proof</span>
+                          <span>{item.proof.count} {item.proof.label}</span>
+                          {item.proof.exact && (
+                            <span className="rounded border border-gold/20 bg-gold/10 px-2 py-0.5 text-[10px] font-mono text-gold">
+                              Exact source
+                            </span>
+                          )}
+                        </Link>
+                      )}
                       <Link href={item.href} className="mt-3 inline-flex text-xs font-semibold text-gold hover:text-gold-light">
                         Open source view →
                       </Link>

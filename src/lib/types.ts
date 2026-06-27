@@ -295,6 +295,13 @@ export interface ShiftCloseoutChecklistItem {
   status: ShiftCloseoutChecklistStatus;
   count: number;
   href: string;
+  source_exception_key?: string | null;
+  proof: {
+    label: string;
+    count: number;
+    href: string;
+    exact: boolean;
+  };
   description: string;
 }
 

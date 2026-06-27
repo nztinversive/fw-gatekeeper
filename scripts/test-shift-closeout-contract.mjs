@@ -34,6 +34,9 @@ assert.match(closeouts, /kiosk_warnings/, 'Closeout payload must track kiosk war
 assert.match(closeouts, /Closeout has blockers\. Add an acknowledgement note before completing\./, 'Closeout mutation must enforce acknowledgement notes for blockers.');
 assert.match(closeouts, /function buildSuggestedNote/, 'Closeout payload should include a deterministic suggested supervisor note.');
 assert.match(closeouts, /suggested_note:\s*suggestedNote/, 'Closeout response must expose the suggested supervisor note.');
+assert.match(closeouts, /function firstExceptionKey/, 'Closeout checklist should derive exact source exception keys when blocker rows exist.');
+assert.match(closeouts, /function firstExceptionLink/, 'Closeout checklist should reuse exact source links when blocker rows already expose them.');
+assert.match(closeouts, /function proof/, 'Closeout checklist should expose source proof rows without adding another workflow.');
 assert.match(closeouts, /const sourceBlockers = buildChecklist/, 'Suggested closeout notes must be based on raw source blockers, not acknowledgement-cleared checklist rows.');
 assert.match(closeouts, /acknowledgedBlockers:\s*false/, 'Suggested closeout notes should continue naming unresolved source blockers after acknowledgement.');
 assert.match(closeouts, /const hasSourceBlockers = Boolean/, 'Closeout save/complete guards must check raw source blockers.');
@@ -44,9 +47,15 @@ assert.match(closeouts, /blockers remain/, 'Suggested notes should make unresolv
 assert.match(closeouts, /missing clock-outs/, 'Suggested notes should include missing clock-out counts.');
 assert.match(closeouts, /recognition reviews/, 'Suggested notes should include recognition review counts.');
 assert.match(closeouts, /attendance corrections/, 'Suggested notes should include correction counts.');
-assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date:\s*input\.date,\s*status:\s*"open",\s*severity:\s*"critical"\s*\}\)/, 'Critical closeout blockers must deep-link to open critical exceptions for the date.');
-assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date:\s*input\.date,\s*status:\s*"open",\s*type:\s*"missing_clock_out"\s*\}\)/, 'Missing clock-out blockers must deep-link to matching open exceptions for the date.');
-assert.match(closeouts, /buildHref\("\/calibration\/recognition",\s*\{\s*date:\s*input\.date,\s*review_status:\s*"unreviewed"\s*\}\)/, 'Recognition blockers must deep-link to the dated unreviewed recognition queue.');
+assert.match(closeouts, /severity:\s*"critical",\s*exception_key:\s*firstCriticalKey/, 'Critical closeout blockers must deep-link to the first exact critical exception when available.');
+assert.match(closeouts, /proof\(input\.criticalExceptions\.length,\s*"open critical exceptions",\s*criticalHref,\s*Boolean\(firstCriticalKey\)\)/, 'Critical closeout blockers should expose exact-source proof.');
+assert.match(closeouts, /type:\s*"missing_clock_out"[\s\S]*exception_key:\s*firstMissingClockOutKey[\s\S]*intent:\s*firstMissingClockOutKey \? "correct" : null/, 'Missing clock-out blockers should carry exact row context and correction intent.');
+assert.match(closeouts, /source_exception_key:\s*firstMissingClockOutKey/, 'Missing clock-out checklist items should expose exact source exception keys.');
+assert.match(closeouts, /proof\(input\.missingClockOuts\.length,\s*"missing clock-outs",\s*missingClockOutHref,\s*Boolean\(firstMissingClockOutKey\)\)/, 'Missing clock-out blockers should expose proof with correction-ready exact source context.');
+assert.match(closeouts, /proof\(input\.kioskWarnings,\s*"kiosk trust warnings",\s*kioskHref,\s*false\)/, 'Kiosk blockers should expose proof without pretending to have an exact exception row.');
+assert.match(closeouts, /firstRecognitionLabHref \|\| buildHref\("\/calibration\/recognition"/, 'Recognition blockers should reuse exact Recognition Lab handoff links before falling back to the dated queue.');
+assert.match(closeouts, /source_exception_key:\s*firstRecognitionKey/, 'Recognition checklist items should expose exact source exception keys when available.');
+assert.match(closeouts, /proof\(input\.recognitionReviews\.length,\s*"recognition reviews",\s*recognitionHref,\s*Boolean\(firstRecognitionLabHref\)\)/, 'Recognition blockers should expose proof linked to exact Recognition Lab evidence when available.');
 assert.match(closeouts, /buildHref\("\/exceptions",\s*\{\s*date,\s*status:\s*"open"\s*\}\)/, 'Closeout action links must preserve the selected date on filtered exception links.');
 assert.match(closeouts, /buildHref\("\/calibration\/recognition",\s*\{\s*date,\s*review_status:\s*"unreviewed"\s*\}\)/, 'Closeout action links must preserve the selected date on recognition links.');
 
@@ -66,6 +75,11 @@ assert.match(page, /\/api\/portal-role/, 'Closeout page should resolve the curre
 assert.match(page, /function canOperateCloseout/, 'Closeout page should centralize write-role checks.');
 assert.match(page, /return role === 'admin' \|\| role === 'enrollment'/, 'Closeout writes should remain limited to admin and enrollment roles.');
 assert.match(page, /Closeout checklist/, 'Closeout page must show the checklist.');
+assert.match(page, /item\.proof/, 'Closeout checklist should render proof rows from the closeout payload.');
+assert.match(page, /item\.proof\.href/, 'Closeout proof rows should use the source proof href.');
+assert.match(page, /item\.proof\.count/, 'Closeout proof rows should expose source proof counts.');
+assert.match(page, /item\.proof\.exact/, 'Closeout proof rows should visibly distinguish exact source handoffs.');
+assert.match(page, /Exact source/, 'Closeout checklist should label exact source links.');
 assert.match(page, /Supervisor signoff/, 'Closeout page must include supervisor signoff.');
 assert.match(page, /Suggested note/, 'Closeout page must surface the generated suggested note.');
 assert.match(page, /setNotes\(suggestedNote\)/, 'Closeout page should let supervisors apply the suggested note without retyping.');
@@ -95,6 +109,8 @@ assert.match(middleware, /pathname === '\/api\/shift-closeout' && method === 'GE
 assert.match(middleware, /pathname === '\/api\/shift-closeout' && method === 'PATCH'[\s\S]*\['admin', 'enrollment'\]/, 'Middleware should restrict closeout writes.');
 assert.match(types, /interface ShiftCloseoutResponse/, 'Shared types must define ShiftCloseoutResponse.');
 assert.match(types, /interface ShiftCloseoutChecklistItem/, 'Shared types must define ShiftCloseoutChecklistItem.');
+assert.match(types, /source_exception_key\?:\s*string \| null/, 'Shared closeout checklist items should expose exact source exception keys.');
+assert.match(types, /proof:\s*\{[\s\S]*label:\s*string;[\s\S]*count:\s*number;[\s\S]*href:\s*string;[\s\S]*exact:\s*boolean;/, 'Shared closeout checklist items should expose typed proof rows.');
 assert.match(types, /suggested_note:\s*string/, 'Shared closeout types must expose the suggested supervisor note.');
 assert.match(packageJson, /"test:shift-closeout":\s*"node scripts\/test-shift-closeout-contract\.mjs"/, 'package.json must expose test:shift-closeout.');
 

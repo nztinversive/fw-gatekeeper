@@ -18,6 +18,23 @@ function buildHref(path: string, params: Record<string, string | null | undefine
   return query ? `${path}?${query}` : path;
 }
 
+function firstExceptionKey(exceptions: any[]) {
+  return exceptions.find((exception) => exception?.key)?.key || null;
+}
+
+function firstExceptionLink(exceptions: any[], link: "activity_log" | "recognition_lab" | "kiosk") {
+  return exceptions.find((exception) => exception?.links?.[link])?.links?.[link] || null;
+}
+
+function proof(count: number, label: string, href: string, exact: boolean) {
+  return {
+    label,
+    count,
+    href,
+    exact,
+  };
+}
+
 function buildChecklist(input: {
   date: string;
   openExceptions: any[];
@@ -31,6 +48,20 @@ function buildChecklist(input: {
   const missingClockOutsClear = input.missingClockOuts.length === 0 || input.acknowledgedBlockers;
   const kioskWarningsClear = input.kioskWarnings === 0 || input.acknowledgedBlockers;
   const recognitionReviewsClear = input.recognitionReviews.length === 0 || input.acknowledgedBlockers;
+  const firstCriticalKey = firstExceptionKey(input.criticalExceptions);
+  const firstMissingClockOutKey = firstExceptionKey(input.missingClockOuts);
+  const firstRecognitionKey = firstExceptionKey(input.recognitionReviews);
+  const firstRecognitionLabHref = firstExceptionLink(input.recognitionReviews, "recognition_lab");
+  const criticalHref = buildHref("/exceptions", { date: input.date, status: "open", severity: "critical", exception_key: firstCriticalKey });
+  const missingClockOutHref = buildHref("/exceptions", {
+    date: input.date,
+    status: "open",
+    type: "missing_clock_out",
+    exception_key: firstMissingClockOutKey,
+    intent: firstMissingClockOutKey ? "correct" : null,
+  });
+  const kioskHref = "/kiosks";
+  const recognitionHref = firstRecognitionLabHref || buildHref("/calibration/recognition", { date: input.date, review_status: "unreviewed" });
 
   return [
     {
@@ -38,7 +69,9 @@ function buildChecklist(input: {
       label: "Critical exceptions reviewed",
       status: criticalClear ? "clear" : "blocked",
       count: input.criticalExceptions.length,
-      href: buildHref("/exceptions", { date: input.date, status: "open", severity: "critical" }),
+      href: criticalHref,
+      source_exception_key: firstCriticalKey,
+      proof: proof(input.criticalExceptions.length, "open critical exceptions", criticalHref, Boolean(firstCriticalKey)),
       description: input.criticalExceptions.length
         ? `${input.criticalExceptions.length} critical exception${input.criticalExceptions.length === 1 ? "" : "s"} still need supervisor review.`
         : "No open critical exceptions.",
@@ -48,7 +81,9 @@ function buildChecklist(input: {
       label: "Missing clock-outs reviewed",
       status: missingClockOutsClear ? "clear" : "blocked",
       count: input.missingClockOuts.length,
-      href: buildHref("/exceptions", { date: input.date, status: "open", type: "missing_clock_out" }),
+      href: missingClockOutHref,
+      source_exception_key: firstMissingClockOutKey,
+      proof: proof(input.missingClockOuts.length, "missing clock-outs", missingClockOutHref, Boolean(firstMissingClockOutKey)),
       description: input.missingClockOuts.length
         ? `${input.missingClockOuts.length} missing clock-out exception${input.missingClockOuts.length === 1 ? "" : "s"} still need acknowledgement.`
         : "No missing clock-out exceptions are open.",
@@ -58,7 +93,8 @@ function buildChecklist(input: {
       label: "Kiosk trust acknowledged",
       status: kioskWarningsClear ? "clear" : "blocked",
       count: input.kioskWarnings,
-      href: "/kiosks",
+      href: kioskHref,
+      proof: proof(input.kioskWarnings, "kiosk trust warnings", kioskHref, false),
       description: input.kioskWarnings
         ? `${input.kioskWarnings} kiosk trust warning${input.kioskWarnings === 1 ? "" : "s"} may affect shift confidence.`
         : "All kiosk trust signals are clear.",
@@ -68,7 +104,9 @@ function buildChecklist(input: {
       label: "Recognition review issues acknowledged",
       status: recognitionReviewsClear ? "clear" : "blocked",
       count: input.recognitionReviews.length,
-      href: buildHref("/calibration/recognition", { date: input.date, review_status: "unreviewed" }),
+      href: recognitionHref,
+      source_exception_key: firstRecognitionKey,
+      proof: proof(input.recognitionReviews.length, "recognition reviews", recognitionHref, Boolean(firstRecognitionLabHref)),
       description: input.recognitionReviews.length
         ? `${input.recognitionReviews.length} recognition review item${input.recognitionReviews.length === 1 ? "" : "s"} remain open.`
         : "No recognition review exceptions are open.",
