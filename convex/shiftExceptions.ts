@@ -82,6 +82,14 @@ function buildHref(path: string, params: Record<string, string | null | undefine
   return query ? `${path}?${query}` : path;
 }
 
+function getActivityLogHref(date: string, workerId?: string | null, attendanceId?: string | null) {
+  return buildHref("/log", {
+    date,
+    worker_id: workerId || null,
+    attendance_id: attendanceId || null,
+  });
+}
+
 function parseScheduleDays(days: string): number[] {
   try {
     const parsed = JSON.parse(days);
@@ -195,7 +203,7 @@ export async function buildShiftExceptions(ctx: any, date: string) {
     const workerName = worker.name || "Unknown worker";
     const department = worker.department || null;
     const baseLinks = {
-      activity_log: `/log?date=${date}`,
+      activity_log: getActivityLogHref(date, workerId),
       worker: `/workers`,
       schedules: "/schedules",
     };
@@ -249,7 +257,10 @@ export async function buildShiftExceptions(ctx: any, date: string) {
           scheduled_end: schedule.endTime,
           event_count: clockIns.length,
           attendance_id: String(firstIn._id).startsWith("correction:") ? null : String(firstIn._id),
-          links: baseLinks,
+          links: {
+            ...baseLinks,
+            activity_log: getActivityLogHref(date, workerId, String(firstIn._id).startsWith("correction:") ? null : String(firstIn._id)),
+          },
         }));
       }
     }
@@ -281,7 +292,10 @@ export async function buildShiftExceptions(ctx: any, date: string) {
           scheduled_end: schedule.endTime,
           event_count: workerEvents.length,
           attendance_id: String(lastEvent._id).startsWith("correction:") ? null : String(lastEvent._id),
-          links: baseLinks,
+          links: {
+            ...baseLinks,
+            activity_log: getActivityLogHref(date, workerId, String(lastEvent._id).startsWith("correction:") ? null : String(lastEvent._id)),
+          },
         }));
       }
     }
@@ -315,7 +329,10 @@ export async function buildShiftExceptions(ctx: any, date: string) {
         scheduled_end: schedule?.endTime || null,
         event_count: workerEvents.length,
         attendance_id: String(event._id).startsWith("correction:") ? null : String(event._id),
-        links: baseLinks,
+        links: {
+          ...baseLinks,
+          activity_log: getActivityLogHref(date, workerId, String(event._id).startsWith("correction:") ? null : String(event._id)),
+        },
       }));
     }
   }
@@ -365,7 +382,7 @@ export async function buildShiftExceptions(ctx: any, date: string) {
       event_count: 1,
       attendance_id: null,
       links: {
-        activity_log: `/log?date=${date}`,
+        activity_log: getActivityLogHref(date, attempt.candidateWorkerId || null),
         recognition_lab: buildHref("/calibration/recognition", {
           date,
           review_status: "all",

@@ -32,6 +32,12 @@ assert.match(exceptions, /recognition_review/, 'Shift exceptions must include re
 assert.match(exceptions, /LOW_MARGIN_THRESHOLD/, 'Recognition backlog should include low-margin accepted attempts.');
 assert.match(exceptions, /const attemptId = String\(attempt\.id\)/, 'Recognition review exceptions should preserve the exact serialized recognition attempt id.');
 assert.match(exceptions, /recognition_lab:\s*buildHref\("\/calibration\/recognition",\s*\{\s*date,\s*review_status:\s*"all",\s*attempt_id:\s*attemptId/, 'Recognition review source links should deep-link to the exact Recognition Lab row without reviewed-status filtering.');
+assert.match(exceptions, /function getActivityLogHref/, 'Shift exceptions should centralize Activity Log source links.');
+assert.match(exceptions, /worker_id:\s*workerId \|\| null/, 'Activity Log source links should preserve worker context when available.');
+assert.match(exceptions, /attendance_id:\s*attendanceId \|\| null/, 'Activity Log source links should preserve exact source attendance rows when available.');
+assert.match(exceptions, /activity_log:\s*getActivityLogHref\(date,\s*workerId,\s*String\(firstIn\._id\)/, 'Late-arrival activity links should target the source clock-in row.');
+assert.match(exceptions, /activity_log:\s*getActivityLogHref\(date,\s*workerId,\s*String\(lastEvent\._id\)/, 'Missing-clock-out activity links should target the latest source scan row.');
+assert.match(exceptions, /activity_log:\s*getActivityLogHref\(date,\s*workerId,\s*String\(event\._id\)/, 'Scan-sequence activity links should target the problematic source scan row.');
 
 assert.match(apiRoute, /shiftExceptions\.summary/, 'GET /api/shift-exceptions must call the Convex summary query.');
 assert.match(apiRoute, /shiftExceptions\.review/, 'PATCH /api/shift-exceptions must call the Convex review mutation.');

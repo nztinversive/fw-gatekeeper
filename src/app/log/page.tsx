@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import AttendanceTable from '@/components/AttendanceTable';
+import AttendanceTable, { attendanceRowId } from '@/components/AttendanceTable';
 import { AttendanceCorrection, AttendanceCorrectionsResponse, AttendanceWithWorker } from '@/lib/types';
 import { getLocalDateString } from '@/lib/date';
 
@@ -21,6 +21,8 @@ function validDateParam(value: string | null) {
 function LogPageContent() {
   const searchParams = useSearchParams();
   const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
+  const queryWorkerId = searchParams.get('worker_id') || '';
+  const queryAttendanceId = searchParams.get('attendance_id') || '';
   const [date, setDate] = useState(queryDate);
   const [events, setEvents] = useState<AttendanceWithWorker[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
@@ -30,16 +32,28 @@ function LogPageContent() {
   }, [queryDate]);
 
   useEffect(() => {
+    const attendanceParams = new URLSearchParams({ date });
+    const correctionParams = new URLSearchParams({ date });
+    if (queryWorkerId) {
+      attendanceParams.set('worker_id', queryWorkerId);
+      correctionParams.set('worker_id', queryWorkerId);
+    }
+
     Promise.all([
-      fetch(`/api/attendance?date=${date}`).then((r) => r.json()),
-      fetch(`/api/attendance-corrections?date=${date}`).then((r) => r.json()),
+      fetch(`/api/attendance?${attendanceParams.toString()}`).then((r) => r.json()),
+      fetch(`/api/attendance-corrections?${correctionParams.toString()}`).then((r) => r.json()),
     ])
       .then(([eventRows, correctionPayload]: [AttendanceWithWorker[], AttendanceCorrectionsResponse]) => {
         setEvents(Array.isArray(eventRows) ? eventRows : []);
         setCorrections(Array.isArray(correctionPayload.corrections) ? correctionPayload.corrections : []);
       })
       .catch(console.error);
-  }, [date]);
+  }, [date, queryWorkerId]);
+
+  useEffect(() => {
+    if (!queryAttendanceId || !events.some((event) => event.id === queryAttendanceId)) return;
+    document.getElementById(attendanceRowId(queryAttendanceId))?.scrollIntoView({ block: 'center' });
+  }, [events, queryAttendanceId]);
 
   const exportCSV = () => {
     const header = 'Time,Worker,Department,Event,Kiosk,Source,Correction Reason\n';
@@ -62,7 +76,10 @@ function LogPageContent() {
           <h1 className="page-title text-slate-100">
             Activity <span className="text-gold">Log</span>
           </h1>
-          <p className="text-sm text-slate-500 mt-1 font-mono">{events.length} effective events · {corrections.length} correction{corrections.length === 1 ? '' : 's'}</p>
+          <p className="text-sm text-slate-500 mt-1 font-mono">
+            {events.length} effective events · {corrections.length} correction{corrections.length === 1 ? '' : 's'}
+            {queryWorkerId ? ' · worker filtered' : ''}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <input
@@ -81,7 +98,7 @@ function LogPageContent() {
       </div>
 
       <div className="glass-card overflow-hidden">
-        <AttendanceTable events={events} />
+        <AttendanceTable events={events} targetAttendanceId={queryAttendanceId} />
       </div>
 
       <section className="glass-card mt-6 overflow-hidden">
