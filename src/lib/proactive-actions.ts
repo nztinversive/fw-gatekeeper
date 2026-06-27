@@ -1006,7 +1006,8 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
   }
 
   const absentWorkers = workers.filter((worker) => worker.status === 'absent');
-  const notArrived = workers.length > 0 ? absentWorkers.length : Number(stats.notArrived || 0);
+  const rosterBackedNotArrived = workers.length > 0;
+  const notArrived = rosterBackedNotArrived ? absentWorkers.length : Number(stats.notArrived || 0);
   if (notArrived > 0) {
     actions.push({
       key: 'not-arrived',
@@ -1014,7 +1015,9 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       severity: 'info',
       label: 'Not arrived today',
       value: notArrived,
-      description: `${plural(notArrived, 'active worker')} ${verb(notArrived, 'has', 'have')} no clock-in scans today.`,
+      description: rosterBackedNotArrived
+        ? `${plural(notArrived, 'active worker')} ${verb(notArrived, 'has', 'have')} no clock-in scans today.`
+        : `${plural(notArrived, 'missing arrival')} ${verb(notArrived, 'is', 'are')} reported from attendance stats today.`,
       href: buildHref('/briefing', { date: actionDate, status: 'missing' }),
       cta: 'Review missing',
       source: 'attendance',

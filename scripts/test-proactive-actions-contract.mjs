@@ -354,6 +354,11 @@ const statsOnlyNotArrived = findAction(buildProactiveActions({
   workers: [],
   stats: { notArrived: 2 },
 }), 'not-arrived');
+assert.equal(
+  statsOnlyNotArrived.description,
+  '2 missing arrivals are reported from attendance stats today.',
+  'Stats-only missing-arrival actions should describe stats evidence without implying worker rows were loaded.',
+);
 assert.deepEqual(
   plain(getProactiveActionEvidenceChips(statsOnlyNotArrived)),
   ['2 missing scans'],
