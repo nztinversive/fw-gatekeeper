@@ -347,32 +347,53 @@ export async function buildShiftExceptions(ctx: any, date: string) {
     return name;
   }
 
+  function recognitionText(attempt: any, serializedKey: string, rawKey: string) {
+    return normalizeText(attempt?.[serializedKey]) || normalizeText(attempt?.[rawKey]) || null;
+  }
+
+  function recognitionNumber(attempt: any, serializedKey: string, rawKey: string) {
+    const serializedValue = attempt?.[serializedKey];
+    if (typeof serializedValue === "number" && Number.isFinite(serializedValue)) return serializedValue;
+    const rawValue = attempt?.[rawKey];
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) return rawValue;
+    return null;
+  }
+
+  function recognitionReviewed(attempt: any) {
+    return attempt?.reviewed === true || attempt?.reviewed === 1;
+  }
+
   for (const attempt of recognitionAttempts) {
     const decision = String(attempt.decision || "unknown");
-    const lowMarginAccepted = decision.startsWith("accepted") && typeof attempt.scoreMargin === "number" && attempt.scoreMargin <= LOW_MARGIN_THRESHOLD;
+    const scoreMargin = recognitionNumber(attempt, "score_margin", "scoreMargin");
+    const kioskId = recognitionText(attempt, "kiosk_id", "kioskId");
+    const candidateWorkerId = recognitionText(attempt, "candidate_worker_id", "candidateWorkerId");
+    const candidateWorkerName = recognitionText(attempt, "candidate_worker_name", "candidateWorkerName");
+    const reviewed = recognitionReviewed(attempt);
+    const lowMarginAccepted = decision.startsWith("accepted") && scoreMargin !== null && scoreMargin <= LOW_MARGIN_THRESHOLD;
     const riskyDecision =
       decision === "near_miss" ||
       decision === "rejected_unknown" ||
       decision === "unknown" ||
       decision.startsWith("rejected");
-    if (attempt.reviewed && !lowMarginAccepted && !riskyDecision) continue;
-    if (!riskyDecision && !lowMarginAccepted && attempt.reviewed) continue;
+    if (reviewed && !lowMarginAccepted && !riskyDecision) continue;
+    if (!riskyDecision && !lowMarginAccepted && reviewed) continue;
 
-    const attemptId = String(attempt.id);
+    const attemptId = String(attempt.id || attempt._id);
     const key = `${date}:recognition_review:${attemptId}`;
-    const candidate = attempt.candidateWorkerName || "Unknown person";
-    const kioskName = await resolveKioskName(attempt.kioskId);
+    const candidate = candidateWorkerName || "Unknown person";
+    const kioskName = await resolveKioskName(kioskId);
     exceptions.push(createException({
       key,
       date,
       type: "recognition_review",
       severity: decision === "near_miss" || lowMarginAccepted ? "warning" : "info",
       title: `${candidate} needs recognition review`,
-      description: `${decision.replace(/_/g, " ")} at ${attempt.kioskId || "unknown kiosk"}${typeof attempt.scoreMargin === "number" ? ` with ${attempt.scoreMargin.toFixed(3)} score margin` : ""}.`,
-      worker_id: attempt.candidateWorkerId || null,
-      worker_name: attempt.candidateWorkerName || null,
+      description: `${decision.replace(/_/g, " ")} at ${kioskId || "unknown kiosk"}${scoreMargin !== null ? ` with ${scoreMargin.toFixed(3)} score margin` : ""}.`,
+      worker_id: candidateWorkerId,
+      worker_name: candidateWorkerName,
       department: null,
-      kiosk_id: attempt.kioskId || null,
+      kiosk_id: kioskId,
       kiosk_name: kioskName,
       first_seen: attempt.timestamp,
       last_seen: attempt.timestamp,
@@ -382,7 +403,7 @@ export async function buildShiftExceptions(ctx: any, date: string) {
       event_count: 1,
       attendance_id: null,
       links: {
-        activity_log: getActivityLogHref(date, attempt.candidateWorkerId || null),
+        activity_log: getActivityLogHref(date, candidateWorkerId),
         recognition_lab: buildHref("/calibration/recognition", {
           date,
           review_status: "all",

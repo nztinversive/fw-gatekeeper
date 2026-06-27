@@ -30,7 +30,15 @@ assert.match(exceptions, /missing_clock_out/, 'Shift exceptions must include mis
 assert.match(exceptions, /scan_sequence/, 'Shift exceptions must include bad scan sequence cases.');
 assert.match(exceptions, /recognition_review/, 'Shift exceptions must include recognition review cases.');
 assert.match(exceptions, /LOW_MARGIN_THRESHOLD/, 'Recognition backlog should include low-margin accepted attempts.');
-assert.match(exceptions, /const attemptId = String\(attempt\.id\)/, 'Recognition review exceptions should preserve the exact serialized recognition attempt id.');
+assert.match(exceptions, /const attemptId = String\(attempt\.id \|\| attempt\._id\)/, 'Recognition review exceptions should preserve the exact serialized recognition attempt id.');
+assert.match(exceptions, /recognitionNumber\(attempt,\s*"score_margin",\s*"scoreMargin"\)/, 'Recognition review exceptions should read serialized score margins.');
+assert.match(exceptions, /recognitionText\(attempt,\s*"candidate_worker_name",\s*"candidateWorkerName"\)/, 'Recognition review exceptions should read serialized candidate names.');
+assert.match(exceptions, /recognitionText\(attempt,\s*"candidate_worker_id",\s*"candidateWorkerId"\)/, 'Recognition review exceptions should read serialized candidate ids.');
+assert.match(exceptions, /recognitionText\(attempt,\s*"kiosk_id",\s*"kioskId"\)/, 'Recognition review exceptions should read serialized kiosk ids.');
+assert.doesNotMatch(exceptions, /attempt\.scoreMargin/, 'Recognition review exceptions should not read raw scoreMargin fields from serialized rows.');
+assert.doesNotMatch(exceptions, /attempt\.candidateWorkerName/, 'Recognition review exceptions should not read raw candidateWorkerName fields from serialized rows.');
+assert.doesNotMatch(exceptions, /attempt\.candidateWorkerId/, 'Recognition review exceptions should not read raw candidateWorkerId fields from serialized rows.');
+assert.doesNotMatch(exceptions, /attempt\.kioskId/, 'Recognition review exceptions should not read raw kioskId fields from serialized rows.');
 assert.match(exceptions, /recognition_lab:\s*buildHref\("\/calibration\/recognition",\s*\{\s*date,\s*review_status:\s*"all",\s*attempt_id:\s*attemptId/, 'Recognition review source links should deep-link to the exact Recognition Lab row without reviewed-status filtering.');
 assert.match(exceptions, /function getActivityLogHref/, 'Shift exceptions should centralize Activity Log source links.');
 assert.match(exceptions, /worker_id:\s*workerId \|\| null/, 'Activity Log source links should preserve worker context when available.');

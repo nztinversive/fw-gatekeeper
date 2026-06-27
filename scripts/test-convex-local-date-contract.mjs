@@ -110,7 +110,8 @@ const recognitionAttempts = read('convex/recognitionAttempts.ts');
 assert.match(recognitionAttempts, /listRecognitionAttemptsByFactoryDate/, 'Recognition attempts should expose a reusable factory-date reader.');
 assert.match(recognitionAttempts, /buildConservativeFactoryLocalTimestampRanges/, 'Recognition attempts should use conservative indexed ranges for date reads.');
 assert.match(recognitionAttempts, /timestampBelongsToFactoryLocalDate/, 'Recognition attempts should post-filter by factory local date.');
-assert.match(recognitionAttempts, /conservativeLimit/, 'Recognition attempts should fetch a wider internal window before applying the requested limit.');
+assert.match(recognitionAttempts, /applyLimit:\s*false/, 'Recognition attempts should filter the widened factory-date range before applying the requested limit.');
+assert.doesNotMatch(recognitionAttempts, /conservativeLimit/, 'Recognition attempts should not pre-limit adjacent-day rows before factory-date filtering.');
 assert.match(recognitionAttempts, /listRecognitionAttemptsByFactoryDate\(ctx,\s*\{[\s\S]*date/, 'listByDate should use the factory-date reader.');
 
 const shiftExceptions = read('convex/shiftExceptions.ts');

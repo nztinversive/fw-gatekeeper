@@ -147,6 +147,7 @@ async function listRangeInternal(
     reviewed?: boolean;
     limit?: number;
   },
+  options: { applyLimit?: boolean } = {},
 ) {
   const kioskId = normalizeOptionalText(args.kioskId);
   const limit = clampLimit(args.limit);
@@ -178,7 +179,9 @@ async function listRangeInternal(
       .withIndex("by_timestamp", (q: any) => q.gte("timestamp", start).lt("timestamp", end));
   }
 
-  const attempts = await builder.order("desc").take(limit);
+  const attempts = options.applyLimit === false
+    ? await builder.order("desc").collect()
+    : await builder.order("desc").take(limit);
   return attempts.map(serializeAttempt);
 }
 
@@ -194,7 +197,6 @@ export async function listRecognitionAttemptsByFactoryDate(
   const rowsById = new Map<string, any>();
   const kioskId = normalizeOptionalText(args.kioskId);
   const limit = clampLimit(args.limit);
-  const conservativeLimit = Math.min(1000, limit * 3);
 
   for (const range of buildConservativeFactoryLocalTimestampRanges(args.date)) {
     const rows = await listRangeInternal(ctx, {
@@ -202,8 +204,7 @@ export async function listRecognitionAttemptsByFactoryDate(
       endTimestamp: range.endTimestamp,
       kioskId,
       reviewed: args.reviewed,
-      limit: conservativeLimit,
-    });
+    }, { applyLimit: false });
     for (const row of rows) {
       if (timestampBelongsToFactoryLocalDate(row.timestamp, args.date)) {
         rowsById.set(String(row.id), row);
