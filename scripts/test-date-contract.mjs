@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import {
   createLocalIsoTimestamp,
+  DEFAULT_FACTORY_TIME_ZONE,
+  getFactoryLocalDateString,
   getLocalDateString,
   isValidLocalDateString,
   resolveRequestDate,
@@ -35,6 +37,13 @@ const centralLateNight = new LocalPartsDate('2026-06-26T04:30:00.000Z', 2026, 5,
 assert.equal(centralLateNight.toISOString().slice(0, 10), '2026-06-26');
 assert.equal(getLocalDateString(centralLateNight), '2026-06-25');
 assert.equal(resolveRequestDate(new URLSearchParams(), { now: centralLateNight }), '2026-06-25');
+assert.equal(DEFAULT_FACTORY_TIME_ZONE, 'America/Chicago');
+assert.equal(getFactoryLocalDateString(new Date('2026-06-28T04:30:00.000Z')), '2026-06-27');
+assert.equal(resolveRequestDate(new URLSearchParams(), { now: new Date('2026-06-28T04:30:00.000Z') }), '2026-06-27');
+assert.equal(resolveRequestDate(new URLSearchParams(), {
+  now: new Date('2026-06-28T04:30:00.000Z'),
+  timeZone: 'UTC',
+}), '2026-06-28');
 
 const centralEarlyMorning = new LocalPartsDate('2026-01-01T06:15:00.000Z', 2026, 0, 1);
 assert.equal(getLocalDateString(centralEarlyMorning), '2026-01-01');
@@ -80,6 +89,12 @@ for (const route of localDefaultRoutes) {
   const source = read(route);
   assert.match(source, /resolveRequestDate/, `${route} should resolve omitted dates from the factory-local request day.`);
 }
+
+const dateHelper = read('src/lib/date.ts');
+assert.match(dateHelper, /DEFAULT_FACTORY_TIME_ZONE = 'America\/Chicago'/, 'Date helper should make the factory timezone explicit.');
+assert.match(dateHelper, /getFactoryLocalDateString/, 'Date helper should expose a factory-timezone date formatter.');
+assert.match(dateHelper, /Intl\.DateTimeFormat\('en-US'[\s\S]*timeZone/, 'Date helper should format omitted dates in the configured factory timezone.');
+assert.match(dateHelper, /return getFactoryLocalDateString\(options\.now \|\| new Date\(\), options\.timeZone\)/, 'Omitted request dates should use the factory-timezone fallback.');
 
 for (const route of [
   'src/app/api/stats/route.ts',

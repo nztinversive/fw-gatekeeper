@@ -275,9 +275,10 @@ export const save = mutation({
       .first();
     const now = new Date().toISOString();
     const supervisorName = normalizeText(args.supervisorName);
+    const hasNotesArg = Object.prototype.hasOwnProperty.call(args, "notes");
     const notes = normalizeText(args.notes);
     const acknowledgedBlockers = args.acknowledgedBlockers ?? existing?.acknowledgedBlockers ?? false;
-    const nextNotes = notes || normalizeText(existing?.notes);
+    const nextNotes = notes || (hasNotesArg ? undefined : normalizeText(existing?.notes));
     const hasSourceBlockers = Boolean(
       current.summary.critical_exceptions ||
       current.summary.missing_clock_outs ||
@@ -300,7 +301,7 @@ export const save = mutation({
       date: args.date,
       status,
       supervisorName,
-      notes,
+      notes: nextNotes,
       acknowledgedBlockers,
       expected: current.summary.expected,
       present: current.summary.present,

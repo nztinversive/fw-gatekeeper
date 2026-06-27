@@ -41,6 +41,9 @@ assert.match(closeouts, /const sourceBlockers = buildChecklist/, 'Suggested clos
 assert.match(closeouts, /acknowledgedBlockers:\s*false/, 'Suggested closeout notes should continue naming unresolved source blockers after acknowledgement.');
 assert.match(closeouts, /const hasSourceBlockers = Boolean/, 'Closeout save/complete guards must check raw source blockers.');
 assert.match(closeouts, /acknowledgedBlockers && !nextNotes/, 'Closeout must not persist blocker acknowledgement without a note.');
+assert.match(closeouts, /const hasNotesArg = Object\.prototype\.hasOwnProperty\.call\(args,\s*"notes"\)/, 'Closeout save should distinguish omitted notes from an explicit clear.');
+assert.match(closeouts, /const nextNotes = notes \|\| \(hasNotesArg \? undefined : normalizeText\(existing\?\.notes\)\)/, 'Closeout save should preserve existing notes only when the request omits notes.');
+assert.match(closeouts, /notes:\s*nextNotes/, 'Closeout save should persist the note value used for blocker validation.');
 assert.match(closeouts, /Add an acknowledgement note before acknowledging blockers/, 'Closeout acknowledgement guard should explain note requirements.');
 assert.match(closeouts, /args\.action === "complete" && hasSourceBlockers/, 'Closeout completion must require notes when raw blockers remain.');
 assert.match(closeouts, /blockers remain/, 'Suggested notes should make unresolved closeout blockers explicit.');
