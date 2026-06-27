@@ -75,6 +75,11 @@ assert.match(page, /Next briefing step/, 'Briefing page should render a next-ste
 assert.match(page, /nextStep\.href/, 'Briefing next-step CTA should use the derived source href.');
 assert.match(page, /nextStep\.exact/, 'Briefing next-step summary should visibly distinguish exact source handoffs.');
 assert.match(page, /nextStep\.reviewOnly/, 'Briefing next-step summary should label review-only handoffs.');
+assert.match(page, /function briefingCsv\([\s\S]*date: string,[\s\S]*workers: ShiftBriefingWorker\[\],[\s\S]*actions: ShiftBriefingActionItem\[\],[\s\S]*role: PortalRole \| undefined/, 'Briefing export should include role-safe action item context as well as worker rows.');
+assert.match(page, /const actionHeaders = \['Date', 'Priority', 'Action', 'Description', 'Href'\]/, 'Briefing export should include action item columns.');
+assert.match(page, /actions\.map\(\(action\) => \[[\s\S]*action\.priority[\s\S]*action\.label[\s\S]*action\.description[\s\S]*canOperateBriefingAction\(role, action\.href\) \? action\.href : getReviewHref\(action\.href, date\)/, 'Briefing export should preserve action priority and copy while using role-safe source hrefs.');
+assert.match(page, /'Action Items'/, 'Briefing export should separate action items from worker rows.');
+assert.match(page, /briefingCsv\(date, filteredWorkers, payload\?\.action_items \|\| \[\], currentRole\)/, 'Briefing export should include the current briefing action items with current role context.');
 assert.match(page, /const canOperateAction = canOperateBriefingAction\(currentRole, item\.href\)/, 'Briefing action cards should decide operate/review state per item.');
 assert.match(page, /href=\{canOperateAction \? item\.href : getReviewHref\(item\.href, date\)\}/, 'Briefing action cards should downgrade hrefs for read-only roles.');
 assert.match(page, /Review-only/, 'Briefing action cards should label read-only action handoffs.');

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { getLocalDateString } from '@/lib/date';
 import {
   DepartmentCoverageStatus,
+  ShiftBriefingActionItem,
   ShiftBriefingActionPriority,
   ShiftBriefingDepartment,
   ShiftBriefingResponse,
@@ -60,8 +61,13 @@ function escapeCsv(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function workerCsv(date: string, workers: ShiftBriefingWorker[]) {
-  const headers = [
+function briefingCsv(
+  date: string,
+  workers: ShiftBriefingWorker[],
+  actions: ShiftBriefingActionItem[],
+  role: PortalRole | undefined,
+) {
+  const workerHeaders = [
     'Date',
     'Worker',
     'Department',
@@ -73,7 +79,7 @@ function workerCsv(date: string, workers: ShiftBriefingWorker[]) {
     'Last Seen',
     'Event Count',
   ];
-  const rows = workers.map((worker) => [
+  const workerRows = workers.map((worker) => [
     date,
     worker.worker_name,
     worker.department,
@@ -85,7 +91,18 @@ function workerCsv(date: string, workers: ShiftBriefingWorker[]) {
     worker.last_seen || '',
     worker.event_count,
   ]);
-  return [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+  const actionHeaders = ['Date', 'Priority', 'Action', 'Description', 'Href'];
+  const actionRows = actions.map((action) => [
+    date,
+    action.priority,
+    action.label,
+    action.description,
+    canOperateBriefingAction(role, action.href) ? action.href : getReviewHref(action.href, date),
+  ]);
+  const sections = actionRows.length
+    ? [workerHeaders, ...workerRows, [], ['Action Items'], actionHeaders, ...actionRows]
+    : [workerHeaders, ...workerRows];
+  return sections.map((row) => row.map(escapeCsv).join(',')).join('\n');
 }
 
 function departmentRisk(row: ShiftBriefingDepartment) {
@@ -260,7 +277,7 @@ function ShiftBriefingPageContent() {
   }, [currentRole, date, department]);
 
   function exportCsv() {
-    const csv = workerCsv(date, filteredWorkers);
+    const csv = briefingCsv(date, filteredWorkers, payload?.action_items || [], currentRole);
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
