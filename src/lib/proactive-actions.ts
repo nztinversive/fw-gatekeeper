@@ -67,6 +67,7 @@ export interface ProactiveShiftExceptions {
     key?: string;
     type?: string;
     status?: string;
+    severity?: string;
   }>;
   summary?: {
     total?: number;
@@ -279,6 +280,20 @@ function getOpenExceptionTypeFallbackCount(shiftExceptions: ProactiveShiftExcept
 
 function getFirstOpenExceptionKey(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
   return getOpenExceptionTypeEntries(shiftExceptions, type).find((exception) => exception.key)?.key || null;
+}
+
+function getOpenExceptionKeys(shiftExceptions: ProactiveShiftExceptions | null) {
+  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
+  return exceptions
+    .filter((exception) => exception?.status === 'open' && exception.key)
+    .map((exception) => String(exception.key));
+}
+
+function getOpenCriticalExceptionKeys(shiftExceptions: ProactiveShiftExceptions | null) {
+  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
+  return exceptions
+    .filter((exception) => exception?.status === 'open' && exception?.severity === 'critical' && exception.key)
+    .map((exception) => String(exception.key));
 }
 
 function isCriticalSystemWarning(warning: string) {
@@ -752,6 +767,9 @@ function getSentinelSignature(action: ProactiveAction, kind: LiveShiftSentinelKi
       blockerCount: action.evidence.blockerCount ?? null,
       firstExceptionKey: action.evidence.firstExceptionKey ?? null,
       firstBlockerLabel: action.evidence.firstBlockerLabel ?? null,
+      date: action.evidence.date ?? null,
+      openExceptionKeys: action.evidence.openExceptionKeys ?? null,
+      criticalExceptionKeys: action.evidence.criticalExceptionKeys ?? null,
       firstBlockerProof: firstBlockerProof
         ? {
             label: firstBlockerProof.label || null,
@@ -1007,6 +1025,8 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     const recognitionReviews = getOpenExceptionTypeCount(shiftExceptions, 'recognition_review');
     const firstMissingClockOutKey = getFirstOpenExceptionKey(shiftExceptions, 'missing_clock_out');
     const firstRecognitionReviewKey = getFirstOpenExceptionKey(shiftExceptions, 'recognition_review');
+    const openExceptionKeys = getOpenExceptionKeys(shiftExceptions);
+    const criticalExceptionKeys = getOpenCriticalExceptionKeys(shiftExceptions);
     const priority = criticalExceptions > 0 ? CRITICAL_PRIORITY : WARNING_PRIORITY;
     if (missingClockOuts > 0) {
       actions.push({
@@ -1080,10 +1100,13 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       cta: 'Open exceptions',
       source: 'exceptions',
       evidence: {
+        date: shiftExceptions?.date || actionDate,
         open: openExceptions,
         critical: criticalExceptions,
         warning: Number(shiftExceptions?.summary?.warning || 0),
         info: Number(shiftExceptions?.summary?.info || 0),
+        openExceptionKeys,
+        criticalExceptionKeys,
       },
       freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
       blocksReadiness: criticalExceptions > 0,

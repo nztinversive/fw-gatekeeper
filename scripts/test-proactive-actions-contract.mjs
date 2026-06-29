@@ -254,6 +254,46 @@ assert.equal(
   'seen',
   'Sentinel signatures should ignore role-derived CTA and href changes when the source evidence has not changed.',
 );
+const criticalExceptionA = buildLiveShiftSentinelItems(buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    exceptions: [{ key: '2026-06-26:missing_arrival:w1', type: 'missing_arrival', status: 'open', severity: 'critical' }],
+    summary: {
+      total: 1,
+      open: 1,
+      critical: 1,
+      warning: 0,
+      info: 0,
+      by_type: { missing_arrival: 1 },
+      by_status: { open: 1 },
+    },
+  },
+}));
+const criticalExceptionB = buildLiveShiftSentinelItems(buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    exceptions: [{ key: '2026-06-26:missing_arrival:w2', type: 'missing_arrival', status: 'open', severity: 'critical' }],
+    summary: {
+      total: 1,
+      open: 1,
+      critical: 1,
+      warning: 0,
+      info: 0,
+      by_type: { missing_arrival: 1 },
+      by_status: { open: 1 },
+    },
+  },
+}), {
+  seenSnapshot: getLiveShiftSentinelSnapshot(criticalExceptionA),
+  hasSeenBaseline: true,
+});
+assert.equal(
+  findAction(criticalExceptionB, 'shift-exceptions').status,
+  'changed',
+  'Generic critical-exception Sentinel signatures should include date and exception row identity, not only aggregate counts.',
+);
 
 const trustPlan = buildProactiveShiftTrustPlan(rankedActions);
 assert.deepEqual(
