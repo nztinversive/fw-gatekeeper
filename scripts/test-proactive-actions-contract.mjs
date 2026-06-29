@@ -998,6 +998,9 @@ assert.match(dashboardSource, /Urgent live changes and current risk/, 'Dashboard
 assert.match(dashboardSource, /Mark Sentinel seen/, 'Dashboard Sentinel should support lightweight in-app acknowledgement without server persistence.');
 assert.match(dashboardSource, /markSentinelSeen\(sentinelItems,\s*true\)/, 'Dashboard bulk Sentinel acknowledgement should explicitly establish the full current baseline.');
 assert.match(dashboardSource, /sentinelItems\.every\(\(item\) => Boolean\(next\[item\.key\]\)\)/, 'Dashboard per-card Sentinel acknowledgement should only establish a full baseline once all current cards are covered.');
+assert.match(dashboardSource, /const activeSentinelKeySignature = sentinelItems\.map\(\(item\) => item\.key\)\.sort\(\)\.join\('\|'\)/, 'Dashboard Sentinel pruning should track the active current-risk key set.');
+assert.match(dashboardSource, /if \(loading \|\| !sentinelStorageReady\) return;[\s\S]*Object\.fromEntries\(Object\.entries\(previous\)\.filter\(\(\[key\]\) => activeKeys\.has\(key\)\)\)/, 'Dashboard Sentinel seen-state pruning should wait until loaded storage and live data are ready, then drop cleared risks.');
+assert.match(dashboardSource, /writeSentinelState\(next,\s*sentinelHasSeenBaseline\)/, 'Dashboard Sentinel pruning should preserve the persisted full-baseline flag while dropping cleared risk signatures.');
 assert.match(dashboardSource, /hasFullBaseline:\s*parsed\.hasFullBaseline === true/, 'Dashboard Sentinel storage should persist the full-baseline flag separately from per-card seen signatures.');
 assert.match(dashboardSource, /setSentinelHasSeenBaseline\(storedSentinel\.hasFullBaseline\)/, 'Dashboard Sentinel reloads should restore only the persisted full-baseline flag.');
 assert.doesNotMatch(dashboardSource, /setSentinelHasSeenBaseline\(Boolean\(storedSnapshot\)\)/, 'Dashboard Sentinel reloads must not infer a full baseline from any stored per-card snapshot.');

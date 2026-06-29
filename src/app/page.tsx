@@ -533,6 +533,43 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const actionDate = getLocalDateString();
+  const dashboardRole = currentRole || 'viewer';
+  const proactiveShiftCloseout = shiftCloseout
+    ? {
+        ...shiftCloseout,
+        summary: { ...shiftCloseout.summary },
+      }
+    : null;
+  const actionItems = buildProactiveActions({
+    date: actionDate,
+    signalFailures,
+    signalFreshness,
+    workers,
+    systemHealth,
+    stats,
+    shiftExceptions,
+    shiftCloseout: proactiveShiftCloseout,
+    currentRole: dashboardRole,
+  });
+  const sentinelItems = buildLiveShiftSentinelItems(actionItems, {
+    seenSnapshot: sentinelSeenSnapshot,
+    hasSeenBaseline: sentinelStorageReady && sentinelHasSeenBaseline,
+  });
+  const activeSentinelKeySignature = sentinelItems.map((item) => item.key).sort().join('|');
+
+  useEffect(() => {
+    if (loading || !sentinelStorageReady) return;
+    const activeKeys = new Set(activeSentinelKeySignature ? activeSentinelKeySignature.split('|') : []);
+    setSentinelSeenSnapshot((previous) => {
+      if (!activeSentinelKeySignature && Object.keys(previous).length === 0) return previous;
+      const next = Object.fromEntries(Object.entries(previous).filter(([key]) => activeKeys.has(key)));
+      if (Object.keys(next).length === Object.keys(previous).length) return previous;
+      writeSentinelState(next, sentinelHasSeenBaseline);
+      return next;
+    });
+  }, [activeSentinelKeySignature, loading, sentinelHasSeenBaseline, sentinelStorageReady]);
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -560,29 +597,6 @@ export default function Dashboard() {
   const workerCardFreshnessCopy = attendanceStaleCopy || rosterStaleCopy;
   const workerCardsAreStale = isSignalStale(signalFreshness, 'workers') || isSignalStale(signalFreshness, 'attendance');
   const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
-  const actionDate = getLocalDateString();
-  const dashboardRole = currentRole || 'viewer';
-  const proactiveShiftCloseout = shiftCloseout
-    ? {
-        ...shiftCloseout,
-        summary: { ...shiftCloseout.summary },
-      }
-    : null;
-  const actionItems = buildProactiveActions({
-    date: actionDate,
-    signalFailures,
-    signalFreshness,
-    workers,
-    systemHealth,
-    stats,
-    shiftExceptions,
-    shiftCloseout: proactiveShiftCloseout,
-    currentRole: dashboardRole,
-  });
-  const sentinelItems = buildLiveShiftSentinelItems(actionItems, {
-    seenSnapshot: sentinelSeenSnapshot,
-    hasSeenBaseline: sentinelStorageReady && sentinelHasSeenBaseline,
-  });
   const sentinelChangedCount = sentinelItems.filter((item) => item.changedSinceSeen).length;
   const sentinelCriticalCount = sentinelItems.filter((item) => item.priority === 'critical').length;
   const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
