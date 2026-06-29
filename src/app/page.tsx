@@ -213,6 +213,12 @@ function getExceptionTypeLabel(type: string) {
 }
 
 function getExceptionHref(exception: ShiftException, canOperate: boolean) {
+  const resolution = exception.suggested_resolution;
+  const shouldOpenCorrectionIntent = canOperate && resolution.can_apply && isCorrectionResolution(resolution.action);
+  if (canOperate && resolution.href && !shouldOpenCorrectionIntent) {
+    return resolution.href;
+  }
+
   return buildHref('/exceptions', {
     date: exception.date,
     status: 'open',
@@ -220,7 +226,7 @@ function getExceptionHref(exception: ShiftException, canOperate: boolean) {
     type: exception.type,
     severity: exception.severity,
     exception_key: exception.key,
-    intent: canOperate && exception.suggested_resolution.can_apply && isCorrectionResolution(exception.suggested_resolution.action)
+    intent: shouldOpenCorrectionIntent
       ? 'correct'
       : undefined,
   });
@@ -590,7 +596,7 @@ export default function Dashboard() {
     })
     .slice(0, 8);
 
-  const trustBrief = shiftBriefing?.shift_trust_brief || null;
+  const trustBrief = shiftBriefing && !shiftBriefing.backend_unavailable ? shiftBriefing.shift_trust_brief : null;
   const trustStatus = trustBrief?.readiness_status || readinessStatus;
   const trustSummary = trustBrief?.summary_sentence || readinessCopy.description;
   const trustFreshnessCopy = getSignalFreshnessCopy(signalFreshness, 'shift-briefing', 'Morning brief cached');
