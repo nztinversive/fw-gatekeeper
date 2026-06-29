@@ -594,6 +594,12 @@ export default function Dashboard() {
   const trustStatus = trustBrief?.readiness_status || readinessStatus;
   const trustSummary = trustBrief?.summary_sentence || readinessCopy.description;
   const trustFreshnessCopy = getSignalFreshnessCopy(signalFreshness, 'shift-briefing', 'Morning brief cached');
+  const exceptionSignalUnavailable = isSignalStale(signalFreshness, 'shift-exceptions') ||
+    Boolean(shiftExceptions?.backend_unavailable) ||
+    !shiftExceptions;
+  const exceptionUnavailableCopy = getSignalFreshnessCopy(signalFreshness, 'shift-exceptions', 'Exceptions cached') ||
+    shiftExceptions?.warning ||
+    'Shift exceptions are unavailable, so exception work cannot be treated as clear yet.';
   const openExceptionRows = (shiftExceptions?.exceptions || [])
     .filter((exception) => exception.status === 'open')
     .slice(0, 4);
@@ -788,7 +794,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="mt-4 space-y-3">
-                {group.items.slice(0, 4).map((item) => {
+                {group.items.map((item) => {
                   const priorityTone = {
                     critical: 'border-red-400/20 bg-red-400/10 text-red-300',
                     warning: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
@@ -873,12 +879,16 @@ export default function Dashboard() {
             <p className="section-label">Open exception work</p>
             <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Suggested resolutions</h2>
             <p className="mt-1 text-xs text-slate-500 font-mono">
-              {shiftExceptions ? `${shiftExceptions.summary.open} open of ${shiftExceptions.summary.total} total exceptions` : 'Exception queue unavailable'}
+              {exceptionSignalUnavailable ? exceptionUnavailableCopy : `${shiftExceptions.summary.open} open of ${shiftExceptions.summary.total} total exceptions`}
             </p>
           </div>
           <Link href={opsExceptionsHref} className="btn-secondary text-xs">Open full queue</Link>
         </div>
-        {openExceptionRows.length > 0 ? (
+        {exceptionSignalUnavailable ? (
+          <div role="status" className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200">
+            {exceptionUnavailableCopy}
+          </div>
+        ) : openExceptionRows.length > 0 ? (
           <div className="grid gap-3 xl:grid-cols-2">
             {openExceptionRows.map((exception) => {
               const resolution = exception.suggested_resolution;

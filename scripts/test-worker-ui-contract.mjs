@@ -51,6 +51,8 @@ assert.match(dashboardPage, /Shift Command <span className="text-gold">Inbox<\/s
 assert.match(dashboardPage, /Next best action/, 'Dashboard command inbox must show the next best action before supporting evidence.');
 assert.match(dashboardPage, /Needs action[\s\S]*Closeout blockers[\s\S]*Watch signals/, 'Dashboard command inbox must group supervisor work by operational meaning.');
 assert.match(dashboardPage, /Open exception work[\s\S]*Suggested resolutions/, 'Dashboard command inbox must surface exception work with server-backed suggested resolutions.');
+assert.doesNotMatch(dashboardPage, /group\.items\.slice\(0,\s*4\)/, 'Dashboard command inbox must not hide overflow command actions.');
+assert.match(dashboardPage, /exceptionSignalUnavailable \? \([\s\S]*role="status"[\s\S]*exceptionUnavailableCopy/, 'Dashboard exception work must show unavailable state instead of all-clear copy when exception data is stale or missing.');
 assert.match(dashboardPage, /0 of \$\{systemHealth\.kiosks\.total\} kiosks online|\$\{systemHealth\.kiosks\.counts\.online\} of \$\{systemHealth\.kiosks\.total\} kiosks online/, 'Dashboard should use plain-language kiosk online copy instead of ambiguous 0/2 sync shorthand.');
 assert.match(dashboardPage, /workers enrolled/i, 'Dashboard should label recognition-ready workers as enrolled, not generally ready/present.');
 assert.match(dashboardPage, /Worker data ready/, 'Dashboard system health should use operator-friendly worker sync copy instead of technical Sync payload copy.');

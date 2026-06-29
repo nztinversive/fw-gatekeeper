@@ -757,6 +757,8 @@ assert.match(dashboardSource, /Open Morning Readiness Brief/, 'Dashboard command
 assert.match(dashboardSource, /Needs action/, 'Dashboard command inbox should group blocking work under Needs action.');
 assert.match(dashboardSource, /Closeout blockers/, 'Dashboard command inbox should group closeout trust work separately.');
 assert.match(dashboardSource, /Watch signals/, 'Dashboard command inbox should keep non-blocking signals visible without making them the primary workflow.');
+assert.match(dashboardSource, /group\.items\.map\(\(item\)/, 'Dashboard command groups should render every ranked action instead of silently hiding overflow items.');
+assert.doesNotMatch(dashboardSource, /group\.items\.slice\(0,\s*4\)/, 'Dashboard command groups must not silently drop overflow actions.');
 assert.match(dashboardSource, /No readiness, kiosk, exception, closeout, enrollment, schedule, or arrival issues need review right now\./, 'Dashboard Action Center empty state should name the full shift-trust scope.');
 assert.match(dashboardSource, /shiftTrustPlan\.href/, 'Dashboard next-best action should reuse the selected action href.');
 assert.match(dashboardSource, /shiftTrustPlan\.cta/, 'Dashboard next-best action should reuse the selected action CTA.');
@@ -790,6 +792,9 @@ assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} evidence`\}/, 'Da
 assert.match(dashboardSource, /Open exception work/, 'Dashboard should surface open exception work before supporting health and roster evidence.');
 assert.match(dashboardSource, /Suggested resolutions/, 'Dashboard exception work should foreground server-backed suggested resolutions.');
 assert.match(dashboardSource, /exception\.suggested_resolution/, 'Dashboard exception cards should consume server-backed suggested_resolution data.');
+assert.match(dashboardSource, /const exceptionSignalUnavailable = isSignalStale\(signalFreshness, 'shift-exceptions'\)[\s\S]*Boolean\(shiftExceptions\?\.backend_unavailable\)[\s\S]*!shiftExceptions/, 'Dashboard exception work should detect failed, backend-unavailable, and missing exception signals.');
+assert.match(dashboardSource, /exceptionSignalUnavailable \? \([\s\S]*role="status"[\s\S]*exceptionUnavailableCopy[\s\S]*\) : openExceptionRows\.length > 0/, 'Dashboard exception work should show an unavailable/cached state before any all-clear copy.');
+assert.match(dashboardSource, /Shift exceptions are unavailable, so exception work cannot be treated as clear yet\./, 'Dashboard exception unavailable copy should avoid false all-clear reassurance.');
 assert.match(dashboardSource, /function getExceptionHref\(exception: ShiftException, canOperate: boolean\)[\s\S]*intent: canOperate && exception\.suggested_resolution\.can_apply/, 'Dashboard exception CTAs should carry correction intent only for operating roles and correctable suggestions.');
 assert.match(dashboardSource, /getRoleSafeExceptionSourceHref\(exception, canOperateExceptionWork\)/, 'Dashboard exception source links should be role-safe.');
 assert.match(dashboardSource, /StatsBar stats=\{stats\}[\s\S]*System Health[\s\S]*Recent Events[\s\S]*Attendance roster/, 'Dashboard should keep stats, health, events, and roster as supporting evidence below command work.');
