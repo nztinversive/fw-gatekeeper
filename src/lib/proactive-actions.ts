@@ -159,6 +159,34 @@ export interface ProactiveActionProofLink {
   label: string;
 }
 
+export type LiveShiftSentinelSeverity = 'critical' | 'warning';
+export type LiveShiftSentinelReason =
+  | 'critical-exception'
+  | 'kiosk-trust'
+  | 'closeout-blocked'
+  | 'recognition-review'
+  | 'missing-clock-out'
+  | 'signal-unavailable';
+
+export interface LiveShiftSentinelItem {
+  key: string;
+  actionKey: string;
+  reason: LiveShiftSentinelReason;
+  severity: LiveShiftSentinelSeverity;
+  source: ProactiveActionSource;
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+  value: string | number;
+  fingerprint: string;
+  freshness: ProactiveActionFreshness;
+  access: ProactiveActionAccess;
+  evidenceChips: string[];
+  outcomeChips: string[];
+  proofLink: ProactiveActionProofLink | null;
+}
+
 type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'freshness' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
   priority?: ProactiveActionPriority;
   severity?: ProactiveActionSeverity;
@@ -683,6 +711,87 @@ export function getProactiveActionProofLink(
     href: canOpenProof ? firstProof.href : stripHrefParams(firstProof.href, ['intent']),
     label: firstBlockerLabel ? `${labelPrefix} ${firstBlockerLabel} source` : `${labelPrefix} exact source`,
   };
+}
+
+function getSentinelReason(action: ProactiveAction): LiveShiftSentinelReason | null {
+  if (
+    action.key.startsWith('signal-failure-') ||
+    action.key === 'shift-exceptions-unavailable' ||
+    action.key === 'shift-closeout-unavailable'
+  ) {
+    return 'signal-unavailable';
+  }
+
+  if (action.key === 'shift-exceptions' && action.priority === CRITICAL_PRIORITY) return 'critical-exception';
+  if (action.source === 'kiosk' && (action.blocksReadiness || action.blocksCloseout || action.priority === CRITICAL_PRIORITY)) return 'kiosk-trust';
+  if (action.key === 'shift-closeout-pending' && action.blocksCloseout) return 'closeout-blocked';
+  if (action.key === 'recognition-review') return 'recognition-review';
+  if (action.key === 'missing-clock-outs') return 'missing-clock-out';
+  return null;
+}
+
+function sentinelTitle(action: ProactiveAction, reason: LiveShiftSentinelReason) {
+  if (reason === 'critical-exception') {
+    const critical = evidenceNumber(action.evidence, 'critical');
+    return critical && critical > 0 ? `${plural(critical, 'critical exception')} open` : 'Critical exception is open';
+  }
+  if (reason === 'closeout-blocked') return 'Closeout remains blocked';
+  if (reason === 'recognition-review') return 'Recognition review appeared';
+  if (reason === 'missing-clock-out') return 'Missing clock-out appeared';
+  return action.label;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value) || 'null';
+}
+
+function sentinelFingerprint(action: ProactiveAction, reason: LiveShiftSentinelReason) {
+  return stableStringify({
+    reason,
+    key: action.key,
+    value: action.value,
+    href: action.href,
+    description: action.description,
+    evidence: action.evidence,
+    freshness: {
+      status: action.freshness.status,
+      reason: action.freshness.reason,
+      message: action.freshness.message || null,
+      unavailable: Boolean(action.freshness.unavailable),
+    },
+  });
+}
+
+export function buildLiveShiftSentinel(actions: ProactiveAction[]): LiveShiftSentinelItem[] {
+  return actions.flatMap((action) => {
+    const reason = getSentinelReason(action);
+    if (!reason) return [];
+    return [{
+      key: `sentinel:${reason}:${action.key}`,
+      actionKey: action.key,
+      reason,
+      severity: action.severity === CRITICAL_PRIORITY || action.priority === CRITICAL_PRIORITY ? 'critical' : 'warning',
+      source: action.source,
+      title: sentinelTitle(action, reason),
+      description: action.description,
+      href: action.href,
+      cta: action.cta,
+      value: action.value,
+      fingerprint: sentinelFingerprint(action, reason),
+      freshness: action.freshness,
+      access: action.actionability.access,
+      evidenceChips: getProactiveActionEvidenceChips(action),
+      outcomeChips: getProactiveActionOutcomeChips(action),
+      proofLink: getProactiveActionProofLink(action),
+    }];
+  });
 }
 
 export function buildProactiveActions(input: BuildProactiveActionsInput = {}): ProactiveAction[] {

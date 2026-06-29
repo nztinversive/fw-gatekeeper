@@ -6,8 +6,8 @@ import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
-import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionEvidenceChips, getProactiveActionFreshnessLabel, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
-import type { ProactiveActionFreshness, ProactiveSignalFreshness } from '@/lib/proactive-actions';
+import { buildLiveShiftSentinel, buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionEvidenceChips, getProactiveActionFreshnessLabel, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
+import type { LiveShiftSentinelItem, ProactiveActionFreshness, ProactiveSignalFreshness } from '@/lib/proactive-actions';
 import type { ShiftBriefingResponse, ShiftCloseoutResponse, ShiftException, ShiftExceptionsResponse, ShiftTrustBriefStatus } from '@/lib/types';
 
 interface WorkerWithStatus {
@@ -88,6 +88,7 @@ interface SystemHealth {
 type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-briefing' | 'shift-exceptions' | 'shift-closeout';
 type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
 type SignalFreshnessMap = Partial<Record<SignalFailureKey, ProactiveSignalFreshness>>;
+type SentinelSeenState = Record<string, string>;
 
 interface SignalFailure {
   key: SignalFailureKey;
@@ -264,7 +265,32 @@ function getCommandGroupKey(action: ReturnType<typeof buildProactiveActions>[num
   return 'watch-signals';
 }
 
+function getSentinelStorageKey(date: string) {
+  return `fw-gatekeeper:live-shift-sentinel:${date}`;
+}
+
+function readSentinelSeen(date: string): SentinelSeenState {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.sessionStorage.getItem(getSentinelStorageKey(date));
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSentinelSeen(date: string, seen: SentinelSeenState) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(getSentinelStorageKey(date), JSON.stringify(seen));
+  } catch {
+    // Session storage is an optional convenience; Sentinel evidence remains visible without it.
+  }
+}
+
 export default function Dashboard() {
+  const actionDate = getLocalDateString();
   const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
   const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null, scheduleWarning: undefined as string | undefined });
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
@@ -277,6 +303,7 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [signalFailures, setSignalFailures] = useState<SignalFailure[]>([]);
   const [signalFreshness, setSignalFreshness] = useState<SignalFreshnessMap>({});
+  const [sentinelSeen, setSentinelSeen] = useState<SentinelSeenState>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -463,6 +490,22 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  useEffect(() => {
+    setSentinelSeen(readSentinelSeen(actionDate));
+  }, [actionDate]);
+
+  const markSentinelSeen = useCallback((items: LiveShiftSentinelItem[]) => {
+    if (items.length === 0) return;
+    setSentinelSeen((previous) => {
+      const next = { ...previous };
+      for (const item of items) {
+        next[item.key] = item.fingerprint;
+      }
+      writeSentinelSeen(actionDate, next);
+      return next;
+    });
+  }, [actionDate]);
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -490,7 +533,6 @@ export default function Dashboard() {
   const workerCardFreshnessCopy = attendanceStaleCopy || rosterStaleCopy;
   const workerCardsAreStale = isSignalStale(signalFreshness, 'workers') || isSignalStale(signalFreshness, 'attendance');
   const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
-  const actionDate = getLocalDateString();
   const dashboardRole = currentRole || 'viewer';
   const proactiveShiftCloseout = shiftCloseout
     ? {
@@ -509,6 +551,13 @@ export default function Dashboard() {
     shiftCloseout: proactiveShiftCloseout,
     currentRole: dashboardRole,
   });
+  const liveSentinelItems = buildLiveShiftSentinel(actionItems);
+  const sentinelItems = liveSentinelItems.map((item) => {
+    const seenFingerprint = sentinelSeen[item.key];
+    const status = !seenFingerprint ? 'new' : seenFingerprint !== item.fingerprint ? 'changed' : 'current';
+    return { ...item, status };
+  });
+  const unseenSentinelItems = sentinelItems.filter((item) => item.status !== 'current');
   const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
   const canOpenAdminOps = dashboardRole === 'admin';
   const canOpenEnrollmentOps = dashboardRole === 'admin' || dashboardRole === 'enrollment';
@@ -757,6 +806,114 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        <section className="mt-5 rounded-2xl border border-red-400/20 bg-navy-950/30 p-4" aria-label="Live Shift Sentinel">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="section-label text-red-200">Live Shift Sentinel</p>
+                {unseenSentinelItems.length > 0 && (
+                  <span className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">
+                    {unseenSentinelItems.length} new or changed
+                  </span>
+                )}
+              </div>
+              <h3 className="mt-1 font-display text-base font-semibold text-slate-100">Urgent shift changes</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {sentinelItems.length > 0
+                  ? 'Current live risks from exceptions, kiosk trust, closeout blockers, and source availability.'
+                  : 'No urgent live changes from the current trusted signals.'}
+              </p>
+            </div>
+            {unseenSentinelItems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => markSentinelSeen(liveSentinelItems)}
+                className="btn-secondary text-xs self-start"
+              >
+                Mark all seen
+              </button>
+            )}
+          </div>
+
+          {sentinelItems.length > 0 ? (
+            <div className="mt-4 grid gap-3 xl:grid-cols-2">
+              {sentinelItems.map((item) => {
+                const severityTone = item.severity === 'critical'
+                  ? 'border-red-400/25 bg-red-400/10 text-red-200'
+                  : 'border-amber-400/25 bg-amber-400/10 text-amber-200';
+                const statusTone = item.status === 'new'
+                  ? 'border-gold/25 bg-gold/10 text-gold'
+                  : item.status === 'changed'
+                    ? 'border-amber-400/25 bg-amber-400/10 text-amber-200'
+                    : 'border-slate-400/15 bg-slate-400/5 text-slate-300';
+                const freshnessBadge = getActionFreshnessBadge(item.freshness);
+                return (
+                  <article key={item.key} data-sentinel-reason={item.reason} className="rounded-xl border border-navy-600/50 bg-navy-900/45 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`badge border text-[10px] ${severityTone}`}>{item.severity}</span>
+                          <span className={`badge border text-[10px] ${statusTone}`}>
+                            {item.status === 'new' ? 'New' : item.status === 'changed' ? 'Changed' : 'Current'}
+                          </span>
+                          {freshnessBadge && (
+                            <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">{freshnessBadge}</span>
+                          )}
+                          {item.access === 'review' && (
+                            <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
+                          )}
+                        </div>
+                        <h4 className="mt-2 font-display text-sm font-semibold text-slate-100">{item.title}</h4>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{item.description}</p>
+                      </div>
+                      <span className="text-2xl font-display font-bold tabular-nums text-slate-200">{item.value}</span>
+                    </div>
+                    {item.evidenceChips.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2" aria-label={`${item.title} sentinel evidence`}>
+                        {item.evidenceChips.map((chip) => (
+                          <span key={chip} className="rounded border border-navy-500/60 bg-navy-950/35 px-2 py-1 text-[10px] font-mono text-slate-400">
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2" aria-label={`${item.title} sentinel outcomes`}>
+                      {item.outcomeChips.map((chip) => (
+                        <span key={chip} className="badge border border-gold/15 bg-gold/5 text-[10px] text-gold">
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Link href={item.href} className="inline-flex text-xs font-semibold text-gold hover:text-gold-light">
+                        {item.cta} →
+                      </Link>
+                      {item.proofLink && (
+                        <Link href={item.proofLink.href} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
+                          {item.proofLink.label} →
+                        </Link>
+                      )}
+                      {item.status !== 'current' && (
+                        <button
+                          type="button"
+                          onClick={() => markSentinelSeen([item])}
+                          className="inline-flex text-xs font-semibold text-slate-400 hover:text-slate-200"
+                        >
+                          Mark seen
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-3 text-sm text-emerald-200">
+              No urgent Sentinel items right now.
+            </div>
+          )}
+        </section>
 
         {shiftTrustPlan && (
           <div className="mt-5 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">

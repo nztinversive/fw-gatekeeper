@@ -49,6 +49,14 @@ assert.match(dashboardPage, /buildProactiveActions/, 'Dashboard Action Center mu
 assert.match(proactiveActions, /Review now/, 'Dashboard Action Center must provide a clear review CTA.');
 assert.match(dashboardPage, /Shift Command <span className="text-gold">Inbox<\/span>/, 'Dashboard must lead with the shift command inbox instead of a passive live dashboard.');
 assert.match(dashboardPage, /Next best action/, 'Dashboard command inbox must show the next best action before supporting evidence.');
+assert.match(dashboardPage, /Live Shift Sentinel/, 'Dashboard command inbox must render the Live Shift Sentinel surface above ranked command work.');
+assert.match(dashboardPage, /buildLiveShiftSentinel/, 'Dashboard Live Shift Sentinel must use the shared deterministic sentinel builder.');
+assert.match(dashboardPage, /fw-gatekeeper:live-shift-sentinel:\$\{date\}/, 'Dashboard Sentinel seen state should be scoped to the selected date in session storage.');
+assert.match(dashboardPage, /window\.sessionStorage\.setItem\(getSentinelStorageKey\(date\), JSON\.stringify\(seen\)\)/, 'Dashboard Sentinel acknowledgement must stay client-local and avoid server writes.');
+assert.match(dashboardPage, /data-sentinel-reason=\{item\.reason\}/, 'Dashboard Sentinel cards should expose reason markers for contract and QA coverage.');
+assert.match(dashboardPage, /New[\s\S]*Changed[\s\S]*Current/, 'Dashboard Sentinel cards should distinguish new, changed, and current live conditions.');
+assert.match(dashboardPage, /Review only/, 'Dashboard Sentinel should preserve review-only badges from role-safe actionability.');
+assert.match(dashboardPage, /Mark all seen/, 'Dashboard Sentinel should support lightweight in-app acknowledgement.');
 assert.match(dashboardPage, /Needs action[\s\S]*Closeout blockers[\s\S]*Watch signals/, 'Dashboard command inbox must group supervisor work by operational meaning.');
 assert.match(dashboardPage, /Open exception work[\s\S]*Suggested resolutions/, 'Dashboard command inbox must surface exception work with server-backed suggested resolutions.');
 assert.doesNotMatch(dashboardPage, /group\.items\.slice\(0,\s*4\)/, 'Dashboard command inbox must not hide overflow command actions.');

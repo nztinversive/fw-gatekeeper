@@ -26,6 +26,7 @@ new Script(executableSource, { filename: 'src/lib/proactive-actions.ts' }).runIn
 });
 
 const {
+  buildLiveShiftSentinel,
   buildProactiveActions,
   buildProactiveShiftTrustPlan,
   getProactiveActionEvidenceChips,
@@ -113,6 +114,7 @@ const mixedRiskPayload = {
 };
 
 const rankedActions = buildProactiveActions(mixedRiskPayload);
+const sentinelItems = buildLiveShiftSentinel(rankedActions);
 
 assert.deepEqual(actionKeys(rankedActions), [
   'system-health-0',
@@ -125,6 +127,70 @@ assert.deepEqual(actionKeys(rankedActions), [
   'shift-closeout-pending',
   'not-arrived',
 ], 'Critical kiosk/enrollment/exceptions must rank before warnings, closeout, and informational actions.');
+assert.deepEqual(
+  plain(sentinelItems.map((item) => ({ key: item.key, reason: item.reason, severity: item.severity, href: item.href, cta: item.cta, access: item.access }))),
+  [
+    {
+      key: 'sentinel:kiosk-trust:system-health-0',
+      reason: 'kiosk-trust',
+      severity: 'critical',
+      href: '/kiosks',
+      cta: 'Open kiosks',
+      access: 'operate',
+    },
+    {
+      key: 'sentinel:critical-exception:shift-exceptions',
+      reason: 'critical-exception',
+      severity: 'critical',
+      href: '/exceptions?date=2026-06-26&status=open&severity=critical',
+      cta: 'Open exceptions',
+      access: 'operate',
+    },
+    {
+      key: 'sentinel:signal-unavailable:signal-failure-stats',
+      reason: 'signal-unavailable',
+      severity: 'warning',
+      href: '/reports',
+      cta: 'Open source',
+      access: 'operate',
+    },
+    {
+      key: 'sentinel:closeout-blocked:shift-closeout-pending',
+      reason: 'closeout-blocked',
+      severity: 'warning',
+      href: '/closeout?date=2026-06-26',
+      cta: 'Close shift',
+      access: 'operate',
+    },
+  ],
+  'Live Shift Sentinel should project only urgent live changes from ranked proactive actions.',
+);
+assert.equal(sentinelItems[0].title, 'Kiosk sync warning', 'Sentinel kiosk titles should reuse the ranked action label.');
+assert.equal(sentinelItems[1].title, '1 critical exception open', 'Sentinel critical exception titles should name current critical volume.');
+assert.deepEqual(
+  plain(sentinelItems[0].evidenceChips),
+  ['1 offline kiosk'],
+  'Sentinel items should reuse compact evidence chips from the underlying action.',
+);
+assert.deepEqual(
+  plain(sentinelItems[3].proofLink),
+  {
+    href: '/exceptions?date=2026-06-26&status=open&severity=critical&exception_key=2026-06-26%3Acritical%3Aw2',
+    label: 'Review Critical exceptions source',
+  },
+  'Sentinel closeout blockers should keep role-safe source proof links.',
+);
+assert.notEqual(
+  buildLiveShiftSentinel(buildProactiveActions({
+    ...mixedRiskPayload,
+    systemHealth: {
+      ...mixedRiskPayload.systemHealth,
+      warnings: ['Main Entry kiosk has never synced', 'Face service latency is elevated'],
+    },
+  }))[0].fingerprint,
+  sentinelItems[0].fingerprint,
+  'Sentinel fingerprints should change when the same live condition changes evidence.',
+);
 
 const trustPlan = buildProactiveShiftTrustPlan(rankedActions);
 assert.deepEqual(
@@ -849,6 +915,22 @@ assert.deepEqual(actionKeys(backendUnavailableActions), [
   'shift-closeout-unavailable',
   'shift-closeout-pending',
 ], 'Deployment-pending shift storage must be visible instead of looking all clear.');
+assert.deepEqual(
+  plain(buildLiveShiftSentinel(backendUnavailableActions).map((item) => ({ key: item.key, reason: item.reason, title: item.title }))),
+  [
+    {
+      key: 'sentinel:signal-unavailable:shift-exceptions-unavailable',
+      reason: 'signal-unavailable',
+      title: 'Shift exception storage unavailable',
+    },
+    {
+      key: 'sentinel:signal-unavailable:shift-closeout-unavailable',
+      reason: 'signal-unavailable',
+      title: 'Shift closeout storage unavailable',
+    },
+  ],
+  'Live Shift Sentinel should surface unavailable shift storage without turning pending closeout into a false blocker.',
+);
 assert.equal(backendUnavailableActions[0].blocksCloseout, true, 'Unavailable exception storage blocks closeout trust.');
 assert.equal(backendUnavailableActions[0].href, '/exceptions?date=2026-06-26&status=open', 'Unavailable exception storage should still link to the dated exception view.');
 assert.deepEqual(
