@@ -195,7 +195,7 @@ function buildCloseoutDraft(input: {
     ...input.summary,
     total_exceptions: input.totalExceptions,
     reviewed_exceptions: input.reviewedExceptions,
-    source_blockers: input.sourceBlockers.length,
+    source_blockers: input.sourceBlockers.reduce((total, blocker) => total + blocker.count, 0),
   };
   const blockerLinks = input.sourceBlockers.map((blocker) => ({
     label: blocker.proof.label,

@@ -38,6 +38,7 @@ assert.match(closeouts, /function buildCloseoutDraft/, 'Closeout payload should 
 assert.match(closeouts, /closeout_draft:\s*closeoutDraft/, 'Closeout response must expose the structured Closeout Autopilot draft.');
 assert.match(closeouts, /generated_at:\s*input\.generatedAt/, 'Closeout Autopilot draft must expose the deterministic generation timestamp from the payload build.');
 assert.match(closeouts, /source_counts:\s*sourceCounts/, 'Closeout Autopilot draft must expose source counts.');
+assert.match(closeouts, /source_blockers:\s*input\.sourceBlockers\.reduce\(\(total, blocker\) => total \+ blocker\.count, 0\)/, 'Closeout Autopilot source blocker count must sum evidence rows, not checklist categories.');
 assert.match(closeouts, /source_links:\s*sourceLinks/, 'Closeout Autopilot draft must expose source and proof links.');
 assert.match(closeouts, /sections,\s*\n\s*narrative:\s*sections\.map/, 'Closeout Autopilot draft must expose both structured sections and a composed narrative.');
 assert.match(closeouts, /"attendance_summary"[\s\S]*"exceptions_reviewed"[\s\S]*"kiosk_trust_caveats"[\s\S]*"corrections_applied"[\s\S]*"blocker_acknowledgement"/, 'Closeout Autopilot sections should cover attendance, exceptions, kiosk trust, corrections, and blockers.');
