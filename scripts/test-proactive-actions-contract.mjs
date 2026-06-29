@@ -294,6 +294,61 @@ assert.equal(
   'changed',
   'Generic critical-exception Sentinel signatures should include date and exception row identity, not only aggregate counts.',
 );
+const focusedExceptionSetA = buildLiveShiftSentinelItems(buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    exceptions: [
+      { key: '2026-06-26:missing_clock_out:w2', type: 'missing_clock_out', status: 'open' },
+      { key: '2026-06-26:missing_clock_out:w3', type: 'missing_clock_out', status: 'open' },
+      { key: '2026-06-26:recognition_review:a1', type: 'recognition_review', status: 'open' },
+      { key: '2026-06-26:recognition_review:a2', type: 'recognition_review', status: 'open' },
+    ],
+    summary: {
+      total: 4,
+      open: 4,
+      critical: 0,
+      warning: 4,
+      info: 0,
+      by_type: { missing_clock_out: 2, recognition_review: 2 },
+      by_status: { open: 4 },
+    },
+  },
+}));
+const focusedExceptionSetB = buildLiveShiftSentinelItems(buildProactiveActions({
+  date: '2026-06-26',
+  shiftExceptions: {
+    date: '2026-06-26',
+    exceptions: [
+      { key: '2026-06-26:missing_clock_out:w2', type: 'missing_clock_out', status: 'open' },
+      { key: '2026-06-26:missing_clock_out:w4', type: 'missing_clock_out', status: 'open' },
+      { key: '2026-06-26:recognition_review:a1', type: 'recognition_review', status: 'open' },
+      { key: '2026-06-26:recognition_review:a3', type: 'recognition_review', status: 'open' },
+    ],
+    summary: {
+      total: 4,
+      open: 4,
+      critical: 0,
+      warning: 4,
+      info: 0,
+      by_type: { missing_clock_out: 2, recognition_review: 2 },
+      by_status: { open: 4 },
+    },
+  },
+}), {
+  seenSnapshot: getLiveShiftSentinelSnapshot(focusedExceptionSetA),
+  hasSeenBaseline: true,
+});
+assert.equal(
+  findAction(focusedExceptionSetB, 'missing-clock-outs').status,
+  'changed',
+  'Focused missing-clock-out Sentinel signatures should include every matching exception row, not only the first one.',
+);
+assert.equal(
+  findAction(focusedExceptionSetB, 'recognition-review').status,
+  'changed',
+  'Focused recognition-review Sentinel signatures should include every matching exception row, not only the first one.',
+);
 
 const trustPlan = buildProactiveShiftTrustPlan(rankedActions);
 assert.deepEqual(
@@ -600,6 +655,10 @@ assert.deepEqual(plain(clockOutAction.evidence), {
   type: 'missing_clock_out',
   count: 2,
   firstExceptionKey: '2026-06-26:missing_clock_out:w2',
+  matchingExceptionKeys: [
+    '2026-06-26:missing_clock_out:w2',
+    '2026-06-26:missing_clock_out:w3',
+  ],
   byType: { missing_clock_out: 2, recognition_review: 2 },
 }, 'Missing clock-out evidence should preserve the exception type mix.');
 const recognitionReviewAction = findAction(focusedExceptionActions, 'recognition-review');
@@ -611,6 +670,7 @@ assert.deepEqual(plain(recognitionReviewAction.evidence), {
   type: 'recognition_review',
   count: 1,
   firstExceptionKey: '2026-06-26:recognition_review:a1',
+  matchingExceptionKeys: ['2026-06-26:recognition_review:a1'],
   byType: { missing_clock_out: 2, recognition_review: 2 },
 }, 'Recognition review evidence should preserve the exact source exception key when available.');
 
@@ -688,6 +748,7 @@ assert.deepEqual(actionKeys(allOpenTypeSummaryActions), [
 const fallbackRecognitionReviewAction = findAction(allOpenTypeSummaryActions, 'recognition-review');
 assert.equal(fallbackRecognitionReviewAction.href, '/exceptions?date=2026-06-26&status=open&type=recognition_review', 'Summary-only recognition actions should not invent an exact exception key.');
 assert.equal(fallbackRecognitionReviewAction.evidence.firstExceptionKey, null, 'Summary-only recognition evidence should keep exact source absence explicit.');
+assert.deepEqual(plain(fallbackRecognitionReviewAction.evidence.matchingExceptionKeys), [], 'Summary-only recognition evidence should keep exact matching-row absence explicit.');
 
 const staleFreshnessPayload = {
   stats: {

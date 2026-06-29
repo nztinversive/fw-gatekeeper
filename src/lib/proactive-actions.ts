@@ -282,6 +282,10 @@ function getFirstOpenExceptionKey(shiftExceptions: ProactiveShiftExceptions | nu
   return getOpenExceptionTypeEntries(shiftExceptions, type).find((exception) => exception.key)?.key || null;
 }
 
+function getOpenExceptionTypeKeys(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
+  return uniqueKeys(getOpenExceptionTypeEntries(shiftExceptions, type).map((exception) => exception.key));
+}
+
 function getOpenExceptionKeys(shiftExceptions: ProactiveShiftExceptions | null) {
   const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
   return exceptions
@@ -766,6 +770,7 @@ function getSentinelSignature(action: ProactiveAction, kind: LiveShiftSentinelKi
       critical: action.evidence.critical ?? null,
       blockerCount: action.evidence.blockerCount ?? null,
       firstExceptionKey: action.evidence.firstExceptionKey ?? null,
+      matchingExceptionKeys: action.evidence.matchingExceptionKeys ?? null,
       firstBlockerLabel: action.evidence.firstBlockerLabel ?? null,
       date: action.evidence.date ?? null,
       openExceptionKeys: action.evidence.openExceptionKeys ?? null,
@@ -1025,6 +1030,8 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     const recognitionReviews = getOpenExceptionTypeCount(shiftExceptions, 'recognition_review');
     const firstMissingClockOutKey = getFirstOpenExceptionKey(shiftExceptions, 'missing_clock_out');
     const firstRecognitionReviewKey = getFirstOpenExceptionKey(shiftExceptions, 'recognition_review');
+    const missingClockOutKeys = getOpenExceptionTypeKeys(shiftExceptions, 'missing_clock_out');
+    const recognitionReviewKeys = getOpenExceptionTypeKeys(shiftExceptions, 'recognition_review');
     const openExceptionKeys = getOpenExceptionKeys(shiftExceptions);
     const criticalExceptionKeys = getOpenCriticalExceptionKeys(shiftExceptions);
     const priority = criticalExceptions > 0 ? CRITICAL_PRIORITY : WARNING_PRIORITY;
@@ -1049,6 +1056,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           type: 'missing_clock_out',
           count: missingClockOuts,
           firstExceptionKey: firstMissingClockOutKey,
+          matchingExceptionKeys: missingClockOutKeys,
           byType: shiftExceptions?.summary?.by_type || null,
         },
         freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
@@ -1077,6 +1085,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           type: 'recognition_review',
           count: recognitionReviews,
           firstExceptionKey: firstRecognitionReviewKey,
+          matchingExceptionKeys: recognitionReviewKeys,
           byType: shiftExceptions?.summary?.by_type || null,
         },
         freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
