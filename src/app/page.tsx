@@ -702,13 +702,14 @@ export default function Dashboard() {
     },
   ];
 
-  function markSentinelSeen(items: LiveShiftSentinelItem[]) {
+  function markSentinelSeen(items: LiveShiftSentinelItem[], establishBaseline = false) {
     const next = {
       ...sentinelSeenSnapshot,
       ...getLiveShiftSentinelSnapshot(items),
     };
+    const coversCurrentSentinel = sentinelItems.length > 0 && sentinelItems.every((item) => Boolean(next[item.key]));
     setSentinelSeenSnapshot(next);
-    setSentinelHasSeenBaseline(true);
+    setSentinelHasSeenBaseline(sentinelHasSeenBaseline || establishBaseline || coversCurrentSentinel);
     writeSentinelSnapshot(next);
   }
 
@@ -839,7 +840,7 @@ export default function Dashboard() {
               {sentinelItems.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => markSentinelSeen(sentinelItems)}
+                  onClick={() => markSentinelSeen(sentinelItems, true)}
                   className="btn-secondary text-xs"
                 >
                   Mark Sentinel seen

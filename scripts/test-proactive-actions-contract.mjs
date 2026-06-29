@@ -182,6 +182,62 @@ assert.equal(
   'new',
   'Sentinel should mark newly appearing urgent items after a seen baseline exists.',
 );
+const perCardSeenSnapshot = { 'system-health-0': sentinelItems[0].signature };
+const perCardSeenItems = buildLiveShiftSentinelItems(rankedActions, { seenSnapshot: perCardSeenSnapshot, hasSeenBaseline: false });
+assert.equal(findAction(perCardSeenItems, 'system-health-0').status, 'seen', 'Per-card Sentinel acknowledgement should mark only that exact card seen.');
+assert.equal(findAction(perCardSeenItems, 'shift-exceptions').status, 'current', 'Per-card Sentinel acknowledgement should not create a global baseline that makes already-visible sibling cards look new.');
+const changedSingleSeenItems = buildLiveShiftSentinelItems(
+  rankedActions.map((action) => action.key === 'system-health-0'
+    ? { ...action, evidence: { ...action.evidence, warning: 'Main Exit kiosk is offline' } }
+    : action),
+  { seenSnapshot: perCardSeenSnapshot, hasSeenBaseline: false },
+);
+assert.equal(findAction(changedSingleSeenItems, 'system-health-0').status, 'changed', 'A per-card seen item should still become changed when its own deterministic signature changes.');
+
+const closeoutProofSentinel = findAction(buildLiveShiftSentinelItems(buildProactiveActions({
+  date: '2026-06-26',
+  shiftCloseout: {
+    date: '2026-06-26',
+    closeout: null,
+    blockers: [{
+      id: 'missing-clock-outs',
+      label: 'Missing clock-outs',
+      proof: {
+        label: 'missing clock-outs',
+        count: 1,
+        href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=one&intent=correct',
+        exact: true,
+      },
+    }],
+    can_complete: false,
+  },
+})), 'shift-closeout-pending');
+const closeoutProofChanged = buildLiveShiftSentinelItems(buildProactiveActions({
+  date: '2026-06-26',
+  shiftCloseout: {
+    date: '2026-06-26',
+    closeout: null,
+    blockers: [{
+      id: 'missing-clock-outs',
+      label: 'Missing clock-outs',
+      proof: {
+        label: 'missing clock-outs',
+        count: 2,
+        href: '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=two&intent=correct',
+        exact: true,
+      },
+    }],
+    can_complete: false,
+  },
+}), {
+  seenSnapshot: { 'shift-closeout-pending': closeoutProofSentinel.signature },
+  hasSeenBaseline: false,
+});
+assert.equal(
+  findAction(closeoutProofChanged, 'shift-closeout-pending').status,
+  'changed',
+  'Closeout Sentinel signatures should include blocker proof identity so shifted source proof is not left marked seen.',
+);
 
 const trustPlan = buildProactiveShiftTrustPlan(rankedActions);
 assert.deepEqual(
@@ -823,6 +879,8 @@ assert.match(dashboardSource, /fw-gatekeeper:live-shift-sentinel:v1:seen/, 'Dash
 assert.match(dashboardSource, /Live Shift Sentinel/, 'Dashboard command inbox should render the Live Shift Sentinel surface.');
 assert.match(dashboardSource, /Urgent live changes and current risk/, 'Dashboard Sentinel should name urgent live changes and current risk explicitly.');
 assert.match(dashboardSource, /Mark Sentinel seen/, 'Dashboard Sentinel should support lightweight in-app acknowledgement without server persistence.');
+assert.match(dashboardSource, /markSentinelSeen\(sentinelItems,\s*true\)/, 'Dashboard bulk Sentinel acknowledgement should explicitly establish the full current baseline.');
+assert.match(dashboardSource, /sentinelItems\.every\(\(item\) => Boolean\(next\[item\.key\]\)\)/, 'Dashboard per-card Sentinel acknowledgement should only establish a full baseline once all current cards are covered.');
 assert.match(dashboardSource, /No urgent Sentinel items from loaded signals[\s\S]*Source gaps will appear here/, 'Dashboard Sentinel empty state should avoid false all-clear when source signals are unavailable.');
 assert.match(dashboardSource, /Shift Command <span className="text-gold">Inbox<\/span>/, 'Dashboard home should present the command inbox as the first mental model.');
 assert.match(dashboardSource, /Open Morning Readiness Brief/, 'Dashboard command inbox should link naturally to the full Morning Readiness Brief.');

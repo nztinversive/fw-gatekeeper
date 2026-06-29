@@ -731,6 +731,10 @@ function getSentinelKind(action: ProactiveAction): LiveShiftSentinelKind | null 
 }
 
 function getSentinelSignature(action: ProactiveAction, kind: LiveShiftSentinelKind) {
+  const firstBlockerProof = action.evidence.firstBlockerProof && typeof action.evidence.firstBlockerProof === 'object'
+    ? action.evidence.firstBlockerProof as Partial<{ label: string; count: number; href: string; exact: boolean }>
+    : null;
+
   return JSON.stringify({
     kind,
     key: action.key,
@@ -750,6 +754,14 @@ function getSentinelSignature(action: ProactiveAction, kind: LiveShiftSentinelKi
       blockerCount: action.evidence.blockerCount ?? null,
       firstExceptionKey: action.evidence.firstExceptionKey ?? null,
       firstBlockerLabel: action.evidence.firstBlockerLabel ?? null,
+      firstBlockerProof: firstBlockerProof
+        ? {
+            label: firstBlockerProof.label || null,
+            count: typeof firstBlockerProof.count === 'number' ? firstBlockerProof.count : null,
+            href: firstBlockerProof.href || null,
+            exact: firstBlockerProof.exact === true,
+          }
+        : null,
       status: action.evidence.status ?? null,
       signal: action.evidence.signal ?? null,
       warning: action.evidence.warning ?? null,
@@ -764,8 +776,8 @@ function getSentinelStatus(
   hasSeenBaseline: boolean,
 ): LiveShiftSentinelStatus {
   if (seenSnapshot[key] === signature) return 'seen';
-  if (!hasSeenBaseline) return 'current';
-  return hasOwn(seenSnapshot, key) ? 'changed' : 'new';
+  if (hasOwn(seenSnapshot, key)) return 'changed';
+  return hasSeenBaseline ? 'new' : 'current';
 }
 
 export function getLiveShiftSentinelSnapshot(items: Array<Pick<LiveShiftSentinelItem, 'key' | 'signature'>>): LiveShiftSentinelSnapshot {
