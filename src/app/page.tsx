@@ -530,6 +530,7 @@ export default function Dashboard() {
     [liveSentinelItems],
   );
   useEffect(() => {
+    if (loading) return;
     if (!activeSentinelKeySignature && Object.keys(sentinelSeen).length === 0) return;
     const activeKeys = new Set(activeSentinelKeySignature ? activeSentinelKeySignature.split('|') : []);
     setSentinelSeen((previous) => {
@@ -538,7 +539,7 @@ export default function Dashboard() {
       writeSentinelSeen(actionDate, next);
       return next;
     });
-  }, [actionDate, activeSentinelKeySignature, sentinelSeen]);
+  }, [actionDate, activeSentinelKeySignature, loading, sentinelSeen]);
   const sentinelItems = liveSentinelItems.map((item) => {
     const seenFingerprint = sentinelSeen[item.key];
     const status = !seenFingerprint ? 'new' : seenFingerprint !== item.fingerprint ? 'changed' : 'current';

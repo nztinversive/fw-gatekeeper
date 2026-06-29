@@ -54,6 +54,7 @@ assert.match(dashboardPage, /buildLiveShiftSentinel/, 'Dashboard Live Shift Sent
 assert.match(dashboardPage, /fw-gatekeeper:live-shift-sentinel:\$\{date\}/, 'Dashboard Sentinel seen state should be scoped to the selected date in session storage.');
 assert.match(dashboardPage, /window\.sessionStorage\.setItem\(getSentinelStorageKey\(date\), JSON\.stringify\(seen\)\)/, 'Dashboard Sentinel acknowledgement must stay client-local and avoid server writes.');
 assert.match(dashboardPage, /Object\.fromEntries\(Object\.entries\(previous\)\.filter\(\(\[key\]\) => activeKeys\.has\(key\)\)\)/, 'Dashboard Sentinel seen-state pruning should make cleared risks surface as new if they reappear.');
+assert.match(dashboardPage, /if \(loading\) return;[\s\S]*Object\.fromEntries\(Object\.entries\(previous\)\.filter/, 'Dashboard Sentinel seen-state pruning should wait until live data has loaded.');
 assert.match(dashboardPage, /data-sentinel-reason=\{item\.reason\}/, 'Dashboard Sentinel cards should expose reason markers for contract and QA coverage.');
 assert.match(dashboardPage, /New[\s\S]*Changed[\s\S]*Current/, 'Dashboard Sentinel cards should distinguish new, changed, and current live conditions.');
 assert.match(dashboardPage, /Review only/, 'Dashboard Sentinel should preserve review-only badges from role-safe actionability.');
