@@ -881,6 +881,9 @@ assert.match(dashboardSource, /Urgent live changes and current risk/, 'Dashboard
 assert.match(dashboardSource, /Mark Sentinel seen/, 'Dashboard Sentinel should support lightweight in-app acknowledgement without server persistence.');
 assert.match(dashboardSource, /markSentinelSeen\(sentinelItems,\s*true\)/, 'Dashboard bulk Sentinel acknowledgement should explicitly establish the full current baseline.');
 assert.match(dashboardSource, /sentinelItems\.every\(\(item\) => Boolean\(next\[item\.key\]\)\)/, 'Dashboard per-card Sentinel acknowledgement should only establish a full baseline once all current cards are covered.');
+assert.match(dashboardSource, /hasFullBaseline:\s*parsed\.hasFullBaseline === true/, 'Dashboard Sentinel storage should persist the full-baseline flag separately from per-card seen signatures.');
+assert.match(dashboardSource, /setSentinelHasSeenBaseline\(storedSentinel\.hasFullBaseline\)/, 'Dashboard Sentinel reloads should restore only the persisted full-baseline flag.');
+assert.doesNotMatch(dashboardSource, /setSentinelHasSeenBaseline\(Boolean\(storedSnapshot\)\)/, 'Dashboard Sentinel reloads must not infer a full baseline from any stored per-card snapshot.');
 assert.match(dashboardSource, /No urgent Sentinel items from loaded signals[\s\S]*Source gaps will appear here/, 'Dashboard Sentinel empty state should avoid false all-clear when source signals are unavailable.');
 assert.match(dashboardSource, /Shift Command <span className="text-gold">Inbox<\/span>/, 'Dashboard home should present the command inbox as the first mental model.');
 assert.match(dashboardSource, /Open Morning Readiness Brief/, 'Dashboard command inbox should link naturally to the full Morning Readiness Brief.');

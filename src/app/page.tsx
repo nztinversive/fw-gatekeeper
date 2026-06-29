@@ -266,22 +266,33 @@ function getCommandGroupKey(action: ReturnType<typeof buildProactiveActions>[num
   return 'watch-signals';
 }
 
-function parseSentinelSnapshot(value: string | null): LiveShiftSentinelSnapshot {
-  if (!value) return {};
+function parseSentinelState(value: string | null): { snapshot: LiveShiftSentinelSnapshot; hasFullBaseline: boolean } {
+  if (!value) return { snapshot: {}, hasFullBaseline: false };
   try {
     const parsed = JSON.parse(value);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
-    );
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { snapshot: {}, hasFullBaseline: false };
+    if ('snapshot' in parsed && parsed.snapshot && typeof parsed.snapshot === 'object' && !Array.isArray(parsed.snapshot)) {
+      return {
+        snapshot: Object.fromEntries(
+          Object.entries(parsed.snapshot).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+        ),
+        hasFullBaseline: parsed.hasFullBaseline === true,
+      };
+    }
+    return {
+      snapshot: Object.fromEntries(
+        Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      ),
+      hasFullBaseline: false,
+    };
   } catch {
-    return {};
+    return { snapshot: {}, hasFullBaseline: false };
   }
 }
 
-function writeSentinelSnapshot(snapshot: LiveShiftSentinelSnapshot) {
+function writeSentinelState(snapshot: LiveShiftSentinelSnapshot, hasFullBaseline: boolean) {
   if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(SENTINEL_SEEN_STORAGE_KEY, JSON.stringify(snapshot));
+  window.sessionStorage.setItem(SENTINEL_SEEN_STORAGE_KEY, JSON.stringify({ snapshot, hasFullBaseline }));
 }
 
 function getSentinelStatusLabel(item: LiveShiftSentinelItem) {
@@ -497,9 +508,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const storedSnapshot = window.sessionStorage.getItem(SENTINEL_SEEN_STORAGE_KEY);
-    setSentinelSeenSnapshot(parseSentinelSnapshot(storedSnapshot));
-    setSentinelHasSeenBaseline(Boolean(storedSnapshot));
+    const storedSentinel = parseSentinelState(window.sessionStorage.getItem(SENTINEL_SEEN_STORAGE_KEY));
+    setSentinelSeenSnapshot(storedSentinel.snapshot);
+    setSentinelHasSeenBaseline(storedSentinel.hasFullBaseline);
     setSentinelStorageReady(true);
   }, []);
 
@@ -708,9 +719,10 @@ export default function Dashboard() {
       ...getLiveShiftSentinelSnapshot(items),
     };
     const coversCurrentSentinel = sentinelItems.length > 0 && sentinelItems.every((item) => Boolean(next[item.key]));
+    const nextHasFullBaseline = sentinelHasSeenBaseline || establishBaseline || coversCurrentSentinel;
     setSentinelSeenSnapshot(next);
-    setSentinelHasSeenBaseline(sentinelHasSeenBaseline || establishBaseline || coversCurrentSentinel);
-    writeSentinelSnapshot(next);
+    setSentinelHasSeenBaseline(nextHasFullBaseline);
+    writeSentinelState(next, nextHasFullBaseline);
   }
 
   return (
