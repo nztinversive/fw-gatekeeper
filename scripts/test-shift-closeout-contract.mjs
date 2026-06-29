@@ -125,6 +125,8 @@ assert.match(page, /setNotes\(draftNarrative\)/, 'Closeout page should let super
 assert.match(page, /\{canOperate && !completed && \([\s\S]*setNotes\(draftNarrative\)/, 'Closeout draft copy controls should only render for operating roles before completion.');
 assert.match(page, /Use draft/, 'Closeout page should name the draft apply action plainly.');
 assert.match(page, /Simple summary: \{suggestedNote\}/, 'Closeout page should preserve the old suggested note as a simple compatibility summary.');
+assert.match(page, /showSuggestedNoteFallback = Boolean\(suggestedNote && !draftNarrative && !completed && !payload\?\.backend_unavailable\)/, 'Closeout page should preserve the old suggested-note UI when a rolling Convex deploy has not returned a draft yet.');
+assert.match(page, /showSuggestedNoteFallback[\s\S]*Suggested note[\s\S]*setNotes\(suggestedNote\)/, 'Closeout suggested-note fallback should remain copyable when no draft narrative exists.');
 assert.match(page, /sourceBlockerCount/, 'Closeout page should gate completion using raw blocker counts, not only acknowledgement-cleared checklist state.');
 assert.match(page, /sourceBlockerCount > 0[\s\S]*acknowledgedBlockers && notes\.trim\(\)/, 'Closeout page should require both acknowledgement and notes when source blockers exist.');
 assert.match(page, /!payload\?\.backend_unavailable/, 'Closeout page should hide suggested-note copy controls when storage is unavailable.');

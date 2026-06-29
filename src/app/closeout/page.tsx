@@ -246,6 +246,8 @@ function ShiftCloseoutPageContent() {
   const closeoutDraft = payload?.closeout_draft || null;
   const draftNarrative = closeoutDraft?.narrative || '';
   const draftApplied = Boolean(draftNarrative) && notes.trim() === draftNarrative.trim();
+  const suggestedNoteApplied = Boolean(suggestedNote) && notes.trim() === suggestedNote.trim();
+  const showSuggestedNoteFallback = Boolean(suggestedNote && !draftNarrative && !completed && !payload?.backend_unavailable);
 
   const summaryRows = useMemo(() => {
     const summary = payload?.summary;
@@ -503,6 +505,31 @@ function ShiftCloseoutPageContent() {
                 )}
               </div>
             ) : null}
+            {showSuggestedNoteFallback && (
+              <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="section-label text-gold">Suggested note</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{suggestedNote}</p>
+                  </div>
+                  {canOperate && (
+                    <button
+                      type="button"
+                      className="btn-secondary shrink-0 text-xs"
+                      onClick={() => setNotes(suggestedNote)}
+                      disabled={suggestedNoteApplied}
+                    >
+                      {suggestedNoteApplied ? 'Applied' : 'Use note'}
+                    </button>
+                  )}
+                </div>
+                {sourceBlockerCount > 0 && (
+                  <p className="mt-3 text-xs leading-5 text-amber-200/80">
+                    Applying this note does not complete closeout. The blocker acknowledgement remains explicit.
+                  </p>
+                )}
+              </div>
+            )}
             <label className="space-y-1.5 block">
               <span className="section-label block">Closeout notes</span>
               <textarea
