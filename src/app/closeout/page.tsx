@@ -68,6 +68,9 @@ function exportText(payload: ShiftCloseoutResponse, supervisorName: string, note
     'Checklist',
     ...payload.checklist.map(checklistExportLine),
     '',
+    'Closeout Autopilot Draft',
+    payload.closeout_draft?.narrative || 'No closeout draft available.',
+    '',
     'Notes',
     notes || payload.closeout?.notes || 'No notes recorded.',
   ];
@@ -240,7 +243,9 @@ function ShiftCloseoutPageContent() {
     canOperate,
   });
   const suggestedNote = payload?.suggested_note || '';
-  const suggestedNoteApplied = Boolean(suggestedNote) && notes.trim() === suggestedNote.trim();
+  const closeoutDraft = payload?.closeout_draft || null;
+  const draftNarrative = closeoutDraft?.narrative || '';
+  const draftApplied = Boolean(draftNarrative) && notes.trim() === draftNarrative.trim();
 
   const summaryRows = useMemo(() => {
     const summary = payload?.summary;
@@ -444,31 +449,60 @@ function ShiftCloseoutPageContent() {
                 className="input-field"
               />
             </label>
-            {suggestedNote && !completed && !payload?.backend_unavailable && (
+            {closeoutDraft?.sections.length && !payload?.backend_unavailable ? (
               <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="section-label text-gold">Suggested note</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-300">{suggestedNote}</p>
+                    <p className="section-label text-gold">Closeout Autopilot</p>
+                    <h3 className="mt-1 font-display text-base font-semibold text-slate-100">Draft narrative from today&apos;s evidence</h3>
+                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                      Generated from deterministic source counts at {formatDateTime(closeoutDraft.generated_at)}.
+                    </p>
                   </div>
-                  {canOperate && (
+                  {canOperate && !completed && (
                     <button
                       type="button"
                       className="btn-secondary shrink-0 text-xs"
-                      onClick={() => setNotes(suggestedNote)}
-                      disabled={suggestedNoteApplied}
+                      onClick={() => setNotes(draftNarrative)}
+                      disabled={draftApplied || !draftNarrative}
                     >
-                      {suggestedNoteApplied ? 'Applied' : 'Use note'}
+                      {draftApplied ? 'Draft applied' : 'Use draft'}
                     </button>
                   )}
                 </div>
+                <div className="mt-4 space-y-3">
+                  {closeoutDraft.sections.map((section) => (
+                    <div key={section.id} className="border-t border-navy-600/50 pt-3 first:border-t-0 first:pt-0">
+                      <h4 className="text-sm font-semibold text-slate-100">{section.title}</h4>
+                      <p className="mt-1 text-sm leading-6 text-slate-300">{section.paragraph}</p>
+                      {section.source_links.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {section.source_links.map((link) => (
+                            <Link
+                              key={`${section.id}:${link.label}:${link.href}`}
+                              href={link.href}
+                              className="rounded border border-navy-600/60 bg-navy-950/35 px-2.5 py-1 text-[11px] text-slate-300 hover:border-gold/30 hover:text-gold"
+                            >
+                              {link.count ? `${link.count} ` : ''}{link.label}{link.exact ? ' - exact' : ''}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
                 {sourceBlockerCount > 0 && (
-                  <p className="mt-3 text-xs leading-5 text-amber-200/80">
-                    Applying this note does not complete closeout. The blocker acknowledgement remains explicit.
+                  <div className="mt-4 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/90">
+                    Using this draft only fills notes. It does not complete closeout or acknowledge blockers.
+                  </div>
+                )}
+                {suggestedNote && (
+                  <p className="mt-3 border-t border-navy-600/50 pt-3 text-xs leading-5 text-slate-500">
+                    Simple summary: {suggestedNote}
                   </p>
                 )}
               </div>
-            )}
+            ) : null}
             <label className="space-y-1.5 block">
               <span className="section-label block">Closeout notes</span>
               <textarea
