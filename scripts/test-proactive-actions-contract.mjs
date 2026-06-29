@@ -238,6 +238,22 @@ assert.equal(
   'changed',
   'Closeout Sentinel signatures should include blocker proof identity so shifted source proof is not left marked seen.',
 );
+const viewerSentinelSnapshot = getLiveShiftSentinelSnapshot(buildLiveShiftSentinelItems(buildProactiveActions({
+  ...mixedRiskPayload,
+  currentRole: 'viewer',
+})));
+const adminSentinelAfterRoleResolution = buildLiveShiftSentinelItems(buildProactiveActions({
+  ...mixedRiskPayload,
+  currentRole: 'admin',
+}), {
+  seenSnapshot: viewerSentinelSnapshot,
+  hasSeenBaseline: true,
+});
+assert.equal(
+  findAction(adminSentinelAfterRoleResolution, 'system-health-0').status,
+  'seen',
+  'Sentinel signatures should ignore role-derived CTA and href changes when the source evidence has not changed.',
+);
 
 const trustPlan = buildProactiveShiftTrustPlan(rankedActions);
 assert.deepEqual(

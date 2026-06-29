@@ -740,8 +740,6 @@ function getSentinelSignature(action: ProactiveAction, kind: LiveShiftSentinelKi
     key: action.key,
     value: action.value,
     description: action.description,
-    href: action.href,
-    cta: action.cta,
     priority: action.priority,
     severity: action.severity,
     freshnessStatus: action.freshness.status,
