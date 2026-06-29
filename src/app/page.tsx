@@ -918,6 +918,8 @@ export default function Dashboard() {
           <div className="grid gap-3 xl:grid-cols-2">
             {openExceptionRows.map((exception) => {
               const resolution = exception.suggested_resolution;
+              const canApplyResolution = canOperateExceptionWork && resolution.can_apply;
+              const primaryExceptionCta = canApplyResolution ? resolution.cta : 'Review source';
               const sourceHref = getRoleSafeExceptionSourceHref(exception, canOperateExceptionWork);
               const severityTone = {
                 critical: 'border-red-400/20 bg-red-400/10 text-red-300',
@@ -949,7 +951,7 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <Link href={getExceptionHref(exception, canOperateExceptionWork)} className="inline-flex text-xs font-semibold text-gold hover:text-gold-light">
-                      {canOperateExceptionWork ? resolution.cta : 'Review source'} →
+                      {primaryExceptionCta} →
                     </Link>
                     {sourceHref && (
                       <Link href={sourceHref} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
