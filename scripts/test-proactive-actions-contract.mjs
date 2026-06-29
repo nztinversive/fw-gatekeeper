@@ -26,8 +26,10 @@ new Script(executableSource, { filename: 'src/lib/proactive-actions.ts' }).runIn
 });
 
 const {
+  buildLiveShiftSentinelItems,
   buildProactiveActions,
   buildProactiveShiftTrustPlan,
+  getLiveShiftSentinelSnapshot,
   getProactiveActionEvidenceChips,
   getProactiveActionFreshnessLabel,
   getProactiveActionOutcomeChips,
@@ -125,6 +127,61 @@ assert.deepEqual(actionKeys(rankedActions), [
   'shift-closeout-pending',
   'not-arrived',
 ], 'Critical kiosk/enrollment/exceptions must rank before warnings, closeout, and informational actions.');
+
+const sentinelItems = buildLiveShiftSentinelItems(rankedActions);
+assert.deepEqual(
+  plain(sentinelItems.map((item) => ({ key: item.key, kind: item.kind, status: item.status }))),
+  [
+    { key: 'system-health-0', kind: 'kiosk-trust', status: 'current' },
+    { key: 'shift-exceptions', kind: 'critical-exception', status: 'current' },
+    { key: 'system-health-1', kind: 'kiosk-trust', status: 'current' },
+    { key: 'signal-failure-stats', kind: 'signal-unavailable', status: 'current' },
+    { key: 'shift-closeout-pending', kind: 'closeout-blocked', status: 'current' },
+  ],
+  'Live Shift Sentinel should derive urgent current risk from existing deterministic action evidence.',
+);
+assert.deepEqual(
+  plain(sentinelItems[0]),
+  {
+    key: 'system-health-0',
+    signature: sentinelItems[0].signature,
+    status: 'current',
+    kind: 'kiosk-trust',
+    priority: 'critical',
+    severity: 'critical',
+    tone: 'red',
+    label: 'Kiosk sync warning',
+    description: 'Main Entry kiosk is offline',
+    href: '/kiosks',
+    cta: 'Open kiosks',
+    source: 'kiosk',
+    evidenceChips: ['1 offline kiosk'],
+    outcomeChips: ['Clears shift readiness', 'Clears closeout trust'],
+    freshnessLabel: null,
+    acknowledged: false,
+    changedSinceSeen: false,
+    proofLink: null,
+    actionability: { access: 'operate', canOperate: true, role: null },
+  },
+  'Sentinel items should carry role-safe handoff copy, evidence chips, and exact current-risk status without creating new source semantics.',
+);
+const sentinelSnapshot = getLiveShiftSentinelSnapshot(sentinelItems);
+assert.equal(sentinelSnapshot['system-health-0'], sentinelItems[0].signature, 'Sentinel snapshots should persist stable item signatures for client-local seen tracking.');
+assert.equal(
+  findAction(buildLiveShiftSentinelItems(rankedActions, { seenSnapshot: sentinelSnapshot, hasSeenBaseline: true }), 'system-health-0').status,
+  'seen',
+  'Sentinel seen tracking should acknowledge the exact deterministic signature without hiding the item.',
+);
+assert.equal(
+  findAction(buildLiveShiftSentinelItems(rankedActions, { seenSnapshot: { ...sentinelSnapshot, 'shift-exceptions': 'old-signature' }, hasSeenBaseline: true }), 'shift-exceptions').status,
+  'changed',
+  'Sentinel should mark changed items when the source evidence signature differs from the last seen value.',
+);
+assert.equal(
+  findAction(buildLiveShiftSentinelItems(rankedActions, { seenSnapshot: { 'system-health-0': sentinelItems[0].signature }, hasSeenBaseline: true }), 'shift-exceptions').status,
+  'new',
+  'Sentinel should mark newly appearing urgent items after a seen baseline exists.',
+);
 
 const trustPlan = buildProactiveShiftTrustPlan(rankedActions);
 assert.deepEqual(
@@ -414,6 +471,14 @@ assert.deepEqual(actionKeys(focusedExceptionActions), [
   'recognition-review',
   'shift-exceptions',
 ], 'Open exception type rows should create focused action cards before the generic exception action.');
+assert.deepEqual(
+  plain(buildLiveShiftSentinelItems(focusedExceptionActions).map((item) => ({ key: item.key, kind: item.kind }))),
+  [
+    { key: 'missing-clock-outs', kind: 'missing-clock-out' },
+    { key: 'recognition-review', kind: 'recognition-review' },
+  ],
+  'Live Shift Sentinel should call out missing clock-outs and recognition reviews as focused urgent live conditions.',
+);
 const clockOutAction = findAction(focusedExceptionActions, 'missing-clock-outs');
 assert.equal(clockOutAction.description, '2 workers are still clocked in after the scheduled shift end.');
 assert.equal(clockOutAction.href, '/exceptions?date=2026-06-26&status=open&type=missing_clock_out&exception_key=2026-06-26%3Amissing_clock_out%3Aw2&intent=correct', 'Missing clock-out actions should deep-link to the first filtered correction target.');
@@ -753,6 +818,12 @@ assert.match(dashboardSource, /const trustBrief = shiftBriefing && !shiftBriefin
 assert.match(dashboardSource, /const trustSummary = trustBrief\?\.summary_sentence \|\| readinessCopy\.description/, 'Dashboard should render deterministic shift trust copy with a local readiness fallback.');
 assert.match(dashboardSource, /buildProactiveShiftTrustPlan/, 'Dashboard should render a single next-best shift trust plan from ranked actions.');
 assert.match(dashboardSource, /Next best action/, 'Dashboard should label the next-best action summary.');
+assert.match(dashboardSource, /buildLiveShiftSentinelItems/, 'Dashboard should derive the Live Shift Sentinel strip from the deterministic proactive action model.');
+assert.match(dashboardSource, /fw-gatekeeper:live-shift-sentinel:v1:seen/, 'Dashboard Sentinel seen state should stay scoped to client session storage.');
+assert.match(dashboardSource, /Live Shift Sentinel/, 'Dashboard command inbox should render the Live Shift Sentinel surface.');
+assert.match(dashboardSource, /Urgent live changes and current risk/, 'Dashboard Sentinel should name urgent live changes and current risk explicitly.');
+assert.match(dashboardSource, /Mark Sentinel seen/, 'Dashboard Sentinel should support lightweight in-app acknowledgement without server persistence.');
+assert.match(dashboardSource, /No urgent Sentinel items from loaded signals[\s\S]*Source gaps will appear here/, 'Dashboard Sentinel empty state should avoid false all-clear when source signals are unavailable.');
 assert.match(dashboardSource, /Shift Command <span className="text-gold">Inbox<\/span>/, 'Dashboard home should present the command inbox as the first mental model.');
 assert.match(dashboardSource, /Open Morning Readiness Brief/, 'Dashboard command inbox should link naturally to the full Morning Readiness Brief.');
 assert.match(dashboardSource, /Needs action/, 'Dashboard command inbox should group blocking work under Needs action.');

@@ -159,6 +159,39 @@ export interface ProactiveActionProofLink {
   label: string;
 }
 
+export type LiveShiftSentinelStatus = 'new' | 'changed' | 'current' | 'seen';
+export type LiveShiftSentinelKind =
+  | 'critical-exception'
+  | 'kiosk-trust'
+  | 'closeout-blocked'
+  | 'recognition-review'
+  | 'missing-clock-out'
+  | 'signal-unavailable';
+
+export interface LiveShiftSentinelItem {
+  key: string;
+  signature: string;
+  status: LiveShiftSentinelStatus;
+  kind: LiveShiftSentinelKind;
+  priority: ProactiveActionPriority;
+  severity: ProactiveActionSeverity;
+  tone: ProactiveActionTone;
+  label: string;
+  description: string;
+  href: string;
+  cta: string;
+  source: ProactiveActionSource;
+  evidenceChips: string[];
+  outcomeChips: string[];
+  freshnessLabel: string | null;
+  acknowledged: boolean;
+  changedSinceSeen: boolean;
+  proofLink: ProactiveActionProofLink | null;
+  actionability: ProactiveActionActionability;
+}
+
+export type LiveShiftSentinelSnapshot = Record<string, string>;
+
 type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'freshness' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
   priority?: ProactiveActionPriority;
   severity?: ProactiveActionSeverity;
@@ -683,6 +716,113 @@ export function getProactiveActionProofLink(
     href: canOpenProof ? firstProof.href : stripHrefParams(firstProof.href, ['intent']),
     label: firstBlockerLabel ? `${labelPrefix} ${firstBlockerLabel} source` : `${labelPrefix} exact source`,
   };
+}
+
+function getSentinelKind(action: ProactiveAction): LiveShiftSentinelKind | null {
+  const stale = action.freshness.status === 'stale' || Boolean(action.freshness.failed || action.freshness.unavailable);
+  if (action.key.startsWith('signal-failure-') || action.key.endsWith('-unavailable')) return 'signal-unavailable';
+  if (action.key === 'missing-clock-outs') return 'missing-clock-out';
+  if (action.key === 'recognition-review') return 'recognition-review';
+  if (action.source === 'kiosk' || action.source === 'service') return 'kiosk-trust';
+  if (action.source === 'closeout' && action.blocksCloseout) return 'closeout-blocked';
+  if (action.source === 'exceptions' && (action.priority === CRITICAL_PRIORITY || action.blocksReadiness)) return 'critical-exception';
+  if (stale) return 'signal-unavailable';
+  return null;
+}
+
+function getSentinelSignature(action: ProactiveAction, kind: LiveShiftSentinelKind) {
+  return JSON.stringify({
+    kind,
+    key: action.key,
+    value: action.value,
+    description: action.description,
+    href: action.href,
+    cta: action.cta,
+    priority: action.priority,
+    severity: action.severity,
+    freshnessStatus: action.freshness.status,
+    freshnessReason: action.freshness.reason,
+    freshnessMessage: action.freshness.message || null,
+    evidence: {
+      count: action.evidence.count ?? null,
+      open: action.evidence.open ?? null,
+      critical: action.evidence.critical ?? null,
+      blockerCount: action.evidence.blockerCount ?? null,
+      firstExceptionKey: action.evidence.firstExceptionKey ?? null,
+      firstBlockerLabel: action.evidence.firstBlockerLabel ?? null,
+      status: action.evidence.status ?? null,
+      signal: action.evidence.signal ?? null,
+      warning: action.evidence.warning ?? null,
+    },
+  });
+}
+
+function getSentinelStatus(
+  key: string,
+  signature: string,
+  seenSnapshot: LiveShiftSentinelSnapshot,
+  hasSeenBaseline: boolean,
+): LiveShiftSentinelStatus {
+  if (seenSnapshot[key] === signature) return 'seen';
+  if (!hasSeenBaseline) return 'current';
+  return hasOwn(seenSnapshot, key) ? 'changed' : 'new';
+}
+
+export function getLiveShiftSentinelSnapshot(items: Array<Pick<LiveShiftSentinelItem, 'key' | 'signature'>>): LiveShiftSentinelSnapshot {
+  return items.reduce<LiveShiftSentinelSnapshot>((snapshot, item) => {
+    snapshot[item.key] = item.signature;
+    return snapshot;
+  }, {});
+}
+
+export function buildLiveShiftSentinelItems(
+  actions: ProactiveAction[],
+  options: {
+    seenSnapshot?: LiveShiftSentinelSnapshot;
+    hasSeenBaseline?: boolean;
+  } = {},
+): LiveShiftSentinelItem[] {
+  const seenSnapshot = options.seenSnapshot || {};
+  const hasSeenBaseline = Boolean(options.hasSeenBaseline);
+
+  return actions
+    .map((action) => {
+      const kind = getSentinelKind(action);
+      if (!kind) return null;
+      const signature = getSentinelSignature(action, kind);
+      const status = getSentinelStatus(action.key, signature, seenSnapshot, hasSeenBaseline);
+      const freshnessLabel = isActionFreshnessStaleForSentinel(action.freshness)
+        ? getProactiveActionFreshnessLabel(action.freshness)
+        : null;
+
+      return {
+        key: action.key,
+        signature,
+        status,
+        kind,
+        priority: action.priority,
+        severity: action.severity,
+        tone: action.tone,
+        label: action.label,
+        description: action.description,
+        href: action.href,
+        cta: action.cta,
+        source: action.source,
+        evidenceChips: getProactiveActionEvidenceChips(action),
+        outcomeChips: getProactiveActionOutcomeChips(action),
+        freshnessLabel,
+        acknowledged: status === 'seen',
+        changedSinceSeen: status === 'new' || status === 'changed',
+        proofLink: getProactiveActionProofLink(action),
+        actionability: action.actionability,
+      } satisfies LiveShiftSentinelItem;
+    })
+    .filter((item): item is LiveShiftSentinelItem => Boolean(item))
+    .slice(0, 6);
+}
+
+function isActionFreshnessStaleForSentinel(freshness: ProactiveActionFreshness) {
+  return freshness.status === 'stale' || Boolean(freshness.failed || freshness.unavailable);
 }
 
 export function buildProactiveActions(input: BuildProactiveActionsInput = {}): ProactiveAction[] {
