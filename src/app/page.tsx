@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
@@ -506,6 +506,47 @@ export default function Dashboard() {
     });
   }, [actionDate]);
 
+  const dashboardRole = currentRole || 'viewer';
+  const proactiveShiftCloseout = shiftCloseout
+    ? {
+        ...shiftCloseout,
+        summary: { ...shiftCloseout.summary },
+      }
+    : null;
+  const actionItems = buildProactiveActions({
+    date: actionDate,
+    signalFailures,
+    signalFreshness,
+    workers,
+    systemHealth,
+    stats,
+    shiftExceptions,
+    shiftCloseout: proactiveShiftCloseout,
+    currentRole: dashboardRole,
+  });
+  const liveSentinelItems = buildLiveShiftSentinel(actionItems);
+  const activeSentinelKeySignature = useMemo(
+    () => liveSentinelItems.map((item) => item.key).sort().join('|'),
+    [liveSentinelItems],
+  );
+  useEffect(() => {
+    if (!activeSentinelKeySignature && Object.keys(sentinelSeen).length === 0) return;
+    const activeKeys = new Set(activeSentinelKeySignature ? activeSentinelKeySignature.split('|') : []);
+    setSentinelSeen((previous) => {
+      const next = Object.fromEntries(Object.entries(previous).filter(([key]) => activeKeys.has(key)));
+      if (Object.keys(next).length === Object.keys(previous).length) return previous;
+      writeSentinelSeen(actionDate, next);
+      return next;
+    });
+  }, [actionDate, activeSentinelKeySignature, sentinelSeen]);
+  const sentinelItems = liveSentinelItems.map((item) => {
+    const seenFingerprint = sentinelSeen[item.key];
+    const status = !seenFingerprint ? 'new' : seenFingerprint !== item.fingerprint ? 'changed' : 'current';
+    return { ...item, status };
+  });
+  const unseenSentinelItems = sentinelItems.filter((item) => item.status !== 'current');
+  const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -533,32 +574,6 @@ export default function Dashboard() {
   const workerCardFreshnessCopy = attendanceStaleCopy || rosterStaleCopy;
   const workerCardsAreStale = isSignalStale(signalFreshness, 'workers') || isSignalStale(signalFreshness, 'attendance');
   const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
-  const dashboardRole = currentRole || 'viewer';
-  const proactiveShiftCloseout = shiftCloseout
-    ? {
-        ...shiftCloseout,
-        summary: { ...shiftCloseout.summary },
-      }
-    : null;
-  const actionItems = buildProactiveActions({
-    date: actionDate,
-    signalFailures,
-    signalFreshness,
-    workers,
-    systemHealth,
-    stats,
-    shiftExceptions,
-    shiftCloseout: proactiveShiftCloseout,
-    currentRole: dashboardRole,
-  });
-  const liveSentinelItems = buildLiveShiftSentinel(actionItems);
-  const sentinelItems = liveSentinelItems.map((item) => {
-    const seenFingerprint = sentinelSeen[item.key];
-    const status = !seenFingerprint ? 'new' : seenFingerprint !== item.fingerprint ? 'changed' : 'current';
-    return { ...item, status };
-  });
-  const unseenSentinelItems = sentinelItems.filter((item) => item.status !== 'current');
-  const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
   const canOpenAdminOps = dashboardRole === 'admin';
   const canOpenEnrollmentOps = dashboardRole === 'admin' || dashboardRole === 'enrollment';
   const canOperateExceptionWork = dashboardRole === 'admin' || dashboardRole === 'enrollment';
