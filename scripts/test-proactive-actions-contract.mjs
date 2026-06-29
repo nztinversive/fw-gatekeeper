@@ -884,6 +884,8 @@ assert.match(dashboardSource, /sentinelItems\.every\(\(item\) => Boolean\(next\[
 assert.match(dashboardSource, /hasFullBaseline:\s*parsed\.hasFullBaseline === true/, 'Dashboard Sentinel storage should persist the full-baseline flag separately from per-card seen signatures.');
 assert.match(dashboardSource, /setSentinelHasSeenBaseline\(storedSentinel\.hasFullBaseline\)/, 'Dashboard Sentinel reloads should restore only the persisted full-baseline flag.');
 assert.doesNotMatch(dashboardSource, /setSentinelHasSeenBaseline\(Boolean\(storedSnapshot\)\)/, 'Dashboard Sentinel reloads must not infer a full baseline from any stored per-card snapshot.');
+assert.match(dashboardSource, /function readSentinelState\(\)[\s\S]*try \{[\s\S]*window\.sessionStorage\.getItem\(SENTINEL_SEEN_STORAGE_KEY\)[\s\S]*catch \{[\s\S]*return null/, 'Dashboard Sentinel should treat blocked session storage reads as optional seen-state loss.');
+assert.match(dashboardSource, /function writeSentinelState[\s\S]*try \{[\s\S]*window\.sessionStorage\.setItem[\s\S]*catch \{[\s\S]*Sentinel seen state is optional client-local UI state/, 'Dashboard Sentinel should not crash when optional seen-state writes are blocked.');
 assert.match(dashboardSource, /No urgent Sentinel items from loaded signals[\s\S]*Source gaps will appear here/, 'Dashboard Sentinel empty state should avoid false all-clear when source signals are unavailable.');
 assert.match(dashboardSource, /Shift Command <span className="text-gold">Inbox<\/span>/, 'Dashboard home should present the command inbox as the first mental model.');
 assert.match(dashboardSource, /Open Morning Readiness Brief/, 'Dashboard command inbox should link naturally to the full Morning Readiness Brief.');

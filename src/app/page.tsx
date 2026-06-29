@@ -292,7 +292,20 @@ function parseSentinelState(value: string | null): { snapshot: LiveShiftSentinel
 
 function writeSentinelState(snapshot: LiveShiftSentinelSnapshot, hasFullBaseline: boolean) {
   if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(SENTINEL_SEEN_STORAGE_KEY, JSON.stringify({ snapshot, hasFullBaseline }));
+  try {
+    window.sessionStorage.setItem(SENTINEL_SEEN_STORAGE_KEY, JSON.stringify({ snapshot, hasFullBaseline }));
+  } catch {
+    // Sentinel seen state is optional client-local UI state.
+  }
+}
+
+function readSentinelState() {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.sessionStorage.getItem(SENTINEL_SEEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
 }
 
 function getSentinelStatusLabel(item: LiveShiftSentinelItem) {
@@ -508,7 +521,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const storedSentinel = parseSentinelState(window.sessionStorage.getItem(SENTINEL_SEEN_STORAGE_KEY));
+    const storedSentinel = parseSentinelState(readSentinelState());
     setSentinelSeenSnapshot(storedSentinel.snapshot);
     setSentinelHasSeenBaseline(storedSentinel.hasFullBaseline);
     setSentinelStorageReady(true);
