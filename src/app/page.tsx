@@ -337,8 +337,17 @@ export default function Dashboard() {
           successfulKeys.add(signal.key);
           setSystemHealth(json);
         } else if (signal.key === 'shift-briefing') {
-          successfulKeys.add(signal.key);
           setShiftBriefing(json);
+          if (json?.backend_unavailable) {
+            failures.push({
+              key: signal.key,
+              label: signal.label,
+              href: signal.href,
+              message: json.warning || 'Morning readiness brief is unavailable while shift briefing storage catches up.',
+            });
+          } else {
+            successfulKeys.add(signal.key);
+          }
         } else if (signal.key === 'shift-exceptions') {
           successfulKeys.add(signal.key);
           setShiftExceptions(json);
