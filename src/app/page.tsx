@@ -619,6 +619,13 @@ export default function Dashboard() {
     ? '—'
     : trustBrief?.source_counts.open_exceptions ?? shiftExceptions.summary.open;
   const openExceptionMetricLabel = exceptionSignalUnavailable ? 'queue unavailable' : 'need disposition';
+  const closeoutSignalUnavailable = isSignalStale(signalFreshness, 'shift-closeout') ||
+    Boolean(shiftCloseout?.backend_unavailable) ||
+    !shiftCloseout;
+  const closeoutRiskMetric = closeoutSignalUnavailable && !trustBrief
+    ? '—'
+    : trustBrief?.closeout_risks.length ?? shiftCloseout?.blockers.length ?? 0;
+  const closeoutRiskMetricLabel = closeoutSignalUnavailable && !trustBrief ? 'closeout unavailable' : 'blockers / risks';
   const openExceptionRows = (shiftExceptions?.exceptions || [])
     .filter((exception) => exception.status === 'open')
     .slice(0, 4);
@@ -740,8 +747,8 @@ export default function Dashboard() {
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Closeout risks</p>
-              <p className="mt-1 text-2xl font-display font-bold text-amber-300">{(trustBrief?.closeout_risks.length ?? shiftCloseout?.blockers.length) || 0}</p>
-              <p className="text-[11px] text-slate-500">blockers / risks</p>
+              <p className="mt-1 text-2xl font-display font-bold text-amber-300">{closeoutRiskMetric}</p>
+              <p className="text-[11px] text-slate-500">{closeoutRiskMetricLabel}</p>
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Kiosks online</p>
