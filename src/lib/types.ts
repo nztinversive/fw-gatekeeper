@@ -379,6 +379,35 @@ export interface ShiftCloseoutChecklistItem {
   description: string;
 }
 
+export interface ShiftCloseoutDraftSourceLink {
+  label: string;
+  href: string;
+  count: number;
+  exact: boolean;
+}
+
+export interface ShiftCloseoutDraftSection {
+  id: 'attendance_summary' | 'exceptions_reviewed' | 'kiosk_trust_caveats' | 'corrections_applied' | 'blocker_acknowledgement' | string;
+  title: string;
+  paragraph: string;
+  source_links: ShiftCloseoutDraftSourceLink[];
+}
+
+export interface ShiftCloseoutDraft {
+  generated_at: string;
+  source_counts: ShiftCloseoutSnapshot & {
+    missing_clock_outs: number;
+    recognition_reviews: number;
+    attendance_corrections: number;
+    total_exceptions: number;
+    reviewed_exceptions: number;
+    source_blockers: number;
+  };
+  source_links: ShiftCloseoutDraftSourceLink[];
+  sections: ShiftCloseoutDraftSection[];
+  narrative: string;
+}
+
 export interface ShiftCloseoutResponse {
   date: string;
   generated_at: string;
@@ -392,6 +421,7 @@ export interface ShiftCloseoutResponse {
   blockers: ShiftCloseoutChecklistItem[];
   can_complete: boolean;
   suggested_note: string;
+  closeout_draft: ShiftCloseoutDraft;
   action_links: Array<{ label: string; href: string }>;
   backend_unavailable?: boolean;
   warning?: string;

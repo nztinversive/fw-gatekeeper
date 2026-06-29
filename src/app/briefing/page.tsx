@@ -655,7 +655,7 @@ function ShiftBriefingPageContent() {
             <div>
               <h2 className="font-display font-semibold text-slate-100">Kiosk trust</h2>
               <p className="text-sm text-slate-400 mt-2">
-                {payload?.kiosks.total ?? 0} registered kiosk{payload?.kiosks.total === 1 ? '' : 's'} contribute to today's briefing confidence.
+                {payload?.kiosks.total ?? 0} registered kiosk{payload?.kiosks.total === 1 ? '' : 's'} contribute to today&apos;s briefing confidence.
               </p>
             </div>
             <Link href={getKioskTrustHref(currentRole, date)} className="btn-ghost text-xs">

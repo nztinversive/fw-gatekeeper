@@ -25,9 +25,10 @@ function isMissingConvexFunction(error: unknown) {
 }
 
 function emptyResponse(date: string) {
+  const generatedAt = new Date().toISOString();
   return {
     date,
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     closeout: null,
     summary: {
       expected: 0,
@@ -45,6 +46,27 @@ function emptyResponse(date: string) {
     blockers: [],
     can_complete: false,
     suggested_note: '',
+    closeout_draft: {
+      generated_at: generatedAt,
+      source_counts: {
+        expected: 0,
+        present: 0,
+        late: 0,
+        missing: 0,
+        open_exceptions: 0,
+        critical_exceptions: 0,
+        missing_clock_outs: 0,
+        recognition_reviews: 0,
+        kiosk_warnings: 0,
+        attendance_corrections: 0,
+        total_exceptions: 0,
+        reviewed_exceptions: 0,
+        source_blockers: 0,
+      },
+      source_links: [],
+      sections: [],
+      narrative: '',
+    },
     action_links: [],
     backend_unavailable: true,
     warning: 'Shift closeout is waiting for the Convex functions to deploy.',

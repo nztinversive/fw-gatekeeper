@@ -35,6 +35,24 @@ function proof(count: number, label: string, href: string, exact: boolean) {
   };
 }
 
+function plural(count: number, singular: string, pluralValue?: string) {
+  return `${count} ${count === 1 ? singular : pluralValue || `${singular}s`}`;
+}
+
+function buildDraftSection(
+  id: string,
+  title: string,
+  paragraph: string,
+  sourceLinks: Array<{ label: string; href: string; count: number; exact: boolean }> = [],
+) {
+  return {
+    id,
+    title,
+    paragraph,
+    source_links: sourceLinks,
+  };
+}
+
 function buildChecklist(input: {
   date: string;
   openExceptions: any[];
@@ -153,7 +171,127 @@ function buildSuggestedNote(input: {
   return `${input.date} closeout: checklist clear. Summary: ${summaryCounts}.`;
 }
 
+function buildCloseoutDraft(input: {
+  date: string;
+  generatedAt: string;
+  summary: {
+    expected: number;
+    present: number;
+    late: number;
+    missing: number;
+    open_exceptions: number;
+    critical_exceptions: number;
+    missing_clock_outs: number;
+    recognition_reviews: number;
+    kiosk_warnings: number;
+    attendance_corrections: number;
+  };
+  totalExceptions: number;
+  reviewedExceptions: number;
+  sourceBlockers: ReturnType<typeof buildChecklist>;
+  actionLinks: Array<{ label: string; href: string }>;
+}) {
+  const sourceCounts = {
+    ...input.summary,
+    total_exceptions: input.totalExceptions,
+    reviewed_exceptions: input.reviewedExceptions,
+    source_blockers: input.sourceBlockers.reduce((total, blocker) => total + blocker.count, 0),
+  };
+  const blockerLinks = input.sourceBlockers.map((blocker) => ({
+    label: blocker.proof.label,
+    href: blocker.proof.href,
+    count: blocker.proof.count,
+    exact: blocker.proof.exact,
+  }));
+  const sourceLinks = [
+    ...input.actionLinks.map((link) => ({
+      ...link,
+      count: 0,
+      exact: false,
+    })),
+    ...blockerLinks,
+  ];
+
+  const sections = [
+    buildDraftSection(
+      "attendance_summary",
+      "Attendance summary",
+      `${input.date} attendance shows ${input.summary.present}/${input.summary.expected} expected workers present, ${input.summary.late} late, and ${input.summary.missing} missing from effective attendance evidence.`,
+      [
+        {
+          label: "briefing attendance summary",
+          href: buildHref("/briefing", { date: input.date }),
+          count: input.summary.expected,
+          exact: false,
+        },
+      ],
+    ),
+    buildDraftSection(
+      "exceptions_reviewed",
+      "Exceptions reviewed and unresolved",
+      input.summary.open_exceptions
+        ? `The shift exception queue contains ${plural(input.totalExceptions, "total exception")} with ${plural(input.reviewedExceptions, "reviewed or resolved exception")} and ${plural(input.summary.open_exceptions, "open exception")} still unresolved, including ${plural(input.summary.critical_exceptions, "critical exception")} and ${plural(input.summary.missing_clock_outs, "missing clock-out blocker")}.`
+        : `The shift exception queue contains ${plural(input.totalExceptions, "total exception")} and no open exceptions remain for this closeout.`,
+      [
+        {
+          label: "open exceptions",
+          href: buildHref("/exceptions", { date: input.date, status: "open" }),
+          count: input.summary.open_exceptions,
+          exact: false,
+        },
+      ],
+    ),
+    buildDraftSection(
+      "kiosk_trust_caveats",
+      "Kiosk trust caveats",
+      input.summary.kiosk_warnings
+        ? `${plural(input.summary.kiosk_warnings, "kiosk trust warning")} may affect confidence in the physical-door attendance record and should be reviewed against kiosk sync evidence.`
+        : "No kiosk trust warnings are blocking the closeout based on current kiosk sync evidence.",
+      [
+        {
+          label: "kiosk trust warnings",
+          href: "/kiosks",
+          count: input.summary.kiosk_warnings,
+          exact: false,
+        },
+      ],
+    ),
+    buildDraftSection(
+      "corrections_applied",
+      "Corrections applied",
+      input.summary.attendance_corrections
+        ? `${plural(input.summary.attendance_corrections, "audited attendance correction")} are included in effective attendance for this date; the raw kiosk evidence remains preserved as source history.`
+        : "No audited attendance corrections are recorded for this date; the closeout is based on kiosk and schedule evidence only.",
+      [
+        {
+          label: "attendance corrections",
+          href: buildHref("/log", { date: input.date }),
+          count: input.summary.attendance_corrections,
+          exact: false,
+        },
+      ],
+    ),
+    buildDraftSection(
+      "blocker_acknowledgement",
+      "Blocker acknowledgement",
+      input.sourceBlockers.length
+        ? `Source blockers remain: ${input.sourceBlockers.map((blocker) => `${blocker.label} (${blocker.count})`).join("; ")}. A supervisor must explicitly acknowledge these blockers and keep the reason in closeout notes before completing the shift record.`
+        : "No source blockers remain. Supervisor signoff can complete the closeout when the notes are acceptable.",
+      blockerLinks,
+    ),
+  ];
+
+  return {
+    generated_at: input.generatedAt,
+    source_counts: sourceCounts,
+    source_links: sourceLinks,
+    sections,
+    narrative: sections.map((section) => `${section.title}: ${section.paragraph}`).join("\n\n"),
+  };
+}
+
 async function buildCloseoutPayload(ctx: any, date: string) {
+  const generatedAt = new Date().toISOString();
   const [briefing, exceptions, closeout] = await Promise.all([
     buildShiftBriefing(ctx, date),
     buildShiftExceptions(ctx, date),
@@ -210,10 +348,26 @@ async function buildCloseoutPayload(ctx: any, date: string) {
     summary,
     blockers: sourceBlockers,
   });
+  const actionLinks = [
+    { label: "Briefing", href: `/briefing?date=${date}` },
+    { label: "Exceptions", href: buildHref("/exceptions", { date, status: "open" }) },
+    { label: "Activity Log", href: `/log?date=${date}` },
+    { label: "Kiosks", href: "/kiosks" },
+    { label: "Recognition Lab", href: buildHref("/calibration/recognition", { date, review_status: "unreviewed" }) },
+  ];
+  const closeoutDraft = buildCloseoutDraft({
+    date,
+    generatedAt,
+    summary,
+    totalExceptions: exceptions.length,
+    reviewedExceptions: exceptions.filter((exception: any) => exception.status !== "open").length,
+    sourceBlockers,
+    actionLinks,
+  });
 
   return {
     date,
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     closeout: closeout
       ? {
           id: String(closeout._id),
@@ -241,13 +395,8 @@ async function buildCloseoutPayload(ctx: any, date: string) {
     blockers,
     can_complete: canComplete,
     suggested_note: suggestedNote,
-    action_links: [
-      { label: "Briefing", href: `/briefing?date=${date}` },
-      { label: "Exceptions", href: buildHref("/exceptions", { date, status: "open" }) },
-      { label: "Activity Log", href: `/log?date=${date}` },
-      { label: "Kiosks", href: "/kiosks" },
-      { label: "Recognition Lab", href: buildHref("/calibration/recognition", { date, review_status: "unreviewed" }) },
-    ],
+    closeout_draft: closeoutDraft,
+    action_links: actionLinks,
   };
 }
 
