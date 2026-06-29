@@ -8,6 +8,7 @@ import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
 import { buildProactiveActions, buildProactiveShiftTrustPlan, getProactiveActionEvidenceChips, getProactiveActionFreshnessLabel, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
 import type { ProactiveActionFreshness, ProactiveSignalFreshness } from '@/lib/proactive-actions';
+import type { ShiftBriefingResponse, ShiftCloseoutResponse, ShiftException, ShiftExceptionsResponse, ShiftTrustBriefStatus } from '@/lib/types';
 
 interface WorkerWithStatus {
   id: string;
@@ -39,6 +40,7 @@ interface AttendanceEvent {
 }
 
 type OpsReadinessStatus = 'ready' | 'attention' | 'critical';
+type CommandGroupKey = 'needs-action' | 'closeout-blockers' | 'watch-signals';
 
 interface RecentEvent {
   id: string;
@@ -83,53 +85,7 @@ interface SystemHealth {
   warnings: string[];
 }
 
-interface ShiftExceptionsSummary {
-  date: string;
-  backend_unavailable?: boolean;
-  warning?: string;
-  exceptions?: Array<{
-    key?: string;
-    type?: string;
-    status?: string;
-  }>;
-  summary: {
-    total: number;
-    open: number;
-    critical: number;
-    warning: number;
-    info: number;
-    by_type?: Record<string, number>;
-    by_status?: Record<string, number>;
-  };
-}
-
-interface ShiftCloseoutSummary {
-  date: string;
-  backend_unavailable?: boolean;
-  warning?: string;
-  closeout: {
-    status: 'open' | 'completed' | 'reopened';
-    completed_at: string | null;
-  } | null;
-  summary: {
-    open_exceptions: number;
-    critical_exceptions: number;
-    kiosk_warnings: number;
-  };
-  blockers: Array<{
-    id: string;
-    label: string;
-    proof?: {
-      label: string;
-      count: number;
-      href: string;
-      exact: boolean;
-    };
-  }>;
-  can_complete: boolean;
-}
-
-type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-exceptions' | 'shift-closeout';
+type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-briefing' | 'shift-exceptions' | 'shift-closeout';
 type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
 type SignalFreshnessMap = Partial<Record<SignalFailureKey, ProactiveSignalFreshness>>;
 
@@ -210,17 +166,96 @@ function isActionFreshnessStale(freshness: ProactiveActionFreshness) {
   return freshness.status === 'stale' || Boolean(freshness.failed || freshness.unavailable);
 }
 
-function getActionFreshnessCopy(freshness: ProactiveActionFreshness) {
-  if (!isActionFreshnessStale(freshness)) return null;
-  const staleLabel = getProactiveActionFreshnessLabel(freshness);
-  if (!freshness.lastSuccessAt) return null;
-  const lastSuccess = formatFreshnessTime(freshness.lastSuccessAt);
-  return lastSuccess ? `${staleLabel} from ${lastSuccess}` : null;
-}
-
 function getActionFreshnessBadge(freshness: ProactiveActionFreshness) {
   if (!isActionFreshnessStale(freshness)) return null;
   return getProactiveActionFreshnessLabel(freshness);
+}
+
+function titleCase(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function buildHref(path: string, params: Record<string, string | number | null | undefined>) {
+  const query = Object.entries(params)
+    .filter((entry): entry is [string, string | number] => entry[1] !== null && entry[1] !== undefined && entry[1] !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return query ? `${path}?${query}` : path;
+}
+
+function stripHrefParams(href: string, keysToStrip: string[]) {
+  const [path, query = ''] = href.split('?');
+  if (!query) return href;
+  const blocked = new Set(keysToStrip);
+  const nextQuery = query
+    .split('&')
+    .filter((entry) => {
+      const key = decodeURIComponent(entry.split('=')[0] || '');
+      return !blocked.has(key);
+    })
+    .join('&');
+  return nextQuery ? `${path}?${nextQuery}` : path;
+}
+
+function isCorrectionResolution(action: ShiftException['suggested_resolution']['action']) {
+  return action === 'add_clock_in' || action === 'add_clock_out' || action === 'void_event';
+}
+
+function getExceptionTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    missing_arrival: 'Missing arrival',
+    late_arrival: 'Late arrival',
+    missing_clock_out: 'Still clocked in',
+    scan_sequence: 'Bad scan sequence',
+    recognition_review: 'Recognition review',
+  };
+  return labels[type] || titleCase(type);
+}
+
+function getExceptionHref(exception: ShiftException, canOperate: boolean) {
+  return buildHref('/exceptions', {
+    date: exception.date,
+    status: 'open',
+    department: exception.department || undefined,
+    type: exception.type,
+    severity: exception.severity,
+    exception_key: exception.key,
+    intent: canOperate && exception.suggested_resolution.can_apply && isCorrectionResolution(exception.suggested_resolution.action)
+      ? 'correct'
+      : undefined,
+  });
+}
+
+function getExceptionSourceHref(exception: ShiftException) {
+  return exception.suggested_resolution.source_href ||
+    exception.suggested_resolution.href ||
+    exception.links.activity_log ||
+    exception.links.recognition_lab ||
+    exception.links.kiosk ||
+    null;
+}
+
+function getRoleSafeExceptionSourceHref(exception: ShiftException, canOperate: boolean) {
+  const href = getExceptionSourceHref(exception);
+  return href && !canOperate ? stripHrefParams(href, ['intent']) : href;
+}
+
+function getTrustTone(status: ShiftTrustBriefStatus | OpsReadinessStatus | null) {
+  if (status === 'ready') return 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200';
+  if (status === 'blocked' || status === 'critical') return 'border-red-400/25 bg-red-400/10 text-red-200';
+  return 'border-amber-400/25 bg-amber-400/10 text-amber-200';
+}
+
+function getTrustLabel(status: ShiftTrustBriefStatus | OpsReadinessStatus | null) {
+  if (status === 'blocked' || status === 'critical') return 'Blocked';
+  if (status === 'ready') return 'Ready';
+  return 'Needs attention';
+}
+
+function getCommandGroupKey(action: ReturnType<typeof buildProactiveActions>[number]): CommandGroupKey {
+  if (action.blocksReadiness || action.priority === 'critical') return 'needs-action';
+  if (action.blocksCloseout || action.priority === 'closeout') return 'closeout-blockers';
+  return 'watch-signals';
 }
 
 export default function Dashboard() {
@@ -229,8 +264,9 @@ export default function Dashboard() {
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
   const [attendanceEvents, setAttendanceEvents] = useState<AttendanceEvent[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
-  const [shiftExceptions, setShiftExceptions] = useState<ShiftExceptionsSummary | null>(null);
-  const [shiftCloseout, setShiftCloseout] = useState<ShiftCloseoutSummary | null>(null);
+  const [shiftBriefing, setShiftBriefing] = useState<ShiftBriefingResponse | null>(null);
+  const [shiftExceptions, setShiftExceptions] = useState<ShiftExceptionsResponse | null>(null);
+  const [shiftCloseout, setShiftCloseout] = useState<ShiftCloseoutResponse | null>(null);
   const [search, setSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [signalFailures, setSignalFailures] = useState<SignalFailure[]>([]);
@@ -249,6 +285,7 @@ export default function Dashboard() {
         { key: 'workers', label: 'Worker roster', href: '/workers', request: () => fetch('/api/workers?scope=dashboard') },
         { key: 'attendance', label: 'Attendance events', href: `/log?date=${today}`, request: () => fetch(`/api/attendance?date=${today}`) },
         { key: 'system-health', label: 'Kiosk and system health', href: '/kiosks', request: () => fetch(`/api/system-health?date=${today}`) },
+        { key: 'shift-briefing', label: 'Morning readiness brief', href: `/briefing?date=${today}`, request: () => fetch(`/api/shift-briefing?date=${today}`) },
         { key: 'shift-exceptions', label: 'Shift exceptions', href: `/exceptions?date=${today}&status=open`, request: () => fetch(`/api/shift-exceptions?date=${today}`) },
         { key: 'shift-closeout', label: 'Shift closeout', href: `/closeout?date=${today}`, request: () => fetch(`/api/shift-closeout?date=${today}`) },
       ];
@@ -293,6 +330,9 @@ export default function Dashboard() {
         } else if (signal.key === 'system-health') {
           successfulKeys.add(signal.key);
           setSystemHealth(json);
+        } else if (signal.key === 'shift-briefing') {
+          successfulKeys.add(signal.key);
+          setShiftBriefing(json);
         } else if (signal.key === 'shift-exceptions') {
           successfulKeys.add(signal.key);
           setShiftExceptions(json);
@@ -426,6 +466,7 @@ export default function Dashboard() {
     getSignalFreshnessCopy(signalFreshness, 'workers', 'Roster cached'),
     getSignalFreshnessCopy(signalFreshness, 'attendance', 'Attendance cached'),
     getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached'),
+    getSignalFreshnessCopy(signalFreshness, 'shift-briefing', 'Morning brief cached'),
     getSignalFreshnessCopy(signalFreshness, 'shift-exceptions', 'Exceptions cached'),
     getSignalFreshnessCopy(signalFreshness, 'shift-closeout', 'Closeout cached'),
   ].filter((item): item is string => Boolean(item));
@@ -436,6 +477,12 @@ export default function Dashboard() {
   const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
   const actionDate = getLocalDateString();
   const dashboardRole = currentRole || 'viewer';
+  const proactiveShiftCloseout = shiftCloseout
+    ? {
+        ...shiftCloseout,
+        summary: { ...shiftCloseout.summary },
+      }
+    : null;
   const actionItems = buildProactiveActions({
     date: actionDate,
     signalFailures,
@@ -444,23 +491,23 @@ export default function Dashboard() {
     systemHealth,
     stats,
     shiftExceptions,
-    shiftCloseout,
+    shiftCloseout: proactiveShiftCloseout,
     currentRole: dashboardRole,
   });
   const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
   const canOpenAdminOps = dashboardRole === 'admin';
   const canOpenEnrollmentOps = dashboardRole === 'admin' || dashboardRole === 'enrollment';
+  const canOperateExceptionWork = dashboardRole === 'admin' || dashboardRole === 'enrollment';
   const opsKioskHref = canOpenAdminOps ? '/kiosks' : `/briefing?date=${actionDate}`;
-  const opsKioskCta = canOpenAdminOps ? 'Fix kiosk sync' : 'Review kiosk readiness';
   const morningBriefHref = `/briefing?date=${actionDate}`;
   const opsEnrollmentHref = canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
-  const opsWorkerHref = canOpenAdminOps ? '/workers' : canOpenEnrollmentOps ? '/enroll' : `/briefing?date=${actionDate}`;
   const opsExceptionsHref = `/exceptions?date=${actionDate}&status=open`;
   const systemHealthCta = canOpenAdminOps ? 'Manage kiosks' : 'Review readiness';
   const rosterFailureHref = canOpenAdminOps ? '/workers' : `/briefing?date=${actionDate}`;
   const signalFailureHrefs: Partial<Record<SignalFailureKey, string>> = {
     workers: rosterFailureHref,
     'system-health': opsKioskHref,
+    'shift-briefing': morningBriefHref,
   };
 
   const offlineKioskCount = systemHealth
@@ -511,14 +558,6 @@ export default function Dashboard() {
     },
   }[readinessStatus];
 
-  const readinessChecks = [
-    { label: 'Portal', value: systemHealth ? 'Online' : 'Unknown', status: systemHealth ? 'online' as HealthStatus : 'offline' as HealthStatus, href: '/' },
-    { label: 'Face service', value: systemHealth ? healthLabel(systemHealth.face_service.status) : 'Unknown', status: systemHealth?.face_service.status || 'offline' as HealthStatus, href: opsEnrollmentHref },
-    { label: 'Kiosks online', value: systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'Unknown', status: offlineKioskCount > 0 ? 'offline' as HealthStatus : staleKioskCount > 0 ? 'stale' as HealthStatus : 'online' as HealthStatus, href: opsKioskHref },
-    { label: 'Workers enrolled', value: systemHealth ? `${systemHealth.sync.ready_worker_count} of ${stats.totalWorkers} enrolled` : `${workers.filter((w) => w.encoding_status === 'valid' || w.has_face_encoding).length} of ${stats.totalWorkers} enrolled`, status: hasWorkerEnrollmentIssues ? 'stale' as HealthStatus : 'online' as HealthStatus, href: opsWorkerHref },
-    { label: 'Exceptions', value: shiftExceptions ? `${shiftExceptions.summary.open} open exceptions` : 'Unknown', status: shiftExceptions?.summary.critical ? 'offline' as HealthStatus : shiftExceptions?.summary.open ? 'stale' as HealthStatus : 'online' as HealthStatus, href: `/exceptions?date=${actionDate}&status=open` },
-  ];
-
   const recentEvents: RecentEvent[] = [
     ...(systemHealth?.warnings || []).map((warning, index) => {
       const faceServiceWarning = isFaceServiceWarning(warning);
@@ -551,13 +590,41 @@ export default function Dashboard() {
     })
     .slice(0, 8);
 
+  const trustBrief = shiftBriefing?.shift_trust_brief || null;
+  const trustStatus = trustBrief?.readiness_status || readinessStatus;
+  const trustSummary = trustBrief?.summary_sentence || readinessCopy.description;
+  const trustFreshnessCopy = getSignalFreshnessCopy(signalFreshness, 'shift-briefing', 'Morning brief cached');
+  const openExceptionRows = (shiftExceptions?.exceptions || [])
+    .filter((exception) => exception.status === 'open')
+    .slice(0, 4);
+  const commandGroups = [
+    {
+      key: 'needs-action' as const,
+      label: 'Needs action',
+      description: 'Blocking readiness, kiosk, enrollment, schedule, or critical exception work.',
+      items: actionItems.filter((item) => getCommandGroupKey(item) === 'needs-action'),
+    },
+    {
+      key: 'closeout-blockers' as const,
+      label: 'Closeout blockers',
+      description: 'Work that must be reviewed or acknowledged before the shift record is trusted.',
+      items: actionItems.filter((item) => getCommandGroupKey(item) === 'closeout-blockers'),
+    },
+    {
+      key: 'watch-signals' as const,
+      label: 'Watch signals',
+      description: 'Non-blocking attendance and audit signals to keep in view.',
+      items: actionItems.filter((item) => getCommandGroupKey(item) === 'watch-signals'),
+    },
+  ];
+
   return (
     <div className="animate-fade-in">
       {/* Header */}
       <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
         <div>
           <h1 className="page-title text-slate-100">
-            Live <span className="text-gold">Dashboard</span>
+            Shift Command <span className="text-gold">Inbox</span>
           </h1>
           <div className="flex items-center gap-3 mt-2">
             <span className="flex items-center gap-1.5">
@@ -605,174 +672,62 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Today's Ops */}
-      <section className={`rounded-3xl border p-5 mb-6 ${readinessCopy.tone}`}>
+      {/* Shift Command Inbox */}
+      <section className={`rounded-3xl border p-5 mb-6 ${getTrustTone(trustStatus)}`}>
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
           <div className="max-w-2xl">
-            <p className="text-xs font-mono uppercase tracking-[0.2em] opacity-80">Today's Ops</p>
+            <p className="text-xs font-mono uppercase tracking-[0.2em] opacity-80">Action Center</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h2 className="font-display text-2xl font-semibold text-slate-100">{readinessCopy.title}</h2>
-              <span className="badge border border-current/20 bg-black/10 text-current">{readinessCopy.label}</span>
+              <h2 className="font-display text-2xl font-semibold text-slate-100">{getTrustLabel(trustStatus)} shift trust</h2>
+              <span className="badge border border-current/20 bg-black/10 text-current">
+                {trustBrief ? titleCase(trustBrief.readiness_status) : readinessCopy.label}
+              </span>
               {systemHealthStaleCopy && (
                 <span className="badge border border-amber-400/20 bg-amber-400/10 text-amber-200">{systemHealthStaleCopy}</span>
               )}
+              {trustFreshnessCopy && (
+                <span className="badge border border-amber-400/20 bg-amber-400/10 text-amber-200">{trustFreshnessCopy}</span>
+              )}
             </div>
-            <p className="mt-2 text-sm leading-6 text-slate-300">{readinessCopy.description}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-300">{trustSummary}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Link href={morningBriefHref} className="btn-primary inline-flex px-4 py-2 text-sm">
-                Open morning brief
-              </Link>
-              <Link href={opsKioskHref} className="btn-primary inline-flex px-4 py-2 text-sm">
-                {opsKioskCta}
+                Open Morning Readiness Brief
               </Link>
               <Link href={opsExceptionsHref} className="btn-secondary inline-flex px-4 py-2 text-sm">
-                Review exceptions
+                Review open exceptions
+              </Link>
+              <Link href={`/closeout?date=${actionDate}`} className="btn-secondary inline-flex px-4 py-2 text-sm">
+                Check closeout
               </Link>
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 xl:min-w-[560px] gap-3">
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Expected</p>
-              <p className="mt-1 text-2xl font-display font-bold text-slate-100">{stats.totalWorkers}</p>
+              <p className="mt-1 text-2xl font-display font-bold text-slate-100">{trustBrief?.source_counts.expected ?? stats.totalWorkers}</p>
               <p className="text-[11px] text-slate-500">workers today</p>
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Arrived</p>
-              <p className="mt-1 text-2xl font-display font-bold text-emerald-300">{stats.clockedIn + stats.clockedOut}</p>
-              <p className="text-[11px] text-slate-500">clock events today</p>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Open exceptions</p>
+              <p className="mt-1 text-2xl font-display font-bold text-gold">{trustBrief?.source_counts.open_exceptions ?? shiftExceptions?.summary.open ?? 0}</p>
+              <p className="text-[11px] text-slate-500">need disposition</p>
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Not arrived</p>
-              <p className="mt-1 text-2xl font-display font-bold text-amber-300">{stats.notArrived}</p>
-              <p className="text-[11px] text-slate-500">no clock-in scans yet</p>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Closeout risks</p>
+              <p className="mt-1 text-2xl font-display font-bold text-amber-300">{(trustBrief?.closeout_risks.length ?? shiftCloseout?.blockers.length) || 0}</p>
+              <p className="text-[11px] text-slate-500">blockers / risks</p>
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Kiosks online</p>
               <p className="mt-1 text-2xl font-display font-bold text-slate-100">{systemHealth ? systemHealth.kiosks.counts.online : '—'}</p>
-              <p className="text-[11px] text-slate-500">{systemHealth ? `of ${systemHealth.kiosks.total} connected` : 'sync unknown'}</p>
+              <p className="text-[11px] text-slate-500">{systemHealth ? `${systemHealth.kiosks.counts.online} of ${systemHealth.kiosks.total} kiosks online` : 'sync unknown'}</p>
             </div>
-          </div>
-        </div>
-        <div className="mt-5 hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          {readinessChecks.map((check) => (
-            <Link key={check.label} href={check.href} className="rounded-2xl border border-white/10 bg-navy-950/30 p-3 hover:border-gold/30 transition-colors">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-mono uppercase tracking-wider text-slate-500">{check.label}</p>
-                <span className={`badge border text-[10px] ${healthTone(check.status)}`}>{healthLabel(check.status)}</span>
-              </div>
-              <p className="mt-2 font-display text-lg font-semibold text-slate-100">{check.value}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <StatsBar stats={stats} />
-
-      {/* System Health */}
-      <section className="glass-card p-5 mb-6">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div>
-            <p className="section-label">System Health</p>
-            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Kiosk fleet & sync readiness</h2>
-            <p className="mt-1 text-xs text-slate-500 font-mono">
-              {systemHealth ? `Checked ${formatRelativeTime(systemHealth.checked_at)}` : 'Health check unavailable'}
-            </p>
-            {systemHealthStaleCopy && (
-              <p className="mt-1 text-xs text-amber-300 font-mono">{systemHealthStaleCopy}</p>
-            )}
-          </div>
-          <Link href={opsKioskHref} className="btn-secondary text-xs">{systemHealthCta}</Link>
-        </div>
-
-        {systemHealth ? (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-              <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4">
-                <p className="section-label">Portal</p>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className={`badge border ${healthTone(systemHealth.portal.status)}`}>Online</span>
-                  <span className="text-xs font-mono text-slate-500">Live</span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
-                <p className="section-label">Face service</p>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className={`badge border ${healthTone(systemHealth.face_service.status)}`}>{healthLabel(systemHealth.face_service.status)}</span>
-                  <span className="text-xs font-mono text-slate-500">{systemHealth.face_service.latency_ms}ms</span>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500 truncate">
-                  {systemHealth.face_service.model_ready ? 'Recognition models ready' : 'Model readiness unknown'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
-                <p className="section-label">Kiosks</p>
-                <div className="mt-3 flex items-end gap-2">
-                  <span className="text-3xl font-display font-bold text-emerald-400">{systemHealth.kiosks.counts.online}</span>
-                  <span className="pb-1 text-sm text-slate-500">online / {systemHealth.kiosks.total} total</span>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  {systemHealth.kiosks.counts.stale} stale · {systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced} offline/never
-                </p>
-              </div>
-              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
-                <p className="section-label">Worker data ready</p>
-                <div className="mt-3 flex items-end gap-2">
-                  <span className="text-3xl font-display font-bold text-gold">{systemHealth.sync.ready_worker_count}</span>
-                  <span className="pb-1 text-sm text-slate-500">workers enrolled</span>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">Last event upload {formatRelativeTime(systemHealth.sync.last_attendance_upload)}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              {systemHealth.kiosks.rows.slice(0, 4).map((kiosk) => (
-                <div key={kiosk.id} className="rounded-2xl border border-navy-600/45 bg-navy-900/40 p-4 flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-display font-semibold text-sm text-slate-200 truncate">{kiosk.name}</h3>
-                      <span className={`badge border text-[10px] ${healthTone(kiosk.status)}`}>{healthLabel(kiosk.status)}</span>
-                    </div>
-                    <p className="mt-1 text-xs font-mono text-slate-500 truncate">{kiosk.location || kiosk.kiosk_id || 'No location set'}</p>
-                    <p className="mt-2 text-[11px] text-slate-500">Last sync {formatRelativeTime(kiosk.last_sync)} · Last upload {formatRelativeTime(kiosk.last_attendance_upload)}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-2xl font-display font-bold text-slate-200">{kiosk.expected_worker_count}</p>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-600">expected</p>
-                  </div>
-                </div>
-              ))}
-              {systemHealth.kiosks.rows.length === 0 && (
-                <div className="rounded-2xl border border-amber-400/15 bg-amber-400/5 p-4 text-sm text-amber-200">
-                  No kiosks are registered yet. Add the first kiosk before employee launch so sync health has something to monitor.
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="rounded-2xl border border-red-400/15 bg-red-400/5 p-4 text-sm text-red-200">
-            System health is unavailable right now. Refresh or open Kiosks to inspect device records.
-          </div>
-        )}
-      </section>
-
-      {/* Action Center */}
-      <section className="glass-card p-5 mb-6">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div>
-            <p className="section-label">Proactive Action Center</p>
-            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Today’s decisions, ranked</h2>
-            <p className="mt-1 text-xs text-slate-500 font-mono">Sorted by shift risk, readiness blockers, and closeout trust</p>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Link href={morningBriefHref} className="btn-secondary text-xs">Full brief</Link>
-            <span className="badge border bg-navy-900/60 text-slate-400 border-navy-600/50">
-              {actionItems.length || 'All clear'}
-            </span>
           </div>
         </div>
 
         {shiftTrustPlan && (
-          <div className="mb-4 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">
+          <div className="mt-5 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <p className="section-label text-gold">Next best action</p>
@@ -820,51 +775,48 @@ export default function Dashboard() {
           </div>
         )}
 
-        {actionItems.length === 0 ? (
-          <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4 flex items-start gap-3">
-            <span className="status-dot-pulse bg-emerald-400 mt-1.5" />
-            <div>
-              <p className="font-display font-semibold text-emerald-300">All clear</p>
-              <p className="text-sm text-slate-500 mt-1">No readiness, kiosk, exception, closeout, enrollment, schedule, or arrival issues need review right now.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            {actionItems.map((item) => {
-              const tone = {
-                amber: 'border-amber-400/20 bg-amber-400/5 text-amber-300',
-                red: 'border-red-400/20 bg-red-400/5 text-red-300',
-                slate: 'border-navy-600/50 bg-navy-900/55 text-slate-300',
-              }[item.tone];
-              const priorityTone = {
-                critical: 'border-red-400/20 bg-red-400/10 text-red-300',
-                warning: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
-                closeout: 'border-blue-400/20 bg-blue-400/10 text-blue-300',
-                info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
-              }[item.priority];
-              const actionFreshnessBadge = getActionFreshnessBadge(item.freshness);
-              const actionFreshnessCopy = getActionFreshnessCopy(item.freshness);
-              const evidenceChips = getProactiveActionEvidenceChips(item);
-              const outcomeChips = getProactiveActionOutcomeChips(item);
-              const proofLink = getProactiveActionProofLink(item);
-              return (
-                <div key={item.key} className={`rounded-2xl border p-4 ${tone}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`badge border text-[10px] ${priorityTone}`}>{item.priority}</span>
-                        {actionFreshnessBadge && (
-                          <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">{actionFreshnessBadge}</span>
-                        )}
-                        {!item.actionability.canOperate && (
-                          <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
-                        )}
-                        <p className="text-xs font-mono uppercase tracking-wider opacity-80">{item.label}</p>
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {commandGroups.map((group) => (
+            <section key={group.key} className="rounded-2xl border border-white/10 bg-navy-950/25 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-display text-base font-semibold text-slate-100">{group.label}</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{group.description}</p>
+                </div>
+                <span className="badge border bg-navy-900/60 text-slate-400 border-navy-600/50">
+                  {group.items.length}
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {group.items.slice(0, 4).map((item) => {
+                  const priorityTone = {
+                    critical: 'border-red-400/20 bg-red-400/10 text-red-300',
+                    warning: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+                    closeout: 'border-blue-400/20 bg-blue-400/10 text-blue-300',
+                    info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
+                  }[item.priority];
+                  const actionFreshnessBadge = getActionFreshnessBadge(item.freshness);
+                  const evidenceChips = getProactiveActionEvidenceChips(item);
+                  const outcomeChips = getProactiveActionOutcomeChips(item);
+                  const proofLink = getProactiveActionProofLink(item);
+                  return (
+                    <article key={item.key} className="rounded-xl border border-navy-600/50 bg-navy-900/45 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`badge border text-[10px] ${priorityTone}`}>{item.priority}</span>
+                            {actionFreshnessBadge && (
+                              <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">{actionFreshnessBadge}</span>
+                            )}
+                            {!item.actionability.canOperate && (
+                              <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
+                            )}
+                          </div>
+                          <h4 className="mt-2 font-display text-sm font-semibold text-slate-100">{item.label}</h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-400">{item.description}</p>
+                        </div>
+                        <span className="text-2xl font-display font-bold tabular-nums text-slate-200">{item.value}</span>
                       </div>
-                      <p className="mt-2 text-sm leading-5 text-slate-400">{item.description}</p>
-                      {actionFreshnessCopy && (
-                        <p className="mt-2 text-xs font-mono text-amber-300/80">{actionFreshnessCopy}</p>
-                      )}
                       {evidenceChips.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2" aria-label={`${item.label} evidence`}>
                           {evidenceChips.map((chip) => (
@@ -881,32 +833,190 @@ export default function Dashboard() {
                           </span>
                         ))}
                       </div>
-                      {(item.blocksReadiness || item.blocksCloseout) && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {item.blocksReadiness && (
-                            <span className="badge border border-red-400/15 bg-red-400/5 text-[10px] text-red-300">Blocks readiness</span>
-                          )}
-                          {item.blocksCloseout && (
-                            <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">Blocks closeout trust</span>
-                          )}
-                        </div>
-                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Link href={item.href} className="inline-flex text-xs font-semibold text-gold hover:text-gold-light">
+                          {item.cta} →
+                        </Link>
+                        {proofLink && (
+                          <Link href={proofLink.href} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
+                            {proofLink.label} →
+                          </Link>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+                {group.items.length === 0 && (
+                  <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-3 text-sm text-emerald-200">
+                    Clear right now.
+                  </div>
+                )}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {actionItems.length === 0 ? (
+          <div className="mt-5 rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4 flex items-start gap-3">
+            <span className="status-dot-pulse bg-emerald-400 mt-1.5" />
+            <div>
+              <p className="font-display font-semibold text-emerald-300">All clear</p>
+              <p className="text-sm text-slate-500 mt-1">No readiness, kiosk, exception, closeout, enrollment, schedule, or arrival issues need review right now.</p>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="glass-card p-5 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p className="section-label">Open exception work</p>
+            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Suggested resolutions</h2>
+            <p className="mt-1 text-xs text-slate-500 font-mono">
+              {shiftExceptions ? `${shiftExceptions.summary.open} open of ${shiftExceptions.summary.total} total exceptions` : 'Exception queue unavailable'}
+            </p>
+          </div>
+          <Link href={opsExceptionsHref} className="btn-secondary text-xs">Open full queue</Link>
+        </div>
+        {openExceptionRows.length > 0 ? (
+          <div className="grid gap-3 xl:grid-cols-2">
+            {openExceptionRows.map((exception) => {
+              const resolution = exception.suggested_resolution;
+              const sourceHref = getRoleSafeExceptionSourceHref(exception, canOperateExceptionWork);
+              const severityTone = {
+                critical: 'border-red-400/20 bg-red-400/10 text-red-300',
+                warning: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+                info: 'border-blue-400/20 bg-blue-400/10 text-blue-300',
+              }[exception.severity];
+              return (
+                <article key={exception.key} className="rounded-2xl border border-navy-600/45 bg-navy-900/40 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`badge border ${severityTone}`}>{titleCase(exception.severity)}</span>
+                        <span className="badge border border-navy-600/50 bg-navy-900/60 text-slate-400">
+                          {getExceptionTypeLabel(exception.type)}
+                        </span>
+                        {!canOperateExceptionWork && (
+                          <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
+                        )}
+                      </div>
+                      <h3 className="mt-2 font-display text-base font-semibold text-slate-100">{exception.title}</h3>
+                      <p className="mt-1 text-sm leading-5 text-slate-400">{exception.description}</p>
                     </div>
-                    <span className="text-3xl font-display font-bold tabular-nums">{item.value}</span>
+                    <span className="text-xs font-mono text-slate-600 shrink-0">{formatRelativeTime(exception.last_seen || exception.first_seen)}</span>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-navy-600/50 bg-navy-950/45 p-3">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-500">Suggested resolution</p>
+                    <p className="mt-1 text-sm font-medium text-slate-200">{resolution.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{resolution.disabled_reason || resolution.reason}</p>
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <Link href={item.href} className="inline-flex text-xs font-semibold text-gold hover:text-gold-light">
-                      {item.cta} →
+                    <Link href={getExceptionHref(exception, canOperateExceptionWork)} className="inline-flex text-xs font-semibold text-gold hover:text-gold-light">
+                      {canOperateExceptionWork ? resolution.cta : 'Review source'} →
                     </Link>
-                    {proofLink && (
-                      <Link href={proofLink.href} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
-                        {proofLink.label} →
+                    {sourceHref && (
+                      <Link href={sourceHref} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
+                        Source evidence →
                       </Link>
                     )}
                   </div>
-                </div>
+                </article>
               );
             })}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4 text-sm text-emerald-200">
+            No open exception rows need supervisor disposition right now.
+          </div>
+        )}
+      </section>
+
+      <StatsBar stats={stats} />
+
+      {/* System Health */}
+      <section className="glass-card p-5 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <p className="section-label">System Health</p>
+            <h2 className="mt-1 font-display text-lg font-semibold text-slate-100">Kiosk fleet & sync readiness</h2>
+            <p className="mt-1 text-xs text-slate-500 font-mono">
+              {systemHealth ? `Checked ${formatRelativeTime(systemHealth.checked_at)}` : 'Health check unavailable'}
+            </p>
+            {systemHealthStaleCopy && (
+              <p className="mt-1 text-xs text-amber-300 font-mono">{systemHealthStaleCopy}</p>
+            )}
+          </div>
+          <Link href={opsKioskHref} className="btn-secondary text-xs">{systemHealthCta}</Link>
+        </div>
+
+        {systemHealth ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4">
+                <p className="section-label">Portal</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className={`badge border ${healthTone(systemHealth.portal.status)}`}>Online</span>
+                  <span className="text-xs font-mono text-slate-500">Live</span>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
+                <p className="section-label">Face service</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <span className={`badge border ${healthTone(systemHealth.face_service.status)}`}>{healthLabel(systemHealth.face_service.status)}</span>
+                  <span className="text-xs font-mono text-slate-500">{systemHealth.face_service.latency_ms}ms</span>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500 truncate">
+                  {systemHealth.face_service.model_ready ? 'Recognition models ready' : 'Model readiness unknown'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
+                <p className="section-label">Kiosks</p>
+                <div className="mt-3 flex items-end gap-2">
+                  <span className="text-3xl font-display font-bold text-emerald-400">{systemHealth.kiosks.counts.online}</span>
+                  <span className="pb-1 text-sm text-slate-500">of {systemHealth.kiosks.total} kiosks online</span>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  {systemHealth.kiosks.counts.stale} stale · {systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced} offline/never
+                </p>
+              </div>
+              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
+                <p className="section-label">Worker data ready</p>
+                <div className="mt-3 flex items-end gap-2">
+                  <span className="text-3xl font-display font-bold text-gold">{systemHealth.sync.ready_worker_count}</span>
+                  <span className="pb-1 text-sm text-slate-500">workers enrolled</span>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">Last event upload {formatRelativeTime(systemHealth.sync.last_attendance_upload)}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {systemHealth.kiosks.rows.slice(0, 4).map((kiosk) => (
+                <div key={kiosk.id} className="rounded-2xl border border-navy-600/45 bg-navy-900/40 p-4 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-display font-semibold text-sm text-slate-200 truncate">{kiosk.name}</h3>
+                      <span className={`badge border text-[10px] ${healthTone(kiosk.status)}`}>{healthLabel(kiosk.status)}</span>
+                    </div>
+                    <p className="mt-1 text-xs font-mono text-slate-500 truncate">{kiosk.location || kiosk.kiosk_id || 'No location set'}</p>
+                    <p className="mt-2 text-[11px] text-slate-500">Last sync {formatRelativeTime(kiosk.last_sync)} · Last upload {formatRelativeTime(kiosk.last_attendance_upload)}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-2xl font-display font-bold text-slate-200">{kiosk.expected_worker_count}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-600">expected</p>
+                  </div>
+                </div>
+              ))}
+              {systemHealth.kiosks.rows.length === 0 && (
+                <div className="rounded-2xl border border-amber-400/15 bg-amber-400/5 p-4 text-sm text-amber-200">
+                  No kiosks are registered yet. Add the first kiosk before employee launch so sync health has something to monitor.
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-2xl border border-red-400/15 bg-red-400/5 p-4 text-sm text-red-200">
+            System health is unavailable right now. Refresh or open Kiosks to inspect device records.
           </div>
         )}
       </section>
