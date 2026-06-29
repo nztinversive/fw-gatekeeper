@@ -615,6 +615,10 @@ export default function Dashboard() {
   const exceptionUnavailableCopy = getSignalFreshnessCopy(signalFreshness, 'shift-exceptions', 'Exceptions cached') ||
     shiftExceptions?.warning ||
     'Shift exceptions are unavailable, so exception work cannot be treated as clear yet.';
+  const openExceptionMetric = exceptionSignalUnavailable
+    ? '—'
+    : trustBrief?.source_counts.open_exceptions ?? shiftExceptions.summary.open;
+  const openExceptionMetricLabel = exceptionSignalUnavailable ? 'queue unavailable' : 'need disposition';
   const openExceptionRows = (shiftExceptions?.exceptions || [])
     .filter((exception) => exception.status === 'open')
     .slice(0, 4);
@@ -731,8 +735,8 @@ export default function Dashboard() {
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Open exceptions</p>
-              <p className="mt-1 text-2xl font-display font-bold text-gold">{trustBrief?.source_counts.open_exceptions ?? shiftExceptions?.summary.open ?? 0}</p>
-              <p className="text-[11px] text-slate-500">need disposition</p>
+              <p className="mt-1 text-2xl font-display font-bold text-gold">{openExceptionMetric}</p>
+              <p className="text-[11px] text-slate-500">{openExceptionMetricLabel}</p>
             </div>
             <div className="rounded-2xl bg-navy-950/35 border border-white/10 p-3">
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Closeout risks</p>
