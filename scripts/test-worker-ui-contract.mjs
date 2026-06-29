@@ -48,6 +48,8 @@ assert.match(dashboardPage, /All clear/, 'Dashboard Action Center must have a po
 assert.match(dashboardPage, /buildProactiveActions/, 'Dashboard Action Center must use the proactive action engine.');
 assert.match(proactiveActions, /Review now/, 'Dashboard Action Center must provide a clear review CTA.');
 assert.match(dashboardPage, /Shift Command <span className="text-gold">Inbox<\/span>/, 'Dashboard must lead with the shift command inbox instead of a passive live dashboard.');
+assert.match(dashboardPage, /Live Shift Sentinel/, 'Dashboard command inbox must include the deterministic live Sentinel surface.');
+assert.match(dashboardPage, /Mark Sentinel seen/, 'Dashboard Sentinel acknowledgements must stay lightweight and in-app.');
 assert.match(dashboardPage, /Next best action/, 'Dashboard command inbox must show the next best action before supporting evidence.');
 assert.match(dashboardPage, /Needs action[\s\S]*Closeout blockers[\s\S]*Watch signals/, 'Dashboard command inbox must group supervisor work by operational meaning.');
 assert.match(dashboardPage, /Open exception work[\s\S]*Suggested resolutions/, 'Dashboard command inbox must surface exception work with server-backed suggested resolutions.');

@@ -67,6 +67,7 @@ export interface ProactiveShiftExceptions {
     key?: string;
     type?: string;
     status?: string;
+    severity?: string;
   }>;
   summary?: {
     total?: number;
@@ -159,6 +160,39 @@ export interface ProactiveActionProofLink {
   label: string;
 }
 
+export type LiveShiftSentinelStatus = 'new' | 'changed' | 'current' | 'seen';
+export type LiveShiftSentinelKind =
+  | 'critical-exception'
+  | 'kiosk-trust'
+  | 'closeout-blocked'
+  | 'recognition-review'
+  | 'missing-clock-out'
+  | 'signal-unavailable';
+
+export interface LiveShiftSentinelItem {
+  key: string;
+  signature: string;
+  status: LiveShiftSentinelStatus;
+  kind: LiveShiftSentinelKind;
+  priority: ProactiveActionPriority;
+  severity: ProactiveActionSeverity;
+  tone: ProactiveActionTone;
+  label: string;
+  description: string;
+  href: string;
+  cta: string;
+  source: ProactiveActionSource;
+  evidenceChips: string[];
+  outcomeChips: string[];
+  freshnessLabel: string | null;
+  acknowledged: boolean;
+  changedSinceSeen: boolean;
+  proofLink: ProactiveActionProofLink | null;
+  actionability: ProactiveActionActionability;
+}
+
+export type LiveShiftSentinelSnapshot = Record<string, string>;
+
 type DraftProactiveAction = Omit<ProactiveAction, 'priority' | 'severity' | 'tone' | 'source' | 'freshness' | 'blocksReadiness' | 'blocksCloseout' | 'actionability'> & {
   priority?: ProactiveActionPriority;
   severity?: ProactiveActionSeverity;
@@ -246,6 +280,24 @@ function getOpenExceptionTypeFallbackCount(shiftExceptions: ProactiveShiftExcept
 
 function getFirstOpenExceptionKey(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
   return getOpenExceptionTypeEntries(shiftExceptions, type).find((exception) => exception.key)?.key || null;
+}
+
+function getOpenExceptionTypeKeys(shiftExceptions: ProactiveShiftExceptions | null, type: string) {
+  return uniqueKeys(getOpenExceptionTypeEntries(shiftExceptions, type).map((exception) => exception.key));
+}
+
+function getOpenExceptionKeys(shiftExceptions: ProactiveShiftExceptions | null) {
+  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
+  return exceptions
+    .filter((exception) => exception?.status === 'open' && exception.key)
+    .map((exception) => String(exception.key));
+}
+
+function getOpenCriticalExceptionKeys(shiftExceptions: ProactiveShiftExceptions | null) {
+  const exceptions = Array.isArray(shiftExceptions?.exceptions) ? shiftExceptions.exceptions : [];
+  return exceptions
+    .filter((exception) => exception?.status === 'open' && exception?.severity === 'critical' && exception.key)
+    .map((exception) => String(exception.key));
 }
 
 function isCriticalSystemWarning(warning: string) {
@@ -685,6 +737,127 @@ export function getProactiveActionProofLink(
   };
 }
 
+function getSentinelKind(action: ProactiveAction): LiveShiftSentinelKind | null {
+  const stale = action.freshness.status === 'stale' || Boolean(action.freshness.failed || action.freshness.unavailable);
+  if (action.key.startsWith('signal-failure-') || action.key.endsWith('-unavailable')) return 'signal-unavailable';
+  if (action.key === 'missing-clock-outs') return 'missing-clock-out';
+  if (action.key === 'recognition-review') return 'recognition-review';
+  if (action.source === 'kiosk' || action.source === 'service') return 'kiosk-trust';
+  if (action.source === 'closeout' && action.blocksCloseout) return 'closeout-blocked';
+  if (action.source === 'exceptions' && (action.priority === CRITICAL_PRIORITY || action.blocksReadiness)) return 'critical-exception';
+  if (stale) return 'signal-unavailable';
+  return null;
+}
+
+function getSentinelSignature(action: ProactiveAction, kind: LiveShiftSentinelKind) {
+  const firstBlockerProof = action.evidence.firstBlockerProof && typeof action.evidence.firstBlockerProof === 'object'
+    ? action.evidence.firstBlockerProof as Partial<{ label: string; count: number; href: string; exact: boolean }>
+    : null;
+
+  return JSON.stringify({
+    kind,
+    key: action.key,
+    value: action.value,
+    description: action.description,
+    priority: action.priority,
+    severity: action.severity,
+    freshnessStatus: action.freshness.status,
+    freshnessReason: action.freshness.reason,
+    freshnessMessage: action.freshness.message || null,
+    evidence: {
+      count: action.evidence.count ?? null,
+      open: action.evidence.open ?? null,
+      critical: action.evidence.critical ?? null,
+      blockerCount: action.evidence.blockerCount ?? null,
+      firstExceptionKey: action.evidence.firstExceptionKey ?? null,
+      matchingExceptionKeys: action.evidence.matchingExceptionKeys ?? null,
+      firstBlockerLabel: action.evidence.firstBlockerLabel ?? null,
+      date: action.evidence.date ?? null,
+      openExceptionKeys: action.evidence.openExceptionKeys ?? null,
+      criticalExceptionKeys: action.evidence.criticalExceptionKeys ?? null,
+      firstBlockerProof: firstBlockerProof
+        ? {
+            label: firstBlockerProof.label || null,
+            count: typeof firstBlockerProof.count === 'number' ? firstBlockerProof.count : null,
+            href: firstBlockerProof.href || null,
+            exact: firstBlockerProof.exact === true,
+          }
+        : null,
+      status: action.evidence.status ?? null,
+      signal: action.evidence.signal ?? null,
+      warning: action.evidence.warning ?? null,
+    },
+  });
+}
+
+function getSentinelStatus(
+  key: string,
+  signature: string,
+  seenSnapshot: LiveShiftSentinelSnapshot,
+  hasSeenBaseline: boolean,
+): LiveShiftSentinelStatus {
+  if (seenSnapshot[key] === signature) return 'seen';
+  if (hasOwn(seenSnapshot, key)) return 'changed';
+  return hasSeenBaseline ? 'new' : 'current';
+}
+
+export function getLiveShiftSentinelSnapshot(items: Array<Pick<LiveShiftSentinelItem, 'key' | 'signature'>>): LiveShiftSentinelSnapshot {
+  return items.reduce<LiveShiftSentinelSnapshot>((snapshot, item) => {
+    snapshot[item.key] = item.signature;
+    return snapshot;
+  }, {});
+}
+
+export function buildLiveShiftSentinelItems(
+  actions: ProactiveAction[],
+  options: {
+    seenSnapshot?: LiveShiftSentinelSnapshot;
+    hasSeenBaseline?: boolean;
+  } = {},
+): LiveShiftSentinelItem[] {
+  const seenSnapshot = options.seenSnapshot || {};
+  const hasSeenBaseline = Boolean(options.hasSeenBaseline);
+
+  return actions
+    .map((action) => {
+      const kind = getSentinelKind(action);
+      if (!kind) return null;
+      const signature = getSentinelSignature(action, kind);
+      const status = getSentinelStatus(action.key, signature, seenSnapshot, hasSeenBaseline);
+      const freshnessLabel = isActionFreshnessStaleForSentinel(action.freshness)
+        ? getProactiveActionFreshnessLabel(action.freshness)
+        : null;
+
+      return {
+        key: action.key,
+        signature,
+        status,
+        kind,
+        priority: action.priority,
+        severity: action.severity,
+        tone: action.tone,
+        label: action.label,
+        description: action.description,
+        href: action.href,
+        cta: action.cta,
+        source: action.source,
+        evidenceChips: getProactiveActionEvidenceChips(action),
+        outcomeChips: getProactiveActionOutcomeChips(action),
+        freshnessLabel,
+        acknowledged: status === 'seen',
+        changedSinceSeen: status === 'new' || status === 'changed',
+        proofLink: getProactiveActionProofLink(action),
+        actionability: action.actionability,
+      } satisfies LiveShiftSentinelItem;
+    })
+    .filter((item): item is LiveShiftSentinelItem => Boolean(item))
+    .slice(0, 6);
+}
+
+function isActionFreshnessStaleForSentinel(freshness: ProactiveActionFreshness) {
+  return freshness.status === 'stale' || Boolean(freshness.failed || freshness.unavailable);
+}
+
 export function buildProactiveActions(input: BuildProactiveActionsInput = {}): ProactiveAction[] {
   const actions: DraftProactiveAction[] = [];
   const signalFailures = Array.isArray(input.signalFailures) ? input.signalFailures : [];
@@ -857,6 +1030,10 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
     const recognitionReviews = getOpenExceptionTypeCount(shiftExceptions, 'recognition_review');
     const firstMissingClockOutKey = getFirstOpenExceptionKey(shiftExceptions, 'missing_clock_out');
     const firstRecognitionReviewKey = getFirstOpenExceptionKey(shiftExceptions, 'recognition_review');
+    const missingClockOutKeys = getOpenExceptionTypeKeys(shiftExceptions, 'missing_clock_out');
+    const recognitionReviewKeys = getOpenExceptionTypeKeys(shiftExceptions, 'recognition_review');
+    const openExceptionKeys = getOpenExceptionKeys(shiftExceptions);
+    const criticalExceptionKeys = getOpenCriticalExceptionKeys(shiftExceptions);
     const priority = criticalExceptions > 0 ? CRITICAL_PRIORITY : WARNING_PRIORITY;
     if (missingClockOuts > 0) {
       actions.push({
@@ -879,6 +1056,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           type: 'missing_clock_out',
           count: missingClockOuts,
           firstExceptionKey: firstMissingClockOutKey,
+          matchingExceptionKeys: missingClockOutKeys,
           byType: shiftExceptions?.summary?.by_type || null,
         },
         freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
@@ -907,6 +1085,7 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
           type: 'recognition_review',
           count: recognitionReviews,
           firstExceptionKey: firstRecognitionReviewKey,
+          matchingExceptionKeys: recognitionReviewKeys,
           byType: shiftExceptions?.summary?.by_type || null,
         },
         freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
@@ -930,10 +1109,13 @@ export function buildProactiveActions(input: BuildProactiveActionsInput = {}): P
       cta: 'Open exceptions',
       source: 'exceptions',
       evidence: {
+        date: shiftExceptions?.date || actionDate,
         open: openExceptions,
         critical: criticalExceptions,
         warning: Number(shiftExceptions?.summary?.warning || 0),
         info: Number(shiftExceptions?.summary?.info || 0),
+        openExceptionKeys,
+        criticalExceptionKeys,
       },
       freshness: getFreshness(signalFreshness, ['shift-exceptions', 'exceptions']),
       blocksReadiness: criticalExceptions > 0,
