@@ -7,10 +7,12 @@ const root = new URL('../', import.meta.url);
 const at = (path) => new URL(path, root);
 
 const packageJson = JSON.parse(read(at('package.json')));
-assert.equal(
-  packageJson.dependencies?.['@convex-dev/auth'],
-  '^0.0.92',
-  'package.json should include @convex-dev/auth so portal users can move from shared PIN to Convex Auth',
+const convexAuthVersion = packageJson.dependencies?.['@convex-dev/auth'];
+assert.ok(convexAuthVersion, 'package.json should include @convex-dev/auth so portal users can move from shared PIN to Convex Auth');
+assert.match(
+  convexAuthVersion,
+  /^[~^]?0\.0\.(9[4-9]|\d{3,})$/,
+  'package.json should keep @convex-dev/auth at a patched 0.0.x version',
 );
 
 assert.ok(exists(at('convex/auth.ts')), 'convex/auth.ts should define the Convex Auth server config');
