@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "npm run test:auth-scaffold && npm run test:login-error-copy && npm run test:worker-ui && npm run test:enrollment-permissions && npm run test:kiosk-readiness && npm run test:recognition-attempts && npm run test:dashboard-demo-mode && npm run test:shift-exceptions && npm run test:shift-briefing && npm run test:shift-closeout && npm run test:proactive-actions && npm run test:attendance-corrections && npm run test:date && npm run test:convex-local-date",
     "start": "next start",
     "test:auth-scaffold": "node scripts/test-convex-auth-scaffold.mjs",
@@ -24,9 +24,9 @@
     "test:convex-local-date": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-convex-local-date-contract.mjs"
   },
   "dependencies": {
-    "@convex-dev/auth": "^0.0.92",
-    "convex": "^1.32.0",
-    "next": "14.2.21",
+    "@convex-dev/auth": "^0.0.94",
+    "convex": "^1.43.0",
+    "next": "^16.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.15.0"
@@ -36,8 +36,8 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.21",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.0"
