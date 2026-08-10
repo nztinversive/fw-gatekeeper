@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
+import { ingestAttendanceEvent } from '@/lib/convex-ingest';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 
 export async function GET(req: NextRequest) {
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'worker_id and event_type (or type) required' }, { status: 400 });
     }
 
-    const result = await convex.mutation(api.attendance.create, {
+    const result = await ingestAttendanceEvent({
       workerId: worker_id,
       eventType: resolvedType,
       kioskId: kiosk_id || undefined,

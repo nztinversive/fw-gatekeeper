@@ -1,9 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
-import convex from '@/lib/convex';
-import { api } from '../../../../convex/_generated/api';
 import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
-import { updateKioskLastSync } from '@/lib/convex-ingest';
+import { fetchWorkersForSync, updateKioskLastSync } from '@/lib/convex-ingest';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 
 export async function GET(req: NextRequest) {
@@ -28,6 +26,6 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const workers = await convex.query(api.workers.listForSync, { since });
+  const { workers } = await fetchWorkersForSync(since);
   return NextResponse.json({ workers, synced_at: lastSync });
 }

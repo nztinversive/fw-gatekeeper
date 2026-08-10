@@ -48,6 +48,16 @@ export function ingestAttendanceBatch(events: unknown[]) {
   return postSecuredIngest<{ synced: number }>('/api/ingest/attendance/bulk', { events });
 }
 
+export function ingestAttendanceEvent(event: {
+  workerId: string;
+  eventType: string;
+  kioskId?: string;
+  timestamp?: string;
+  idempotencyKey?: string;
+}) {
+  return postSecuredIngest<{ id: string }>('/api/ingest/attendance', event);
+}
+
 export function ingestRecognitionAttemptBatch(attempts: unknown[]) {
   return postSecuredIngest<{ ingested: number; skipped: number; ids: string[] }>(
     '/api/ingest/recognition-attempts/bulk',
@@ -60,4 +70,8 @@ export function updateKioskLastSync(kioskId: string, lastSync: string) {
     kioskId,
     lastSync,
   });
+}
+
+export function fetchWorkersForSync(since: string) {
+  return postSecuredIngest<{ workers: unknown[] }>('/api/ingest/workers/sync', { since });
 }
