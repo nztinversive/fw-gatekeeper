@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import convex from '@/lib/convex';
-import { api } from '../../../../../convex/_generated/api';
+import { ingestAttendanceBatch } from '@/lib/convex-ingest';
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,7 +29,8 @@ export async function POST(req: NextRequest) {
               : undefined,
     }));
 
-    const result = await convex.mutation(api.attendance.bulkCreate, { events: mapped });
+    const result = await ingestAttendanceBatch(mapped);
+    console.info('next_secured_ingest_attendance', { received: mapped.length, synced: result.synced });
     return NextResponse.json(result);
   } catch (error) {
     console.error('Attendance bulk POST error:', error);

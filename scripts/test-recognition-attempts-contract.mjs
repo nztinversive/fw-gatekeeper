@@ -44,7 +44,8 @@ assert.match(attempts, /timestampBelongsToFactoryLocalDate\(attempt\.timestamp,\
 
 assert.match(auth, /\/api\/recognition-attempts\/bulk/, 'Kiosk auth allow-list must include recognition attempt bulk upload.');
 assert.match(bulkRoute, /hasValidKioskKey/, 'Bulk recognition attempt upload must require a valid kiosk key.');
-assert.match(bulkRoute, /recognitionAttempts\.bulkIngest/, 'Bulk recognition attempt API must call the Convex bulkIngest mutation.');
+assert.match(bulkRoute, /ingestRecognitionAttemptBatch/, 'Bulk recognition attempt API must use secured Convex HTTP ingest.');
+assert.doesNotMatch(bulkRoute, /convex\.mutation/, 'Bulk recognition attempt API must not call a public Convex mutation.');
 assert.match(apiRoute, /recognitionAttempts\.listByDate/, 'Recognition attempt API must call the Convex listByDate query.');
 assert.match(apiRoute, /recognitionAttempts\.updateReview/, 'Recognition attempt review API must call the Convex updateReview mutation.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'Recognition attempt reads must allow viewer portal members.');

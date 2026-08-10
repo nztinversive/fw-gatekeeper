@@ -10,6 +10,10 @@ services:
         value: production
       - key: NEXT_PUBLIC_CONVEX_URL
         value: https://modest-bat-146.convex.cloud
+      - key: CONVEX_INGEST_URL
+        value: https://modest-bat-146.convex.site
+      - key: CONVEX_INGEST_KEY
+        sync: false
       - key: FACE_ENCODE_URL
         value: https://fw-face-service.onrender.com/encode
 

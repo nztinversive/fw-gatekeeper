@@ -7,6 +7,10 @@ const attendance = read('convex/attendance.ts');
 const recognitionAttempts = read('convex/recognitionAttempts.ts');
 const kiosks = read('convex/kiosks.ts');
 const http = read('convex/http.ts');
+const helper = read('src/lib/convex-ingest.ts');
+const attendanceRoute = read('src/app/api/attendance/bulk/route.ts');
+const recognitionRoute = read('src/app/api/recognition-attempts/bulk/route.ts');
+const syncRoute = read('src/app/api/sync/route.ts');
 
 assert.match(
   attendance,
@@ -30,5 +34,15 @@ assert.match(http, /\{ error: 'Unauthorized' \}, 401/, 'Invalid Convex HTTP cred
 assert.match(http, /path: '\/api\/ingest\/attendance\/bulk'/, 'Attendance HTTP ingest route must be registered.');
 assert.match(http, /path: '\/api\/ingest\/recognition-attempts\/bulk'/, 'Recognition HTTP ingest route must be registered.');
 assert.match(http, /path: '\/api\/ingest\/kiosks\/last-sync'/, 'Kiosk sync HTTP ingest route must be registered.');
+
+assert.match(helper, /process\.env\.CONVEX_INGEST_KEY/, 'Next secured ingest must use the server-only ingest key.');
+assert.match(helper, /authorization: `Bearer \$\{getConvexIngestKey\(\)\}`/, 'Next secured ingest must send bearer authorization.');
+assert.match(helper, /INGEST_TIMEOUT_MS = 10_000/, 'Next secured ingest must time out before the kiosk request does.');
+assert.match(attendanceRoute, /ingestAttendanceBatch\(mapped\)/, 'Attendance route must call secured HTTP ingest.');
+assert.match(recognitionRoute, /ingestRecognitionAttemptBatch\(mapped\)/, 'Recognition route must call secured HTTP ingest.');
+assert.match(syncRoute, /updateKioskLastSync\(kioskId, lastSync\)/, 'Sync route must update lastSync through secured HTTP ingest.');
+assert.doesNotMatch(attendanceRoute, /convex\.mutation/, 'Attendance route must not call a public Convex mutation.');
+assert.doesNotMatch(recognitionRoute, /convex\.mutation/, 'Recognition route must not call a public Convex mutation.');
+assert.doesNotMatch(syncRoute, /kiosks\.updateLastSync/, 'Sync route must not call the public kiosk mutation.');
 
 console.log('Secured Convex ingest contract passed');

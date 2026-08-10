@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
+import { updateKioskLastSync } from '@/lib/convex-ingest';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 
 export async function GET(req: NextRequest) {
@@ -14,21 +15,19 @@ export async function GET(req: NextRequest) {
 
   if (!kioskId) return NextResponse.json({ error: 'kiosk_id required' }, { status: 400 });
 
-  // Update kiosk last_sync
+  const lastSync = new Date().toISOString();
   try {
-    const kiosk = await convex.query(api.kiosks.findByKioskId, {
-      kioskId,
-    });
-    if (kiosk?.id) {
-      await convex.mutation(api.kiosks.updateLastSync, {
-        id: kiosk.id as any,
-        lastSync: new Date().toISOString(),
-      });
+    const result = await updateKioskLastSync(kioskId, lastSync);
+    if (!result.updated) {
+      console.warn('next_secured_ingest_kiosk_sync_not_found', { kioskId });
     }
-  } catch {
-    // Kiosk might not exist yet
+  } catch (error) {
+    console.error('next_secured_ingest_kiosk_sync_failed', {
+      kioskId,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 
   const workers = await convex.query(api.workers.listForSync, { since });
-  return NextResponse.json({ workers, synced_at: new Date().toISOString() });
+  return NextResponse.json({ workers, synced_at: lastSync });
 }

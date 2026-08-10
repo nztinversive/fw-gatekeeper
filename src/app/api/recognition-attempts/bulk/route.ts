@@ -1,9 +1,8 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import convex from '@/lib/convex';
+import { ingestRecognitionAttemptBatch } from '@/lib/convex-ingest';
 import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
-import { api } from '../../../../../convex/_generated/api';
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -87,7 +86,12 @@ export async function POST(req: NextRequest) {
     }
 
     const mapped = attempts.map((attempt: any) => normalizeAttempt(attempt, bulkKioskId));
-    const result = await convex.mutation((api as any).recognitionAttempts.bulkIngest, { attempts: mapped });
+    const result = await ingestRecognitionAttemptBatch(mapped);
+    console.info('next_secured_ingest_recognition', {
+      received: mapped.length,
+      ingested: result.ingested,
+      skipped: result.skipped,
+    });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error('Recognition attempts bulk POST error:', error);
