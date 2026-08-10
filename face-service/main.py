@@ -13,14 +13,26 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
 import onnxruntime as ort
 
+from face_auth import (
+    FACE_SERVICE_KEY_HEADER,
+    get_allowed_cors_origins,
+    get_configured_face_service_key,
+    is_valid_face_service_key,
+)
+
 app = FastAPI(title="Face Encoding Service")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_allowed_cors_origins(),
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", FACE_SERVICE_KEY_HEADER],
+)
 
 MODEL_DIR = Path("/app/models")
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -87,6 +99,15 @@ class MatchResult(BaseModel):
 
 class MatchResponse(BaseModel):
     match: Optional[MatchResult] = None
+
+
+def require_face_service_key(
+    provided_key: Optional[str] = Header(default=None, alias=FACE_SERVICE_KEY_HEADER),
+):
+    if not get_configured_face_service_key():
+        raise HTTPException(503, "Face service authentication is not configured")
+    if not is_valid_face_service_key(provided_key):
+        raise HTTPException(401, "Unauthorized")
 
 
 def decode_image(data_url: str) -> np.ndarray:
@@ -227,7 +248,11 @@ def health():
     }
 
 
-@app.post("/encode", response_model=EncodeResponse)
+@app.post(
+    "/encode",
+    response_model=EncodeResponse,
+    dependencies=[Depends(require_face_service_key)],
+)
 def encode(req: EncodeRequest):
     if not req.photos:
         raise HTTPException(400, "No photos provided")
@@ -260,7 +285,11 @@ def encode(req: EncodeRequest):
     return EncodeResponse(encoding=avg)
 
 
-@app.post("/match", response_model=MatchResponse)
+@app.post(
+    "/match",
+    response_model=MatchResponse,
+    dependencies=[Depends(require_face_service_key)],
+)
 def match(req: MatchRequest):
     if not req.encodings:
         return MatchResponse(match=None)
