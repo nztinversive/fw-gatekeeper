@@ -40,6 +40,11 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+if [ -z "$KIOSK_API_KEY" ]; then
+  echo "❌ KIOSK_API_KEY is required. Set it to the same value configured on the Gatekeeper server, then rerun setup."
+  exit 1
+fi
+
 # ─── 1. System Update ──────────────────────────────────────────
 echo "[1/7] Updating system packages..."
 apt-get update -qq
@@ -105,7 +110,8 @@ KIOSK_NAME = "$KIOSK_NAME"
 KIOSK_API_KEY = "$KIOSK_API_KEY"
 CONFEOF
 
-# Patch config.py to load local overrides
+# Patch config.py to load local overrides. Keep this out of the tracked source
+# file so existing installed repos with the generated block can still pull.
 if ! grep -q "config_local" config.py; then
   cat >> config.py << 'PATCHEOF'
 

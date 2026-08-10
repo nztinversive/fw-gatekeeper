@@ -40,8 +40,13 @@ ssh pi@fw-kiosk.local
 ```bash
 curl -sSL https://raw.githubusercontent.com/nztinversive/fw-gatekeeper/master/pi-kiosk/setup.sh -o setup.sh
 sudo chmod +x setup.sh
-sudo KIOSK_URL=https://fw-gatekeeper.onrender.com ./setup.sh
+sudo KIOSK_API_KEY="replace-with-the-server-key" \
+  SERVER_URL=https://fw-gatekeeper.onrender.com \
+  KIOSK_ID=kiosk-entry-1 \
+  ./setup.sh
 ```
+
+`KIOSK_API_KEY` is required for worker, attendance, and recognition synchronization. Setup fails immediately if it is missing. If an existing installation starts without the key, the kiosk logs a critical error, disables server sync, and keeps local records queued until the key is configured and the service is restarted.
 
 ### 4. Enroll Workers
 
@@ -73,8 +78,9 @@ The kiosk works **without internet** after the initial sync:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `KIOSK_URL` | `https://fw-gatekeeper.onrender.com` | Server URL |
+| `SERVER_URL` | `https://fw-gatekeeper.onrender.com` | Server URL |
 | `KIOSK_ID` | `kiosk-1` | Unique kiosk identifier |
+| `KIOSK_API_KEY` | none | Required shared secret matching the Gatekeeper server |
 
 ### Command Line
 
@@ -99,6 +105,7 @@ For faster detection, use a Pi 4 (~1 second total).
 |-------|-----|
 | "No camera available" | Check `vcgencmd get_camera` (Pi) or `lsusb` (USB) |
 | "No enrolled workers found" | Enroll faces on the web app first, ensure WiFi for initial sync |
+| "KIOSK_API_KEY is required" | Configure the server-matching key and restart `fw-gatekeeper-kiosk.service` |
 | Slow face detection | Normal for Pi 3B — HOG model is CPU-only |
 | False rejections | Lower threshold: `--threshold 0.7` |
 | False matches | Raise threshold: `--threshold 0.5` |

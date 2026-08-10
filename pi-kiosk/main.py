@@ -23,6 +23,7 @@ import config
 import database
 from recognition import FaceRecognizer
 from sync import SyncWorker
+from sync_auth import require_kiosk_api_key
 import app as web_app
 
 logging.basicConfig(
@@ -234,6 +235,16 @@ def run(args):
     if args.kiosk_id:
         config.KIOSK_ID = args.kiosk_id
 
+    sync_enabled = True
+    try:
+        require_kiosk_api_key()
+    except RuntimeError as exc:
+        sync_enabled = False
+        logger.critical(
+            "%s Server synchronization is disabled; local attendance and recognition records will remain queued.",
+            exc,
+        )
+
     os.makedirs(config.DATA_DIR, exist_ok=True)
     os.makedirs(config.FACES_DIR, exist_ok=True)
     os.makedirs(config.MODEL_DIR, exist_ok=True)
@@ -250,8 +261,9 @@ def run(args):
     recognizer.load_faces()
     logger.info("Loaded %d known faces", recognizer.known_count)
 
-    sync_worker = SyncWorker(recognizer=recognizer)
-    sync_worker.start()
+    sync_worker = SyncWorker(recognizer=recognizer) if sync_enabled else None
+    if sync_worker:
+        sync_worker.start()
 
     camera = Camera(mode=args.camera)
     camera_attempts = 0
@@ -537,7 +549,8 @@ def run(args):
         logger.info("Shutting down...")
     finally:
         camera.stop()
-        sync_worker.stop()
+        if sync_worker:
+            sync_worker.stop()
 
 
 if __name__ == "__main__":

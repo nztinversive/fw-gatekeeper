@@ -14,14 +14,13 @@ import requests
 
 import config
 import database
+from sync_auth import require_kiosk_api_key
 
 logger = logging.getLogger(__name__)
 
 
 def _auth_headers() -> dict[str, str]:
-    if not config.KIOSK_API_KEY:
-        return {}
-    return {"x-kiosk-key": config.KIOSK_API_KEY}
+    return {"x-kiosk-key": require_kiosk_api_key()}
 
 
 def check_server() -> bool:
