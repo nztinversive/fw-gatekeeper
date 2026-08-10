@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
 
@@ -57,5 +57,17 @@ export const updateLastSync = mutation({
   args: { id: v.id("kiosks"), lastSync: v.string() },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, { lastSync: args.lastSync });
+  },
+});
+
+export const updateLastSyncFromHttp = internalMutation({
+  args: { kioskId: v.string(), lastSync: v.string() },
+  returns: v.object({ updated: v.boolean() }),
+  handler: async (ctx, args) => {
+    const kiosk = await findActiveKioskByIdentifier(ctx, args.kioskId);
+    if (!kiosk) return { updated: false };
+
+    await ctx.db.patch(kiosk._id, { lastSync: args.lastSync });
+    return { updated: true };
   },
 });

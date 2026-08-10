@@ -1,4 +1,5 @@
-import { query, mutation } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
 import {
@@ -172,23 +173,33 @@ export const clearAll = mutation({
   },
 });
 
-export const bulkCreate = mutation({
-  args: {
-    events: v.array(
-      v.object({
-        id: v.optional(v.string()),
-        workerId: v.string(),
-        eventType: v.string(),
-        kioskId: v.optional(v.string()),
-        timestamp: v.string(),
-        idempotencyKey: v.optional(v.string()),
-        workerName: v.optional(v.string()),
-        confidence: v.optional(v.float64()),
-        livenessConfirmed: v.optional(v.boolean()),
-      })
-    ),
-  },
-  handler: async (ctx, args) => {
+const attendanceEventInput = v.object({
+  id: v.optional(v.string()),
+  workerId: v.string(),
+  eventType: v.string(),
+  kioskId: v.optional(v.string()),
+  timestamp: v.string(),
+  idempotencyKey: v.optional(v.string()),
+  workerName: v.optional(v.string()),
+  confidence: v.optional(v.float64()),
+  livenessConfirmed: v.optional(v.boolean()),
+});
+
+const bulkCreateResult = v.object({ synced: v.number() });
+
+async function createAttendanceBatch(ctx: MutationCtx, args: {
+  events: Array<{
+    id?: string;
+    workerId: string;
+    eventType: string;
+    kioskId?: string;
+    timestamp: string;
+    idempotencyKey?: string;
+    workerName?: string;
+    confidence?: number;
+    livenessConfirmed?: boolean;
+  }>;
+}) {
     const seenKeys = new Set<string>();
     let count = 0;
     for (const e of args.events) {
@@ -200,10 +211,11 @@ export const bulkCreate = mutation({
 
       const existing = await ctx.db
         .query("attendance")
-        .withIndex("by_timestamp", (q) => q.eq("timestamp", e.timestamp))
-        .filter((q) => q.eq(q.field("workerId"), e.workerId))
-        .collect();
-      if (existing.length > 0) {
+        .withIndex("by_worker_and_timestamp", (q) =>
+          q.eq("workerId", e.workerId).eq("timestamp", e.timestamp),
+        )
+        .first();
+      if (existing) {
         continue;
       }
 
@@ -221,5 +233,15 @@ export const bulkCreate = mutation({
       count++;
     }
     return { synced: count };
-  },
+}
+
+export const bulkCreate = mutation({
+  args: { events: v.array(attendanceEventInput) },
+  handler: createAttendanceBatch,
+});
+
+export const bulkCreateFromHttp = internalMutation({
+  args: { events: v.array(attendanceEventInput) },
+  returns: bulkCreateResult,
+  handler: createAttendanceBatch,
 });

@@ -1,4 +1,5 @@
-import { query, mutation } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import {
   buildConservativeFactoryLocalTimestampRanges,
@@ -228,9 +229,31 @@ export async function listAllRecognitionAttemptsByFactoryDate(
     .sort((a: any, b: any) => String(b.timestamp).localeCompare(String(a.timestamp)));
 }
 
-export const bulkIngest = mutation({
-  args: { attempts: v.array(attemptInput) },
-  handler: async (ctx, args) => {
+async function ingestAttemptBatch(ctx: MutationCtx, args: {
+  attempts: Array<{
+    timestamp: string;
+    kioskId: string;
+    sourceAttemptId?: string;
+    faceDetected: boolean;
+    candidateWorkerId?: string;
+    candidateWorkerName?: string;
+    bestScore?: number;
+    secondBestScore?: number;
+    scoreMargin?: number;
+    decision: string;
+    threshold: number;
+    livenessConfirmed?: boolean;
+    modelVersion?: string;
+    imageQuality?: number;
+    faceQuality?: number;
+    brightness?: number;
+    blur?: number;
+    reviewed?: boolean;
+    reviewedLabel?: string;
+    reviewedNote?: string;
+    reviewedAt?: string;
+  }>;
+}) {
     const seenKeys = new Set<string>();
     const insertedIds = [];
     let skipped = 0;
@@ -267,7 +290,21 @@ export const bulkIngest = mutation({
     }
 
     return { ingested: insertedIds.length, skipped, ids: insertedIds };
-  },
+}
+
+export const bulkIngest = mutation({
+  args: { attempts: v.array(attemptInput) },
+  handler: ingestAttemptBatch,
+});
+
+export const bulkIngestFromHttp = internalMutation({
+  args: { attempts: v.array(attemptInput) },
+  returns: v.object({
+    ingested: v.number(),
+    skipped: v.number(),
+    ids: v.array(v.id("recognitionAttempts")),
+  }),
+  handler: ingestAttemptBatch,
 });
 
 export const listByDate = query({
