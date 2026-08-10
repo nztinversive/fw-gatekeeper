@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const faceService = readFileSync('face-service/main.py', 'utf8');
 const dockerfile = readFileSync('face-service/Dockerfile', 'utf8');
+const requirements = readFileSync('face-service/requirements.txt', 'utf8');
 const enrollmentRoute = readFileSync('src/app/api/enroll/route.ts', 'utf8');
 const renderConfig = readFileSync('render.yaml', 'utf8');
 
@@ -14,5 +15,6 @@ assert.match(renderConfig, /name:\s*fw-gatekeeper[\s\S]*key:\s*FACE_SERVICE_KEY[
 assert.match(renderConfig, /name:\s*fw-face-service[\s\S]*key:\s*FACE_SERVICE_KEY[\s\S]*sync:\s*false/, 'Face service must declare the same secret name');
 assert.doesNotMatch(faceService, /allow_origins=\[\s*['"]\*['"]\s*\]/, 'Face-service CORS must never allow every origin');
 assert.match(dockerfile, /COPY\s+main\.py\s+face_auth\.py\s+\.\//, 'The face-service image must include its authentication module');
+assert.match(requirements, /^opencv-python-headless==4\.11\.0\.86$/m, 'The face service must use the verified OpenCV runtime with Haar cascade support');
 
 console.log('Face service authentication contract passed');
