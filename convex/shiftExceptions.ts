@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { listEffectiveAttendanceByTimestampRange } from "./attendance";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
 import { listAllRecognitionAttemptsByFactoryDate } from "./recognitionAttempts";
+import { assertPortalRole } from "./access";
 
 const LOW_MARGIN_THRESHOLD = 0.08;
 
@@ -622,6 +623,7 @@ export async function buildShiftExceptions(ctx: any, date: string) {
 export const summary = query({
   args: { date: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
     const date = args.date || new Date().toISOString().slice(0, 10);
     const exceptions = await buildShiftExceptions(ctx, date);
     return {
@@ -642,6 +644,7 @@ export const review = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     const now = new Date().toISOString();
     const existing = await ctx.db
       .query("exceptionReviews")

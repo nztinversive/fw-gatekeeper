@@ -1,5 +1,6 @@
 import { internalQuery, query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { assertPortalRole } from "./access";
 
 const SUPPORTED_ENCODING_LENGTHS = new Set([128, 512]);
 
@@ -39,6 +40,10 @@ async function findWorkerByName(ctx: any, name: string) {
 export const list = query({
   args: { includeEncodings: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
+    await assertPortalRole(
+      ctx,
+      args.includeEncodings ? ["admin", "enrollment"] : ["admin", "enrollment", "viewer"],
+    );
     const workers = await ctx.db
       .query("workers")
       .withIndex("by_active", (q) => q.eq("active", true))
@@ -64,6 +69,7 @@ export const list = query({
 export const get = query({
   args: { id: v.id("workers") },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     const w = await ctx.db.get(args.id);
     if (!w || !w.active) return null;
     return {
@@ -90,6 +96,7 @@ export const create = mutation({
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
   },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     const name = normalizeName(args.name);
     if (!name) {
       throw new Error("Worker name is required");
@@ -137,6 +144,7 @@ export const create = mutation({
 export const findByName = query({
   args: { name: v.string() },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     const worker = await findWorkerByName(ctx, args.name);
     if (!worker) {
       return null;
@@ -160,6 +168,7 @@ export const update = mutation({
     enrolledAt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     const { id, ...fields } = args;
     const updates: Record<string, unknown> = {};
     if (!isSupportedFaceEncoding(fields.faceEncoding)) {
@@ -190,6 +199,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("workers") },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin"]);
     await ctx.db.patch(args.id, { active: false, updatedAt: new Date().toISOString() });
     return { ok: true };
   },
@@ -238,12 +248,6 @@ async function listWorkersForSync(ctx: any, args: { since?: string }) {
   return result;
 }
 
-export const listForSync = query({
-  args: { since: v.optional(v.string()) },
-  returns: workerSyncResult,
-  handler: listWorkersForSync,
-});
-
 export const listForSyncFromHttp = internalQuery({
   args: { since: v.optional(v.string()) },
   returns: workerSyncResult,
@@ -253,6 +257,7 @@ export const listForSyncFromHttp = internalQuery({
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -260,6 +265,7 @@ export const generateUploadUrl = mutation({
 export const getPhotoUrls = query({
   args: { id: v.id("workers") },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     const w = await ctx.db.get(args.id);
     if (!w || !w.active) return null;
     const photos: string[] = [];

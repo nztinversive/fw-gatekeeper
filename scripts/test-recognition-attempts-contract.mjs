@@ -34,8 +34,8 @@ assert.match(schema, /\.index\("by_kiosk_reviewed_timestamp",\s*\["kioskId",\s*"
 assert.doesNotMatch(attempts, /export const bulkIngest\s*=\s*mutation/, 'Recognition bulk ingest must not remain publicly callable.');
 assert.match(attempts, /export const listByDate\s*=\s*query/, 'Recognition attempts must expose listByDate query.');
 assert.match(attempts, /export const getById\s*=\s*query/, 'Recognition attempts must expose exact attempt lookup for source handoffs.');
-assert.match(attempts, /export const listRange\s*=\s*query/, 'Recognition attempts must expose listRange query.');
-assert.match(attempts, /export const listForReview\s*=\s*query/, 'Recognition attempts must expose listForReview query.');
+assert.match(attempts, /export const listRange\s*=\s*internalQuery/, 'Recognition range lookup must be internal-only.');
+assert.match(attempts, /export const listForReview\s*=\s*internalQuery/, 'Recognition review backlog lookup must be internal-only.');
 assert.match(attempts, /export const updateReview\s*=\s*mutation/, 'Recognition attempts must expose updateReview mutation.');
 assert.match(attempts, /const reviewed = attempt\.reviewed \?\? false/, 'Bulk ingest should default attempts to unreviewed.');
 assert.match(attempts, /bestScore[\s\S]*secondBestScore[\s\S]*bestScore - attempt\.secondBestScore/, 'Bulk ingest should derive scoreMargin from best and second-best scores.');

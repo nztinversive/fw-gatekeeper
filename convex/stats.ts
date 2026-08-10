@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { assertPortalRole } from "./access";
 import { listEffectiveAttendanceByTimestampRange } from "./attendance";
 
 function getDateKey(timestamp: string): string {
@@ -18,7 +19,17 @@ function getDayOfWeek(dateKey: string): number {
 
 export const get = query({
   args: { date: v.optional(v.string()) },
+  returns: v.object({
+    totalWorkers: v.number(),
+    clockedIn: v.number(),
+    clockedOut: v.number(),
+    notArrived: v.number(),
+    avgArrival: v.union(v.string(), v.null()),
+    scheduleWarning: v.optional(v.string()),
+  }),
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
+
     const today = args.date || new Date().toISOString().split("T")[0];
 
     const allWorkers = await ctx.db

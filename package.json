@@ -6,9 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "next lint",
-    "test": "npm run test:auth-scaffold && npm run test:login-error-copy && npm run test:worker-ui && npm run test:enrollment-permissions && npm run test:kiosk-readiness && npm run test:recognition-attempts && npm run test:secured-ingest && npm run test:dashboard-demo-mode && npm run test:shift-exceptions && npm run test:shift-briefing && npm run test:shift-closeout && npm run test:proactive-actions && npm run test:attendance-corrections && npm run test:date && npm run test:convex-local-date",
+    "test": "npm run test:convex-auth && npm run test:auth-scaffold && npm run test:login-error-copy && npm run test:worker-ui && npm run test:enrollment-permissions && npm run test:kiosk-readiness && npm run test:recognition-attempts && npm run test:secured-ingest && npm run test:dashboard-demo-mode && npm run test:shift-exceptions && npm run test:shift-briefing && npm run test:shift-closeout && npm run test:proactive-actions && npm run test:attendance-corrections && npm run test:date && npm run test:convex-local-date",
     "start": "next start",
     "test:auth-scaffold": "node scripts/test-convex-auth-scaffold.mjs",
+    "test:convex-auth": "vitest run convex/access.test.ts",
     "test:login-error-copy": "node scripts/test-login-error-copy.mjs",
     "test:worker-ui": "node scripts/test-worker-ui-contract.mjs",
     "test:enrollment-permissions": "node scripts/test-enrollment-permissions-contract.mjs",
@@ -37,10 +38,12 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
+    "convex-test": "^0.0.50",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.21",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.10"
   }
 }

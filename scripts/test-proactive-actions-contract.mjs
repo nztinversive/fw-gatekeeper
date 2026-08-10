@@ -1070,7 +1070,7 @@ assert.match(dashboardSource, /proofLink && \([\s\S]*href=\{proofLink\.href\}[\s
 assert.match(dashboardSource, /getProactiveActionOutcomeChips/, 'Dashboard action cards should derive outcome chips from the shared proactive action semantics.');
 assert.match(dashboardSource, /aria-label=\{`\$\{item\.label\} outcomes`\}/, 'Dashboard outcome chips should be labelled for assistive technology.');
 assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');
-assert.match(portalRoleRoute, /hasValidAdminSession/, 'Portal role API should treat legacy admin-cookie sessions as admin.');
+assert.doesNotMatch(portalRoleRoute, /hasValidAdminSession|legacy-admin/, 'Portal role API must not elevate legacy shared-PIN sessions.');
 assert.match(portalRoleRoute, /getPortalMemberForToken/, 'Portal role API should resolve Convex portal member roles.');
 assert.match(middlewareSource, /pathname === '\/api\/portal-role' && method === 'GET'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow all active portal roles to resolve dashboard actionability.');
 assert.match(middlewareSource, /pathname === '\/api\/workers' && method === 'GET' && searchParams\.get\('scope'\) === 'dashboard'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow dashboard-scoped worker reads for all dashboard portal roles.');

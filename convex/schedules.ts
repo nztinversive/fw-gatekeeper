@@ -1,9 +1,24 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { assertPortalRole } from "./access";
+
+const scheduleResult = v.object({
+  id: v.id("schedules"),
+  name: v.string(),
+  days: v.string(),
+  start_time: v.string(),
+  end_time: v.string(),
+  department: v.union(v.string(), v.null()),
+  active: v.number(),
+  created_at: v.string(),
+});
 
 export const list = query({
   args: {},
+  returns: v.array(scheduleResult),
   handler: async (ctx) => {
+    await assertPortalRole(ctx, ["admin"]);
+
     const schedules = await ctx.db
       .query("schedules")
       .withIndex("by_active", (q) => q.eq("active", true))
@@ -30,7 +45,10 @@ export const create = mutation({
     endTime: v.string(),
     department: v.optional(v.string()),
   },
+  returns: v.object({ id: v.id("schedules") }),
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin"]);
+
     const id = await ctx.db.insert("schedules", {
       name: args.name,
       days: args.days,
@@ -53,7 +71,10 @@ export const update = mutation({
     endTime: v.optional(v.string()),
     department: v.optional(v.string()),
   },
+  returns: v.object({ ok: v.boolean() }),
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin"]);
+
     const { id, ...fields } = args;
     const updates: Record<string, unknown> = {};
     if (fields.name !== undefined) updates.name = fields.name;
@@ -68,7 +89,10 @@ export const update = mutation({
 
 export const remove = mutation({
   args: { id: v.id("schedules") },
+  returns: v.object({ ok: v.boolean() }),
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin"]);
+
     await ctx.db.patch(args.id, { active: false });
     return { ok: true };
   },

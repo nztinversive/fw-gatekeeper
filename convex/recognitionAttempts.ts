@@ -1,10 +1,11 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import {
   buildConservativeFactoryLocalTimestampRanges,
   timestampBelongsToFactoryLocalDate,
 } from "./localDate";
+import { assertPortalRole } from "./access";
 
 const attemptInput = v.object({
   timestamp: v.string(),
@@ -310,6 +311,7 @@ export const listByDate = query({
     limit: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
     const date = args.date || new Date().toISOString().slice(0, 10);
     return await listRecognitionAttemptsByFactoryDate(ctx, {
       date,
@@ -326,6 +328,7 @@ export const getById = query({
     date: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
     const attempt = await ctx.db.get(args.id);
     if (!attempt) return null;
     if (args.date && !timestampBelongsToFactoryLocalDate(attempt.timestamp, args.date)) {
@@ -335,7 +338,7 @@ export const getById = query({
   },
 });
 
-export const listRange = query({
+export const listRange = internalQuery({
   args: {
     startTimestamp: v.string(),
     endTimestamp: v.string(),
@@ -348,7 +351,7 @@ export const listRange = query({
   },
 });
 
-export const listForReview = query({
+export const listForReview = internalQuery({
   args: {
     reviewed: v.optional(v.boolean()),
     kioskId: v.optional(v.string()),
@@ -376,6 +379,7 @@ export const updateReview = mutation({
     reviewedAt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
     const existing = await ctx.db.get(args.id);
     if (!existing) {
       throw new Error("Recognition attempt not found");

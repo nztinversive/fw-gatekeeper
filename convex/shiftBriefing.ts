@@ -2,6 +2,7 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { listEffectiveAttendanceByTimestampRange } from "./attendance";
 import { buildShiftExceptions } from "./shiftExceptions";
+import { assertPortalRole } from "./access";
 
 type WorkerCoverageStatus = "present" | "late" | "missing" | "clocked_out" | "still_clocked_in";
 type DepartmentCoverageStatus = "covered" | "short" | "critical" | "unscheduled";
@@ -655,6 +656,7 @@ export async function buildShiftBriefing(ctx: any, date: string) {
 export const summary = query({
   args: { date: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
     const date = args.date || new Date().toISOString().slice(0, 10);
     return buildShiftBriefing(ctx, date);
   },

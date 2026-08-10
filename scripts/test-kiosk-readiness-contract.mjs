@@ -23,7 +23,7 @@ assert.match(sidebar, /href:\s*['"]\/kiosks['"][\s\S]*label:\s*['"]Kiosks['"][\s
 const middleware = read('src/middleware.ts');
 assert.match(middleware, /isAdminOnlyPage\s*\(/, 'middleware should enforce admin-only pages server-side, not only hide nav links');
 assert.match(middleware, /pathname\s*===\s*['"]\/kiosks['"]/, 'middleware should treat /kiosks as an admin-only page');
-assert.match(middleware, /isAdminOnlyPage\(pathname\)[\s\S]*!hasHumanAdminSession[\s\S]*NextResponse\.redirect\(new URL\('\/', req\.url\)\)/, 'non-admin portal members who browse directly to /kiosks should be redirected away');
+assert.match(middleware, /isAdminOnlyPage\(pathname\)[\s\S]*!hasConvexPortalAdmin[\s\S]*NextResponse\.redirect\(new URL\('\/', req\.url\)\)/, 'non-admin portal members who browse directly to /kiosks should be redirected away');
 
 const kiosksRoute = read('src/app/api/kiosks/route.ts');
 assert.match(kiosksRoute, /hasValidPortalSession\(req,\s*\['admin'\]\)/, 'Kiosks API should enforce admin role at the route layer, not rely on middleware alone');

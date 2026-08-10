@@ -1,6 +1,6 @@
 import { convexAuthNextjsMiddleware } from '@convex-dev/auth/nextjs/server';
 import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
-import { hasValidAdminSession, hasValidKioskKey, isKioskRequestAllowed, unauthorizedApiResponse } from '@/lib/auth';
+import { hasValidKioskKey, isKioskRequestAllowed, unauthorizedApiResponse } from '@/lib/auth';
 import { hasPortalMemberAccess, type PortalMemberRole } from '@/lib/portal-member';
 
 const PUBLIC_PATHS = ['/login', '/api/auth', '/api/convex-auth', '/api/health'];
@@ -97,12 +97,8 @@ async function legacyAccessMiddleware(
     return NextResponse.next();
   }
 
-  const hasAdminSession = await hasValidAdminSession(req);
-  const hasHumanSession = hasAdminSession || hasConvexPortalMember;
-  const hasHumanAdminSession = hasAdminSession || hasConvexPortalAdmin;
-
   if (pathname.startsWith('/api/')) {
-    if (hasAdminSession || hasConvexPortalApiAccess) {
+    if (hasConvexPortalApiAccess) {
       return NextResponse.next();
     }
 
@@ -113,11 +109,11 @@ async function legacyAccessMiddleware(
     return unauthorizedApiResponse();
   }
 
-  if (!hasHumanSession) {
+  if (!hasConvexPortalMember) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  if (isAdminOnlyPage(pathname) && !hasHumanAdminSession) {
+  if (isAdminOnlyPage(pathname) && !hasConvexPortalAdmin) {
     return NextResponse.redirect(new URL('/', req.url));
   }
 

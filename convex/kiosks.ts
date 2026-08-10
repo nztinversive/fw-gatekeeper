@@ -1,5 +1,6 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { assertPortalRole } from "./access";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
 
 function normalizeOptionalText(value?: string) {
@@ -21,7 +22,18 @@ function serializeKiosk(k: any) {
 
 export const list = query({
   args: {},
+  returns: v.array(v.object({
+    id: v.id("kiosks"),
+    name: v.string(),
+    kiosk_id: v.union(v.string(), v.null()),
+    type: v.string(),
+    location: v.string(),
+    last_sync: v.union(v.string(), v.null()),
+    active: v.number(),
+  })),
   handler: async (ctx) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
+
     const kiosks = await ctx.db
       .query("kiosks")
       .withIndex("by_active", (q) => q.eq("active", true))
@@ -32,7 +44,10 @@ export const list = query({
 
 export const create = mutation({
   args: { name: v.string(), kioskId: v.optional(v.string()), type: v.string(), location: v.optional(v.string()) },
+  returns: v.object({ id: v.id("kiosks"), name: v.string(), type: v.string() }),
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin"]);
+
     const kioskId = normalizeOptionalText(args.kioskId);
     const id = await ctx.db.insert("kiosks", {
       name: args.name.trim(),
@@ -45,8 +60,17 @@ export const create = mutation({
   },
 });
 
-export const findByKioskId = query({
+export const findByKioskId = internalQuery({
   args: { kioskId: v.string() },
+  returns: v.union(v.object({
+    id: v.id("kiosks"),
+    name: v.string(),
+    kiosk_id: v.union(v.string(), v.null()),
+    type: v.string(),
+    location: v.string(),
+    last_sync: v.union(v.string(), v.null()),
+    active: v.number(),
+  }), v.null()),
   handler: async (ctx, args) => {
     const match = await findActiveKioskByIdentifier(ctx, args.kioskId);
     return match ? serializeKiosk(match) : null;

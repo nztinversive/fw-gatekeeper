@@ -1,6 +1,28 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { assertPortalRole } from "./access";
 import { timestampBelongsToFactoryLocalDate } from "./localDate";
+
+const nullableString = v.union(v.string(), v.null());
+
+const attendanceCorrectionResult = v.object({
+  id: v.string(),
+  date: v.string(),
+  worker_id: v.string(),
+  worker_name: v.string(),
+  worker_department: v.string(),
+  action: v.union(v.literal("add_clock_in"), v.literal("add_clock_out"), v.literal("void_event")),
+  event_type: v.union(v.literal("clock_in"), v.literal("clock_out"), v.null()),
+  corrected_timestamp: nullableString,
+  original_attendance_id: nullableString,
+  original_timestamp: nullableString,
+  original_event_type: nullableString,
+  related_exception_key: nullableString,
+  reason: v.string(),
+  supervisor_name: nullableString,
+  created_at: v.string(),
+  updated_at: v.string(),
+});
 
 function normalizeText(value?: string | null) {
   const trimmed = value?.trim();
@@ -18,7 +40,10 @@ export const list = query({
     date: v.string(),
     workerId: v.optional(v.string()),
   },
+  returns: v.array(attendanceCorrectionResult),
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
+
     const baseQuery = args.workerId
       ? ctx.db
           .query("attendanceCorrections")
@@ -69,7 +94,10 @@ export const create = mutation({
     reason: v.string(),
     supervisorName: v.optional(v.string()),
   },
+  returns: v.object({ id: v.id("attendanceCorrections"), createdAt: v.string() }),
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
+
     const reason = normalizeText(args.reason);
     if (!reason) {
       throw new Error("Correction reason is required.");

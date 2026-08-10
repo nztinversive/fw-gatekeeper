@@ -1,18 +1,13 @@
 export const dynamic = 'force-dynamic';
 
 import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
-import { NextRequest, NextResponse } from 'next/server';
-import { hasValidAdminSession } from '@/lib/auth';
+import { NextResponse } from 'next/server';
 import { isDemoWriteMode } from '@/lib/demo-write-mode';
 import { getPortalMemberForToken } from '@/lib/portal-member';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   if (isDemoWriteMode()) {
     return NextResponse.json({ role: 'viewer', source: 'local-demo' });
-  }
-
-  if (await hasValidAdminSession(req)) {
-    return NextResponse.json({ role: 'admin', source: 'legacy-admin' });
   }
 
   const member = await getPortalMemberForToken(await convexAuthNextjsToken());

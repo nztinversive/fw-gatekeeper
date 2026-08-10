@@ -1,4 +1,4 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
@@ -7,6 +7,7 @@ import {
   getFactoryLocalTimestamp,
   timestampBelongsToFactoryLocalDate,
 } from "./localDate";
+import { assertPortalRole } from "./access";
 
 function withFactoryLocalTimestamp(record: any) {
   const timestamp = getFactoryLocalTimestamp(record?.timestamp);
@@ -107,6 +108,7 @@ export const list = query({
     includeCorrections: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
     const date = args.date || new Date().toISOString().split("T")[0];
     const records: any[] = args.includeCorrections === false
       ? await listAttendanceByTimestampRange(ctx, date, args.workerId)
@@ -138,28 +140,6 @@ export const list = query({
       });
     }
     return result;
-  },
-});
-
-export const create = mutation({
-  args: {
-    workerId: v.string(),
-    eventType: v.string(),
-    kioskId: v.optional(v.string()),
-    timestamp: v.optional(v.string()),
-    idempotencyKey: v.optional(v.string()),
-  },
-  returns: v.object({ id: v.id("attendance") }),
-  handler: async (ctx, args) => {
-    const id = await ctx.db.insert("attendance", {
-      workerId: args.workerId,
-      eventType: args.eventType,
-      kioskId: args.kioskId,
-      timestamp: args.timestamp || new Date().toISOString(),
-      idempotencyKey: args.idempotencyKey,
-      synced: false,
-    });
-    return { id };
   },
 });
 

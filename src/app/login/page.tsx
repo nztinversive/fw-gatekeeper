@@ -41,7 +41,7 @@ function LocalDemoLogin() {
             Continue to local demo
           </button>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Set NEXT_PUBLIC_CONVEX_URL to use the normal email or PIN login flow.
+            Set NEXT_PUBLIC_CONVEX_URL to use the normal named-account login flow.
           </p>
         </div>
       </div>
@@ -50,13 +50,10 @@ function LocalDemoLogin() {
 }
 
 function AuthenticatedLogin() {
-  const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [pinError, setPinError] = useState('');
   const [convexError, setConvexError] = useState('');
-  const [pinLoading, setPinLoading] = useState(false);
   const [convexLoading, setConvexLoading] = useState(false);
   const router = useRouter();
   const { signIn } = useAuthActions();
@@ -64,31 +61,6 @@ function AuthenticatedLogin() {
   function finishLogin() {
     router.push('/');
     router.refresh();
-  }
-
-  async function handlePinSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setPinError('');
-    setPinLoading(true);
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      });
-
-      if (res.ok) {
-        finishLogin();
-      } else {
-        setPinError('Invalid PIN');
-        setPin('');
-      }
-    } catch {
-      setPinError('Connection error');
-    } finally {
-      setPinLoading(false);
-    }
   }
 
   async function handleConvexSubmit(e: React.FormEvent) {
@@ -132,7 +104,7 @@ function AuthenticatedLogin() {
           <p className="text-slate-500 text-sm font-mono mt-3 uppercase tracking-widest text-[11px]">Access Control System</p>
         </div>
 
-        <div className="glass-card p-6 space-y-8">
+        <div className="glass-card p-6">
           <form onSubmit={handleConvexSubmit} className="space-y-5">
             <div>
               <label className="section-label mb-2 block">Email</label>
@@ -183,41 +155,9 @@ function AuthenticatedLogin() {
             </button>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              Email login is being introduced for named portal users. Use the PIN fallback below if your account has not been created yet.
+              Sign in with your named portal account. Contact an administrator if you need access.
             </p>
           </form>
-
-          <div className="border-t border-navy-600/40 pt-6">
-            <form onSubmit={handlePinSubmit} className="space-y-5">
-              <div>
-                <label className="section-label mb-2 block">Temporary admin PIN fallback</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={8}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  placeholder="Enter PIN"
-                  className="w-full px-4 py-3.5 bg-navy-900/80 border border-navy-600/50 rounded-xl text-center text-2xl font-mono tracking-[0.5em] text-gold placeholder-slate-600 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
-                />
-              </div>
-
-              {pinError && (
-                <div role="alert" className="flex items-center gap-2 text-red-400 text-sm bg-red-400/5 border border-red-400/10 rounded-xl px-4 py-2.5">
-                  {pinError}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={pinLoading || pin.length < 4}
-                className="btn-secondary w-full py-3.5 text-base"
-              >
-                {pinLoading ? 'Verifying...' : 'Use PIN fallback'}
-              </button>
-            </form>
-          </div>
         </div>
 
         <p className="text-center text-[10px] font-mono text-slate-600 mt-8 uppercase tracking-wider">
