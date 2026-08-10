@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Behavioral and integration-contract coverage for kiosk-local web auth."""
+
+import sys
+import unittest
+from pathlib import Path
+
+KIOSK_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(KIOSK_DIR))
+
+import config  # noqa: E402
+from kiosk_ui_auth import (  # noqa: E402
+    get_encode_service_host,
+    get_enroll_preview_host,
+    get_kiosk_ui_host,
+    has_valid_kiosk_ui_credential,
+    kiosk_ui_session_token,
+    require_kiosk_ui_key,
+)
+
+
+class KioskUiAuthTests(unittest.TestCase):
+    def setUp(self):
+        self.had_key = hasattr(config, "KIOSK_UI_KEY")
+        self.original_key = getattr(config, "KIOSK_UI_KEY", None)
+
+    def tearDown(self):
+        if self.had_key:
+            config.KIOSK_UI_KEY = self.original_key
+        elif hasattr(config, "KIOSK_UI_KEY"):
+            delattr(config, "KIOSK_UI_KEY")
+
+    def test_missing_key_fails_closed_with_actionable_message(self):
+        config.KIOSK_UI_KEY = "   "
+        with self.assertRaisesRegex(RuntimeError, "KIOSK_UI_KEY is required"):
+            require_kiosk_ui_key()
+        self.assertFalse(has_valid_kiosk_ui_credential(provided_key="candidate"))
+
+    def test_header_and_derived_session_require_the_configured_key(self):
+        config.KIOSK_UI_KEY = "  local-ui-key  "
+        self.assertFalse(has_valid_kiosk_ui_credential(provided_key="wrong"))
+        self.assertTrue(has_valid_kiosk_ui_credential(provided_key="local-ui-key"))
+        self.assertTrue(
+            has_valid_kiosk_ui_credential(session_token=kiosk_ui_session_token("local-ui-key"))
+        )
+
+    def test_routes_and_auxiliary_servers_are_locked_down(self):
+        app_source = (KIOSK_DIR / "app.py").read_text(encoding="utf-8")
+        encode_source = (KIOSK_DIR / "encode_service.py").read_text(encoding="utf-8")
+        enroll_source = (KIOSK_DIR / "enroll.py").read_text(encoding="utf-8")
+        setup_source = (KIOSK_DIR / "setup.sh").read_text(encoding="utf-8")
+        gitignore_source = (KIOSK_DIR.parent / ".gitignore").read_text(encoding="utf-8")
+
+        for route in ("/feed", "/video_feed", "/status", "/log", "/today"):
+            self.assertRegex(
+                app_source,
+                rf'@app\.route\("{route}"\)\s+@kiosk_ui_auth_required',
+            )
+        self.assertRegex(
+            app_source,
+            r'@app\.route\("/manual_clock", methods=\["POST"\]\)\s+@kiosk_ui_auth_required',
+        )
+        self.assertEqual(get_kiosk_ui_host(), "127.0.0.1")
+        self.assertEqual(get_encode_service_host(), "127.0.0.1")
+        self.assertEqual(get_enroll_preview_host(), "127.0.0.1")
+        self.assertIn("get_encode_service_host()", encode_source)
+        self.assertNotIn('Access-Control-Allow-Origin", "*"', encode_source)
+        self.assertIn("host=get_enroll_preview_host()", enroll_source)
+        self.assertIn('if [ -z "$KIOSK_UI_KEY" ]', setup_source)
+        self.assertIn("pi-kiosk/config_local.py", gitignore_source)
+
+
+if __name__ == "__main__":
+    unittest.main()

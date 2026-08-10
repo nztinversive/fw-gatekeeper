@@ -24,6 +24,7 @@ import database
 from recognition import FaceRecognizer
 from sync import SyncWorker
 from sync_auth import require_kiosk_api_key
+from kiosk_ui_auth import require_kiosk_ui_key
 import app as web_app
 
 logging.basicConfig(
@@ -242,6 +243,14 @@ def run(args):
         sync_enabled = False
         logger.critical(
             "%s Server synchronization is disabled; local attendance and recognition records will remain queued.",
+            exc,
+        )
+
+    try:
+        require_kiosk_ui_key()
+    except RuntimeError as exc:
+        logger.critical(
+            "%s Protected kiosk web routes will remain unavailable; face scanning and local logging will continue.",
             exc,
         )
 

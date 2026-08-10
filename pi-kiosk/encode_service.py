@@ -19,6 +19,8 @@ import cv2
 import face_recognition
 import numpy as np
 
+from kiosk_ui_auth import get_encode_service_host
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("encode-service")
 
@@ -113,24 +115,20 @@ class EncodeHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
+        self.send_error(405)
 
     def log_message(self, format, *args):
         logger.info(format, *args)
 
 
 def main():
-    server = HTTPServer(("0.0.0.0", PORT), EncodeHandler)
-    logger.info("Face encoding service running on http://0.0.0.0:%d", PORT)
+    host = get_encode_service_host()
+    server = HTTPServer((host, PORT), EncodeHandler)
+    logger.info("Face encoding service running on http://%s:%d", host, PORT)
     logger.info("POST /encode — accepts {photos: [base64...]} returns {encoding: [128 floats]}")
     try:
         server.serve_forever()

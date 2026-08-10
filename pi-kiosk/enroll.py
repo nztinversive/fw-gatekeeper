@@ -26,6 +26,7 @@ import config
 import database
 from liveness import LivenessChecker
 from recognition import FaceRecognizer
+from kiosk_ui_auth import get_enroll_preview_host
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("enroll")
@@ -105,7 +106,13 @@ def _start_preview_server():
         return
 
     def _serve():
-        _preview_app.run(host="0.0.0.0", port=PREVIEW_PORT, debug=False, use_reloader=False, threaded=True)
+        _preview_app.run(
+            host=get_enroll_preview_host(),
+            port=PREVIEW_PORT,
+            debug=False,
+            use_reloader=False,
+            threaded=True,
+        )
 
     _preview_server_thread = threading.Thread(target=_serve, daemon=True, name="enroll-preview")
     _preview_server_thread.start()

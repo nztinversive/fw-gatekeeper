@@ -446,6 +446,7 @@ Set the `ADMIN_PIN` environment variable on Render:
 | `KIOSK_TYPE` | `entry` | `entry` or `exit` |
 | `SERVER_URL` | `https://fw-gatekeeper.onrender.com` | Dashboard server URL |
 | `KIOSK_API_KEY` | `""` | Shared secret between server and Pi kiosks (required for sync) |
+| `KIOSK_UI_KEY` | `""` | Required Pi-local secret protecting camera, roster, attendance, and manual-clock routes |
 
 ### Kiosk CLI Options
 

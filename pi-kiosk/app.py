@@ -6,13 +6,21 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Optional
+from functools import wraps
 
 import cv2
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, make_response, render_template, request
 
 import config
 import database
+from kiosk_ui_auth import (
+    KIOSK_UI_KEY_HEADER,
+    KIOSK_UI_SESSION_COOKIE,
+    get_kiosk_ui_host,
+    has_valid_kiosk_ui_credential,
+    kiosk_ui_session_token,
+    require_kiosk_ui_key,
+)
 
 logger = logging.getLogger(__name__)
 app = Flask(__name__)
@@ -94,17 +102,56 @@ def _manual_action_for_worker(worker_id: int) -> str:
     return "clock_out" if last == "clock_in" else "clock_in"
 
 
+def _is_loopback_request() -> bool:
+    return request.remote_addr in {"127.0.0.1", "::1"}
+
+
+def kiosk_ui_auth_required(view):
+    """Protect write, camera, attendance, and worker-data routes."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        try:
+            require_kiosk_ui_key()
+        except RuntimeError:
+            return jsonify({"error": "Kiosk UI authentication is not configured"}), 503
+
+        if not has_valid_kiosk_ui_credential(
+            provided_key=request.headers.get(KIOSK_UI_KEY_HEADER),
+            session_token=request.cookies.get(KIOSK_UI_SESSION_COOKIE),
+        ):
+            return jsonify({"error": "Unauthorized"}), 401
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", kiosk_name=config.KIOSK_NAME, kiosk_type=config.KIOSK_TYPE)
+    response = make_response(
+        render_template("index.html", kiosk_name=config.KIOSK_NAME, kiosk_type=config.KIOSK_TYPE)
+    )
+    if _is_loopback_request():
+        try:
+            response.set_cookie(
+                KIOSK_UI_SESSION_COOKIE,
+                kiosk_ui_session_token(),
+                httponly=True,
+                samesite="Strict",
+                secure=False,
+            )
+        except RuntimeError:
+            pass
+    return response
 
 
 @app.route("/feed")
+@kiosk_ui_auth_required
 def feed():
     return Response(_mjpeg_stream(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/video_feed")
+@kiosk_ui_auth_required
 def video_feed_alias():
     return feed()
 
@@ -115,22 +162,26 @@ def health():
 
 
 @app.route("/status")
+@kiosk_ui_auth_required
 def status():
     return jsonify(get_status_snapshot())
 
 
 @app.route("/log")
+@kiosk_ui_auth_required
 def today_log():
     return jsonify(database.get_today_logs(limit=100))
 
 
 @app.route("/today")
+@kiosk_ui_auth_required
 def today_log_alias():
     return today_log()
 
 
 @app.route("/manual-clock", methods=["POST"])
 @app.route("/manual_clock", methods=["POST"])
+@kiosk_ui_auth_required
 def manual_clock():
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name", "")).strip()
@@ -174,7 +225,7 @@ def start_server():
 
     def _serve():
         app.run(
-            host=config.FLASK_HOST,
+            host=get_kiosk_ui_host(),
             port=config.KIOSK_PORT,
             debug=False,
             use_reloader=False,
@@ -183,5 +234,5 @@ def start_server():
 
     _server_thread = threading.Thread(target=_serve, daemon=True, name="kiosk-web")
     _server_thread.start()
-    logger.info("Web UI started at http://%s:%d", config.FLASK_HOST, config.KIOSK_PORT)
+    logger.info("Web UI started at http://%s:%d", get_kiosk_ui_host(), config.KIOSK_PORT)
     return _server_thread

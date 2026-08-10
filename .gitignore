@@ -7,3 +7,4 @@ __pycache__/
 *.pyc
 
 .env.local
+pi-kiosk/config_local.py
