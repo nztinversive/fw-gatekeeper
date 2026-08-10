@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { internalQuery, query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 const SUPPORTED_ENCODING_LENGTHS = new Set([128, 512]);
@@ -195,38 +195,59 @@ export const remove = mutation({
   },
 });
 
+const workerSyncResult = v.array(v.object({
+  id: v.id("workers"),
+  name: v.string(),
+  employee_id: v.string(),
+  department: v.string(),
+  photo_url: v.union(v.string(), v.null()),
+  face_encoding: v.union(v.array(v.float64()), v.null()),
+  enrolled_at: v.string(),
+  updated_at: v.string(),
+  active: v.number(),
+}));
+
+async function listWorkersForSync(ctx: any, args: { since?: string }) {
+  const all = await ctx.db.query("workers").collect();
+  const since = args.since || "1970-01-01T00:00:00.000Z";
+  const filtered = all.filter((w: any) => {
+    const updatedAt = w.updatedAt || w.enrolledAt;
+    return Boolean(updatedAt) && updatedAt > since;
+  });
+  const result = [];
+  for (const w of filtered) {
+    let photoUrls: string[] = [];
+    if (w.photoStorageIds) {
+      for (const sid of w.photoStorageIds) {
+        const url = await ctx.storage.getUrl(sid);
+        if (url) photoUrls.push(url);
+      }
+    }
+    result.push({
+      id: w._id,
+      name: w.name,
+      employee_id: w.employeeId || "",
+      department: w.department,
+      photo_url: photoUrls[0] || null,
+      face_encoding: w.faceEncoding || null,
+      enrolled_at: w.enrolledAt,
+      updated_at: w.updatedAt || w.enrolledAt,
+      active: w.active ? 1 : 0,
+    });
+  }
+  return result;
+}
+
 export const listForSync = query({
   args: { since: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const all = await ctx.db.query("workers").collect();
-    const since = args.since || "1970-01-01T00:00:00.000Z";
-    const filtered = all.filter((w) => {
-      const updatedAt = w.updatedAt || w.enrolledAt;
-      return Boolean(updatedAt) && updatedAt > since;
-    });
-    const result = [];
-    for (const w of filtered) {
-      let photoUrls: string[] = [];
-      if (w.photoStorageIds) {
-        for (const sid of w.photoStorageIds) {
-          const url = await ctx.storage.getUrl(sid);
-          if (url) photoUrls.push(url);
-        }
-      }
-      result.push({
-        id: w._id,
-        name: w.name,
-        employee_id: w.employeeId || "",
-        department: w.department,
-        photo_url: photoUrls[0] || null,
-        face_encoding: w.faceEncoding || null,
-        enrolled_at: w.enrolledAt,
-        updated_at: w.updatedAt || w.enrolledAt,
-        active: w.active ? 1 : 0,
-      });
-    }
-    return result;
-  },
+  returns: workerSyncResult,
+  handler: listWorkersForSync,
+});
+
+export const listForSyncFromHttp = internalQuery({
+  args: { since: v.optional(v.string()) },
+  returns: workerSyncResult,
+  handler: listWorkersForSync,
 });
 
 export const generateUploadUrl = mutation({

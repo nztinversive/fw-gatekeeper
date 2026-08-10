@@ -1,7 +1,13 @@
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
+import { v } from "convex/values";
 
-export const run = mutation({
+export const run = internalMutation({
   args: {},
+  returns: v.object({
+    seeded: v.boolean(),
+    reason: v.optional(v.string()),
+    workers: v.optional(v.number()),
+  }),
   handler: async (ctx) => {
     // Check if already seeded
     const existing = await ctx.db.query("workers").first();

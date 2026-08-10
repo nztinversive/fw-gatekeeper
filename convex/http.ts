@@ -53,6 +53,27 @@ const attendanceBulkIngest = httpAction(async (ctx, request) => {
   return jsonResponse(result);
 });
 
+const attendanceIngest = httpAction(async (ctx, request) => {
+  if (!hasValidIngestCredential(request)) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
+
+  const body = await readJsonBody(request);
+  if (!body || typeof body.workerId !== 'string' || typeof body.eventType !== 'string') {
+    return jsonResponse({ error: 'workerId and eventType required' }, 400);
+  }
+
+  const result = await ctx.runMutation(internal.attendance.createFromHttp, {
+    workerId: body.workerId,
+    eventType: body.eventType,
+    kioskId: typeof body.kioskId === 'string' ? body.kioskId : undefined,
+    timestamp: typeof body.timestamp === 'string' ? body.timestamp : undefined,
+    idempotencyKey: typeof body.idempotencyKey === 'string' ? body.idempotencyKey : undefined,
+  });
+  console.info('secured_ingest_attendance_single', { workerId: body.workerId });
+  return jsonResponse(result, 201);
+});
+
 const recognitionAttemptsBulkIngest = httpAction(async (ctx, request) => {
   if (!hasValidIngestCredential(request)) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
@@ -92,8 +113,22 @@ const kioskLastSyncIngest = httpAction(async (ctx, request) => {
   return jsonResponse(result);
 });
 
+const workerSyncRead = httpAction(async (ctx, request) => {
+  if (!hasValidIngestCredential(request)) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
+
+  const body = await readJsonBody(request);
+  const since = body && typeof body.since === 'string' ? body.since : undefined;
+  const workers = await ctx.runQuery(internal.workers.listForSyncFromHttp, { since });
+  console.info('secured_ingest_worker_sync', { returned: workers.length });
+  return jsonResponse({ workers });
+});
+
+http.route({ path: '/api/ingest/attendance', method: 'POST', handler: attendanceIngest });
 http.route({ path: '/api/ingest/attendance/bulk', method: 'POST', handler: attendanceBulkIngest });
 http.route({ path: '/api/ingest/recognition-attempts/bulk', method: 'POST', handler: recognitionAttemptsBulkIngest });
 http.route({ path: '/api/ingest/kiosks/last-sync', method: 'POST', handler: kioskLastSyncIngest });
+http.route({ path: '/api/ingest/workers/sync', method: 'POST', handler: workerSyncRead });
 
 export default http;

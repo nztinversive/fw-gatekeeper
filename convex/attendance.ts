@@ -149,6 +149,7 @@ export const create = mutation({
     timestamp: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
   },
+  returns: v.object({ id: v.id("attendance") }),
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("attendance", {
       workerId: args.workerId,
@@ -162,8 +163,31 @@ export const create = mutation({
   },
 });
 
-export const clearAll = mutation({
+export const createFromHttp = internalMutation({
+  args: {
+    workerId: v.string(),
+    eventType: v.string(),
+    kioskId: v.optional(v.string()),
+    timestamp: v.optional(v.string()),
+    idempotencyKey: v.optional(v.string()),
+  },
+  returns: v.object({ id: v.id("attendance") }),
+  handler: async (ctx, args) => {
+    const id = await ctx.db.insert("attendance", {
+      workerId: args.workerId,
+      eventType: args.eventType,
+      kioskId: args.kioskId,
+      timestamp: args.timestamp || new Date().toISOString(),
+      idempotencyKey: args.idempotencyKey,
+      synced: false,
+    });
+    return { id };
+  },
+});
+
+export const clearAll = internalMutation({
   args: {},
+  returns: v.object({ deleted: v.number() }),
   handler: async (ctx) => {
     const all = await ctx.db.query("attendance").collect();
     for (const r of all) {
