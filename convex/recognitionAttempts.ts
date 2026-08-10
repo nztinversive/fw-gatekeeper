@@ -292,11 +292,6 @@ async function ingestAttemptBatch(ctx: MutationCtx, args: {
     return { ingested: insertedIds.length, skipped, ids: insertedIds };
 }
 
-export const bulkIngest = mutation({
-  args: { attempts: v.array(attemptInput) },
-  handler: ingestAttemptBatch,
-});
-
 export const bulkIngestFromHttp = internalMutation({
   args: { attempts: v.array(attemptInput) },
   returns: v.object({

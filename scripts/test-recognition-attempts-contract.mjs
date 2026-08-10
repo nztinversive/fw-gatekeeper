@@ -31,7 +31,7 @@ assert.match(schema, /\.index\("by_kiosk_timestamp",\s*\["kioskId",\s*"timestamp
 assert.match(schema, /\.index\("by_reviewed_timestamp",\s*\["reviewed",\s*"timestamp"\]\)/, 'Recognition attempts need a review/timestamp index.');
 assert.match(schema, /\.index\("by_kiosk_reviewed_timestamp",\s*\["kioskId",\s*"reviewed",\s*"timestamp"\]\)/, 'Recognition attempts need a kiosk/review/timestamp index.');
 
-assert.match(attempts, /export const bulkIngest\s*=\s*mutation/, 'Recognition attempts must expose bulkIngest mutation.');
+assert.doesNotMatch(attempts, /export const bulkIngest\s*=\s*mutation/, 'Recognition bulk ingest must not remain publicly callable.');
 assert.match(attempts, /export const listByDate\s*=\s*query/, 'Recognition attempts must expose listByDate query.');
 assert.match(attempts, /export const getById\s*=\s*query/, 'Recognition attempts must expose exact attempt lookup for source handoffs.');
 assert.match(attempts, /export const listRange\s*=\s*query/, 'Recognition attempts must expose listRange query.');

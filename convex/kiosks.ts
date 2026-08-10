@@ -53,13 +53,6 @@ export const findByKioskId = query({
   },
 });
 
-export const updateLastSync = mutation({
-  args: { id: v.id("kiosks"), lastSync: v.string() },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, { lastSync: args.lastSync });
-  },
-});
-
 export const updateLastSyncFromHttp = internalMutation({
   args: { kioskId: v.string(), lastSync: v.string() },
   returns: v.object({ updated: v.boolean() }),

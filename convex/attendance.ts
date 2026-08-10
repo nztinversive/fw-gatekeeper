@@ -235,11 +235,6 @@ async function createAttendanceBatch(ctx: MutationCtx, args: {
     return { synced: count };
 }
 
-export const bulkCreate = mutation({
-  args: { events: v.array(attendanceEventInput) },
-  handler: createAttendanceBatch,
-});
-
 export const bulkCreateFromHttp = internalMutation({
   args: { events: v.array(attendanceEventInput) },
   returns: bulkCreateResult,

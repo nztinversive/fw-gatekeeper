@@ -44,5 +44,8 @@ assert.match(syncRoute, /updateKioskLastSync\(kioskId, lastSync\)/, 'Sync route 
 assert.doesNotMatch(attendanceRoute, /convex\.mutation/, 'Attendance route must not call a public Convex mutation.');
 assert.doesNotMatch(recognitionRoute, /convex\.mutation/, 'Recognition route must not call a public Convex mutation.');
 assert.doesNotMatch(syncRoute, /kiosks\.updateLastSync/, 'Sync route must not call the public kiosk mutation.');
+assert.doesNotMatch(attendance, /export const bulkCreate\s*=\s*mutation/, 'Legacy attendance bulk mutation must not be public.');
+assert.doesNotMatch(recognitionAttempts, /export const bulkIngest\s*=\s*mutation/, 'Legacy recognition bulk mutation must not be public.');
+assert.doesNotMatch(kiosks, /export const updateLastSync\s*=\s*mutation/, 'Legacy kiosk sync mutation must not be public.');
 
 console.log('Secured Convex ingest contract passed');
