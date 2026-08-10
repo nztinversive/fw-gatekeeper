@@ -16,6 +16,8 @@ services:
         sync: false
       - key: FACE_ENCODE_URL
         value: https://fw-face-service.onrender.com/encode
+      - key: FACE_SERVICE_KEY
+        sync: false
 
   - type: web
     name: fw-face-service
@@ -26,3 +28,7 @@ services:
     envVars:
       - key: PORT
         value: "5557"
+      - key: FACE_SERVICE_KEY
+        sync: false
+      - key: FACE_SERVICE_ALLOWED_ORIGINS
+        value: https://fw-gatekeeper.onrender.com

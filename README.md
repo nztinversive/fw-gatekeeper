@@ -434,6 +434,8 @@ Set the `ADMIN_PIN` environment variable on Render:
 | `AUTH_SECRET` | long random secret | Signing key for admin session cookies (required for dashboard auth) |
 | `KIOSK_API_KEY` | long random shared secret | Shared secret between server and Pi kiosks (required for sync) |
 | `FACE_ENCODE_URL` | `https://fw-face-service.onrender.com/encode` | Face encoding service |
+| `FACE_SERVICE_KEY` | long random shared secret | Shared secret between the dashboard server and face service |
+| `FACE_SERVICE_ALLOWED_ORIGINS` | `https://fw-gatekeeper.onrender.com` | Browser origin allowed by the face service |
 
 ### Kiosk Setup Variables
 

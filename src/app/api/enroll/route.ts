@@ -53,9 +53,16 @@ export async function POST(req: NextRequest) {
     let faceEncoding: number[] | undefined;
     try {
       const encodeUrl = process.env.FACE_ENCODE_URL || 'http://localhost:5557/encode';
+      const faceServiceKey = process.env.FACE_SERVICE_KEY?.trim();
+      if (!faceServiceKey) {
+        throw new Error('FACE_SERVICE_KEY is required for face enrollment');
+      }
       const encodeRes = await fetch(encodeUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-face-service-key': faceServiceKey,
+        },
         body: JSON.stringify({ photos }),
         signal: AbortSignal.timeout(60000), // 60s — face service cold start + encoding
       });
