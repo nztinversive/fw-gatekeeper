@@ -19,7 +19,7 @@ RUN mkdir -p /app/models && \
       -O /app/models/rec_model.onnx && \
     ls -la /app/models/
 
-COPY main.py .
+COPY main.py face_auth.py ./
 
 EXPOSE 5557
 
