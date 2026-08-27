@@ -660,8 +660,10 @@
                 liveValue.textContent = `Liveness: ${data.liveness_confirmed ? "Yes" : "No"}`;
                 lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
 
-                if (adminVisible) {
-                    renderAdmin(data.admin || { workers: [], worker_count: 0, total_photos: 0 });
+                if (adminVisible && !data.admin) {
+                    setAdminVisible(false);
+                } else if (adminVisible) {
+                    renderAdmin(data.admin);
                 }
             } catch (error) {
                 statusText.textContent = "Status unavailable";
@@ -729,6 +731,10 @@
                 });
                 const data = await response.json();
                 if (!response.ok || !data.success) {
+                    if (response.status === 401) {
+                        setAdminVisible(false);
+                        return;
+                    }
                     manualResult.textContent = data.error || "Manual clock failed.";
                     manualResult.style.color = "#ff9e8f";
                     return;
