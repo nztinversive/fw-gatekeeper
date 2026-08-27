@@ -82,6 +82,7 @@ class KioskUiAuthTests(unittest.TestCase):
         self.assertIn("supervisorDialog.showModal()", template_source)
         self.assertNotIn("window.prompt", template_source)
         self.assertIn("if (adminVisible && !data.admin)", template_source)
+        self.assertIn("requestSupervisorStateVersion !== supervisorStateVersion", template_source)
         self.assertIn("if (response.status === 401)", template_source)
         self.assertIn("Supervisor session expired. Unlock again to retry.", template_source)
         self.assertIn('KIOSK_SUPERVISOR_PIN = "$KIOSK_SUPERVISOR_PIN"', setup_source)

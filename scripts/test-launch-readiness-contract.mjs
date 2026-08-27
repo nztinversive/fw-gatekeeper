@@ -36,6 +36,7 @@ assert.match(kioskApp, /_supervisor_attempt_limiter\.is_locked\(\)/, 'Supervisor
 assert.match(kioskTemplate, /supervisor\/unlock/, 'Kiosk UI must unlock through the supervisor-auth endpoint.');
 assert.doesNotMatch(kioskTemplate, /setAdminVisible\(!adminVisible\)/, 'Keyboard shortcuts must not bypass supervisor authentication.');
 assert.match(kioskTemplate, /adminVisible && !data\.admin/, 'Expired supervisor sessions must relock the kiosk UI.');
+assert.match(kioskTemplate, /requestSupervisorStateVersion !== supervisorStateVersion/, 'Stale status polls must not undo a successful supervisor unlock.');
 
 const demoRoutes = [
   'src/app/api/workers/route.ts',
