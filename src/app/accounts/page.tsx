@@ -161,7 +161,7 @@ export default function AccountsPage() {
     toast('Credentials copied');
   }
 
-  if (currentMember === undefined || (isAdmin && members === undefined)) {
+  if (currentMember === undefined || (isAdmin && !demoWriteMode && members === undefined)) {
     return (
       <div className="animate-fade-in">
         <h1 className="page-title text-slate-100">Account <span className="text-gold">Management</span></h1>

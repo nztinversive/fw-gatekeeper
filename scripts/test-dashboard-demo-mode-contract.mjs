@@ -93,5 +93,7 @@ assert.match(portalAuth, /isDemoWriteMode\(\)[\s\S]*return true/, 'Route-level p
 const portalRole = read('src/app/api/portal-role/route.ts');
 assert.match(portalRole, /isDemoWriteMode\(\)[\s\S]*role:\s*['"]admin['"][\s\S]*source:\s*['"]local-demo['"]/, 'Portal role API should resolve an isolated local admin role so protected demo workflows can be reviewed without a real auth session');
 assert.match(read('src/components/Sidebar.tsx'), /demoWriteMode \? 'skip' : \{\}/, 'Sidebar must not open a live Convex membership subscription in demo mode');
+const accountsPage = read('src/app/accounts/page.tsx');
+assert.match(accountsPage, /isAdmin && !demoWriteMode && members === undefined/, 'Demo account management must not remain stuck waiting for a skipped member query');
 
 console.log('Dashboard partial-data and demo write mode contract passed');
