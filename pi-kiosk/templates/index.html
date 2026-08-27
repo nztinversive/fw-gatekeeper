@@ -732,6 +732,8 @@
                 const data = await response.json();
                 if (!response.ok || !data.success) {
                     if (response.status === 401) {
+                        manualResult.textContent = "Supervisor session expired. Unlock again to retry.";
+                        manualResult.style.color = "#ff9e8f";
                         setAdminVisible(false);
                         return;
                     }

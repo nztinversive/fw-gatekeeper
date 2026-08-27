@@ -83,6 +83,7 @@ class KioskUiAuthTests(unittest.TestCase):
         self.assertNotIn("window.prompt", template_source)
         self.assertIn("if (adminVisible && !data.admin)", template_source)
         self.assertIn("if (response.status === 401)", template_source)
+        self.assertIn("Supervisor session expired. Unlock again to retry.", template_source)
         self.assertIn('KIOSK_SUPERVISOR_PIN = "$KIOSK_SUPERVISOR_PIN"', setup_source)
         self.assertEqual(get_kiosk_ui_host(), "127.0.0.1")
         self.assertEqual(get_encode_service_host(), "127.0.0.1")
