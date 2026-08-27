@@ -32,7 +32,8 @@ assert.match(enrollPage, /workerId: workerIdRef\.current/, 'Enroll submit payloa
 assert.match(enrollPage, /Employee ID Number[\s\S]*Department/, 'Enroll page must show Employee ID Number between Full Name and Department.');
 assert.match(enrollPage, /employeeId: employeeIdRef\.current\.trim\(\)/, 'Enroll submit payload must include the employee ID number.');
 assert.match(enrollPage, /setEmployeeId\(worker\.employee_id \|\| ''\)/, 'Re-enrollment prefill must load the existing employee ID number.');
-assert.match(enrollPage, /searchEmployeeDirectory\(name\)/, 'New enrollment should suggest workers from the supplied employee directory.');
+assert.match(enrollPage, /\/api\/employee-directory\?q=/, 'New enrollment should fetch directory suggestions server-side so the roster PII stays out of the client bundle.');
+assert.doesNotMatch(enrollPage, /searchEmployeeDirectory/, 'Enroll page must not bundle the employee directory data client-side.');
 assert.match(enrollPage, /selectEmployee[\s\S]*setEmployeeId\(employee\.employeeId\)[\s\S]*setDepartment\(employee\.department\)/, 'Selecting a directory match must fill its employee ID and area.');
 assert.match(enrollPage, /role="combobox"[\s\S]*role="listbox"[\s\S]*role="option"/, 'Employee suggestions must expose accessible combobox semantics.');
 assert.match(enrollPage, /No roster match\. You can continue with a new name\./, 'Enrollment must preserve manual entry for people outside the supplied roster.');
