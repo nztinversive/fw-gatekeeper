@@ -44,7 +44,7 @@ assert.match(http, /path: '\/api\/ingest\/workers\/sync'/, 'Worker sync HTTP rou
 assert.match(helper, /process\.env\.CONVEX_INGEST_KEY/, 'Next secured ingest must use the server-only ingest key.');
 assert.match(helper, /authorization: `Bearer \$\{getConvexIngestKey\(\)\}`/, 'Next secured ingest must send bearer authorization.');
 assert.match(helper, /INGEST_TIMEOUT_MS = 10_000/, 'Next secured ingest must time out before the kiosk request does.');
-assert.match(helper, /assertProductionIngestAllowed\(\)/, 'Secured ingest must fail closed before resolving a production URL in local demo mode.');
+assert.doesNotMatch(helper, /assertProductionIngestAllowed|FW_DEMO_WRITE_MODE/, 'Demo write mode was removed; secured ingest must not carry demo guards.');
 assert.match(attendanceRoute, /ingestAttendanceBatch\(mapped\)/, 'Attendance route must call secured HTTP ingest.');
 assert.match(attendanceSingleRoute, /ingestAttendanceEvent\(/, 'Single attendance route must call secured HTTP ingest.');
 assert.match(recognitionRoute, /ingestRecognitionAttemptBatch\(mapped\)/, 'Recognition route must call secured HTTP ingest.');

@@ -3,7 +3,6 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { ingestRecognitionAttemptBatch } from '@/lib/convex-ingest';
 import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
-import { isDemoWriteMode } from '@/lib/demo-write-mode';
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -75,13 +74,6 @@ function normalizeAttempt(raw: any, bulkKioskId?: string) {
 export async function POST(req: NextRequest) {
   if (!hasValidKioskKey(req)) {
     return unauthorizedApiResponse();
-  }
-
-  if (isDemoWriteMode()) {
-    return NextResponse.json(
-      { error: 'Recognition-attempt sync is disabled in local demo mode.' },
-      { status: 409 },
-    );
   }
 
   try {

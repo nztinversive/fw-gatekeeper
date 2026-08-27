@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
 import { fetchWorkersForSync, updateKioskLastSync, type KioskHealthReport } from '@/lib/convex-ingest';
 import { hasValidPortalSession } from '@/lib/portal-auth';
-import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 function parseKioskHealth(params: URLSearchParams): KioskHealthReport | undefined {
   const bool = (key: string) => {
@@ -41,9 +40,6 @@ export async function GET(req: NextRequest) {
   if (!kioskId) return NextResponse.json({ error: 'kiosk_id required' }, { status: 400 });
 
   const lastSync = new Date().toISOString();
-  if (isDemoWriteMode()) {
-    return NextResponse.json({ workers: [], synced_at: lastSync, ...demoWriteMetadata() });
-  }
   try {
     const result = await updateKioskLastSync(kioskId, lastSync, parseKioskHealth(req.nextUrl.searchParams));
     if (!result.updated) {

@@ -4,7 +4,6 @@ import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
-import { isDemoWriteMode, listDemoKiosks, listDemoWorkers } from '@/lib/demo-write-mode';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 
 const FACE_SERVICE_FALLBACK = 'https://fw-face-service.onrender.com';
@@ -146,36 +145,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
 
-  if (isDemoWriteMode()) {
-    const demoKiosks = listDemoKiosks();
-    const readyWorkerCount = listDemoWorkers().filter(
-      (worker) => worker.has_face_encoding && worker.encoding_status === 'valid',
-    ).length;
-    return NextResponse.json({
-      checked_at: now,
-      portal: { status: 'online', checked_at: now },
-      face_service: { status: 'online', http_status: 200, latency_ms: 0, version: 'synthetic-demo', model_ready: true },
-      kiosks: {
-        total: demoKiosks.length,
-        counts: { online: demoKiosks.length, stale: 0, offline: 0, never_synced: 0 },
-        stale_threshold_minutes: ONLINE_THRESHOLD_MS / 60000,
-        offline_threshold_minutes: STALE_THRESHOLD_MS / 60000,
-        rows: demoKiosks.map((kiosk) => ({
-          ...kiosk,
-          status: 'online',
-          expected_worker_count: readyWorkerCount,
-          last_attendance_upload: null,
-          health: null,
-          device_issues: [],
-        })),
-      },
-      sync: { ready_worker_count: readyWorkerCount, last_attendance_upload: null },
-      warnings: [],
-    });
-  }
-
   const cached = cache.get(date);
-  if (!isDemoWriteMode() && cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > Date.now()) {
     return NextResponse.json(cached.payload);
   }
 
@@ -189,9 +160,8 @@ export async function GET(req: NextRequest) {
       fetchFaceHealth(faceHealthUrl),
     ]);
 
-    const mergedKiosks = isDemoWriteMode() ? [...kiosks, ...listDemoKiosks()] : kiosks;
     const readyWorkerCount = workers.filter((worker: any) => worker.encoding_status === 'valid' || worker.has_face_encoding).length;
-    const kioskRows = mergedKiosks.map((kiosk: any) => {
+    const kioskRows = kiosks.map((kiosk: any) => {
       const status = getKioskStatus(kiosk.last_sync);
       const kioskCandidates = [kiosk.id, kiosk.kiosk_id, kiosk.name]
         .map(normalizeIdentifier)
@@ -233,7 +203,7 @@ export async function GET(req: NextRequest) {
       ...(faceService.status === 'offline' ? ['Face service is offline or not responding. Enrollment may fail.'] : []),
       ...(faceService.status === 'degraded' ? ['Face service is degraded. Enrollment or recognition may be unreliable.'] : []),
       ...(faceService.status !== 'offline' && !faceService.model_ready ? ['Face service models are not ready. Face enrollment may fail.'] : []),
-      ...(mergedKiosks.length === 0 ? ['No kiosks are registered yet. Add kiosks before launch.'] : []),
+      ...(kiosks.length === 0 ? ['No kiosks are registered yet. Add kiosks before launch.'] : []),
       ...(counts.stale > 0 ? [`${counts.stale} kiosk${counts.stale === 1 ? '' : 's'} have not synced in 15+ minutes.`] : []),
       ...(counts.offline + counts.never_synced > 0
         ? [`${counts.offline + counts.never_synced} kiosk${counts.offline + counts.never_synced === 1 ? '' : 's'} are offline or have never synced.`]
@@ -245,7 +215,7 @@ export async function GET(req: NextRequest) {
       portal: { status: 'online', checked_at: now },
       face_service: faceService,
       kiosks: {
-        total: mergedKiosks.length,
+        total: kiosks.length,
         counts,
         stale_threshold_minutes: ONLINE_THRESHOLD_MS / 60000,
         offline_threshold_minutes: STALE_THRESHOLD_MS / 60000,

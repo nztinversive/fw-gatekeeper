@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/components/Toast';
-import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 
 type KioskReadinessStatus = 'online' | 'stale' | 'offline' | 'never_synced';
 
@@ -115,7 +114,7 @@ export default function KiosksPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || 'Failed to register kiosk');
-      toast(body?.demo_write ? `Demo kiosk "${trimmedName}" registered locally` : `Kiosk "${trimmedName}" registered`);
+      toast(`Kiosk "${trimmedName}" registered`);
       setName('');
       setKioskId('');
       setLocation('');
@@ -149,8 +148,6 @@ export default function KiosksPage() {
           </button>
         </div>
       </div>
-
-      <DemoWriteModeBanner />
 
       <section className="glass-card p-5">
         <div className="flex items-start justify-between flex-wrap gap-4">

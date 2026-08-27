@@ -4,7 +4,6 @@ import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
-import { createDemoKiosk, demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 async function requireAdmin(req: NextRequest) {
   return (await hasValidPortalSession(req, ['admin'])) ? null : unauthorizedApiResponse();
@@ -19,16 +18,6 @@ export async function POST(req: NextRequest) {
   if (!name || !type) return NextResponse.json({ error: 'name and type required' }, { status: 400 });
   if (type !== 'entry' && type !== 'exit') {
     return NextResponse.json({ error: 'type must be entry or exit' }, { status: 400 });
-  }
-
-  if (isDemoWriteMode()) {
-    const result = createDemoKiosk({
-      name,
-      kiosk_id: kiosk_id || kioskId || undefined,
-      type,
-      location: location || undefined,
-    });
-    return NextResponse.json({ ...result, ...demoWriteMetadata() }, { status: 201 });
   }
 
   const result = await convex.mutation(api.kiosks.create, {
