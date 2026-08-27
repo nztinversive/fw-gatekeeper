@@ -341,11 +341,14 @@ ls /dev/video*               # should show /dev/video0
 ### Face not recognized (false rejections)
 - Re-enroll with better lighting
 - Check camera angle (should be at face height)
-- Lower threshold: edit `/etc/systemd/system/fw-gatekeeper-kiosk.service`, change `--threshold 0.5` to `0.4`
-- Then: `sudo systemctl daemon-reload && sudo systemctl restart fw-gatekeeper-kiosk`
+- Lower the match threshold slightly: add `RECOGNITION_MATCH_THRESHOLD = 0.40` to
+  `pi-kiosk/config_local.py` on the kiosk (cosine similarity — **higher = stricter**;
+  default `0.45`; stay within 0.40–0.55 and use the Recognition Lab to pick a value)
+- Then: `sudo systemctl restart fw-gatekeeper-kiosk`
 
 ### Face matching wrong person (false positives)
-- Raise threshold to `0.55` or `0.6`
+- Raise the match threshold: set `RECOGNITION_MATCH_THRESHOLD = 0.50` (or `0.55`) in
+  `pi-kiosk/config_local.py`, then restart the service
 - Re-enroll both workers with clearer photos
 
 ### Kiosk shows stale data
@@ -451,15 +454,17 @@ Set the `ADMIN_PIN` environment variable on Render:
 ### Kiosk CLI Options
 
 ```bash
-python kiosk.py --server URL --kiosk-id ID --camera [auto|pi|usb] --threshold 0.5
+python main.py --server URL --kiosk-id ID --camera [auto|pi|usb]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--server` | Render URL | Gatekeeper server |
-| `--kiosk-id` | `kiosk-1` | Kiosk identifier |
+| `--kiosk-id` | `kiosk-entry-1` | Kiosk identifier |
 | `--camera` | `auto` | `pi` for Pi Camera, `usb` for USB webcam |
-| `--threshold` | `0.5` | Match threshold (lower = stricter) |
+
+The match threshold is not a CLI flag: set `RECOGNITION_MATCH_THRESHOLD` in
+`pi-kiosk/config_local.py` (cosine similarity, higher = stricter, default `0.45`).
 
 ### Performance
 

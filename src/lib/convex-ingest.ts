@@ -72,10 +72,22 @@ export function ingestRecognitionAttemptBatch(attempts: unknown[]) {
   );
 }
 
-export function updateKioskLastSync(kioskId: string, lastSync: string) {
+export type KioskHealthReport = {
+  cameraOk?: boolean;
+  modelOk?: boolean;
+  livenessAvailable?: boolean;
+  knownWorkers?: number;
+  queuedLogs?: number;
+  queuedAttempts?: number;
+  degradedReason?: string;
+  lastScanAt?: string;
+};
+
+export function updateKioskLastSync(kioskId: string, lastSync: string, health?: KioskHealthReport) {
   return postSecuredIngest<{ updated: boolean }>('/api/ingest/kiosks/last-sync', {
     kioskId,
     lastSync,
+    ...(health ? { health } : {}),
   });
 }
 

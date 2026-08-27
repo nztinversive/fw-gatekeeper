@@ -87,7 +87,10 @@ class FaceRecognizer:
             self._liveness_enabled = False
             self.liveness_checker = None
             logger.error(str(exc))
-            logger.error("Liveness is required; matching will be blocked until model is installed.")
+            logger.error(
+                "Blink verification is unavailable; clock events will be recorded "
+                "without liveness and the kiosk will report itself degraded."
+            )
 
     @property
     def liveness_enabled(self) -> bool:

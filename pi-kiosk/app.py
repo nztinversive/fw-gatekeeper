@@ -49,6 +49,20 @@ _status = {
     "timestamp": None,
 }
 
+_health_lock = threading.Lock()
+_health = {
+    "camera_ok": False,
+    "model_ok": False,
+    "liveness_available": False,
+    "known_workers": 0,
+    "queued_logs": 0,
+    "queued_attempts": 0,
+    "degraded_reason": None,
+    "last_scan_at": None,
+    "sync_online": None,  # None = sync disabled/unknown, True/False once known
+    "last_sync_at": None,
+}
+
 _server_thread = None
 _supervisor_attempt_limiter = SupervisorAttemptLimiter()
 
@@ -67,11 +81,24 @@ def update_status(**kwargs):
         _status["timestamp"] = datetime.now().isoformat(timespec="seconds")
 
 
+def update_health(**kwargs):
+    """Update kiosk health fields (camera/model/sync/queue state)."""
+    with _health_lock:
+        _health.update(kwargs)
+
+
+def get_health_snapshot() -> dict:
+    with _health_lock:
+        return dict(_health)
+
+
 def get_status_snapshot() -> dict:
     """Get current status plus metadata used by the frontend."""
     with _status_lock:
         data = dict(_status)
 
+    data["health"] = get_health_snapshot()
+    data["liveness_required"] = bool(config.LIVENESS_REQUIRED)
     workers = database.list_workers()
     data["kiosk_id"] = config.KIOSK_ID
     data["kiosk_name"] = config.KIOSK_NAME
@@ -176,7 +203,10 @@ def video_feed_alias():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    """Truthful kiosk health: degraded whenever a scan-blocking subsystem is down."""
+    snapshot = get_health_snapshot()
+    degraded = not snapshot["camera_ok"] or not snapshot["model_ok"] or bool(snapshot["degraded_reason"])
+    return jsonify({"status": "degraded" if degraded else "ok", **snapshot})
 
 
 @app.route("/status")

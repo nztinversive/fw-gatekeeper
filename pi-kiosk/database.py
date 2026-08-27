@@ -487,6 +487,20 @@ def mark_synced(log_ids: list[int]):
     conn.commit()
 
 
+def count_unsynced_logs() -> int:
+    """Count gatekeeper logs still waiting to sync (for health reporting)."""
+    conn = _get_conn()
+    row = conn.execute("SELECT COUNT(*) FROM attendance_log WHERE synced = 0").fetchone()
+    return int(row[0]) if row else 0
+
+
+def count_unsynced_recognition_attempts() -> int:
+    """Count recognition telemetry rows still waiting to sync."""
+    conn = _get_conn()
+    row = conn.execute("SELECT COUNT(*) FROM recognition_attempts WHERE synced = 0").fetchone()
+    return int(row[0]) if row else 0
+
+
 def _optional_float(value) -> Optional[float]:
     if value is None:
         return None

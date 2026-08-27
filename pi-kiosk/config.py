@@ -19,11 +19,16 @@ CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 
 # Liveness / recognition
+LIVENESS_REQUIRED = True  # Require a blink before accepting a clock event
 LIVENESS_EAR_THRESHOLD = 0.21
 LIVENESS_BLINK_FRAMES = 2
 LIVENESS_TIMEOUT_SEC = 5
+LIVENESS_WAIT_SEC = 8  # How long the kiosk waits for a blink after a face match
 RECOGNITION_TOLERANCE = 0.5
-RECOGNITION_MATCH_THRESHOLD = 0.30  # Existing Pi MobileFaceNet accept threshold
+# Cosine similarity accept threshold (higher = stricter). ArcFace-family
+# embeddings are usually reliable in the 0.45-0.55 band; 0.30 accepts
+# look-alikes. Tune per site with the Recognition Lab, via config_local.py.
+RECOGNITION_MATCH_THRESHOLD = 0.45
 RECOGNITION_NEAR_MISS_MARGIN = 0.08
 RECOGNITION_EMBEDDING_WINDOW = 3
 RECOGNITION_UNKNOWN_STREAK = 3
@@ -50,3 +55,11 @@ SHAPE_PREDICTOR_PATH = str(Path(MODEL_DIR) / "shape_predictor_68_face_landmarks.
 
 # Backward-compatible alias used by legacy modules
 PHOTO_DIR = FACES_DIR
+
+# Local per-kiosk overrides (written by setup.sh as config_local.py).
+# This import lives in the tracked file so the installer never has to
+# mutate config.py — keeping `git pull` upgrades clean on deployed kiosks.
+try:
+    from config_local import *  # noqa: F401, F403
+except ImportError:
+    pass

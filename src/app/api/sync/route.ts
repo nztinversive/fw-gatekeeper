@@ -1,9 +1,35 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
-import { fetchWorkersForSync, updateKioskLastSync } from '@/lib/convex-ingest';
+import { fetchWorkersForSync, updateKioskLastSync, type KioskHealthReport } from '@/lib/convex-ingest';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
+
+function parseKioskHealth(params: URLSearchParams): KioskHealthReport | undefined {
+  const bool = (key: string) => {
+    const value = params.get(key);
+    return value === null ? undefined : value === '1' || value === 'true';
+  };
+  const count = (key: string) => {
+    const value = params.get(key);
+    if (value === null) return undefined;
+    const num = Number(value);
+    return Number.isFinite(num) && num >= 0 ? Math.floor(num) : undefined;
+  };
+  const text = (key: string) => params.get(key)?.trim() || undefined;
+
+  const health: KioskHealthReport = {
+    cameraOk: bool('camera_ok'),
+    modelOk: bool('model_ok'),
+    livenessAvailable: bool('liveness_available'),
+    knownWorkers: count('known_workers'),
+    queuedLogs: count('queued_logs'),
+    queuedAttempts: count('queued_attempts'),
+    degradedReason: text('degraded_reason'),
+    lastScanAt: text('last_scan_at'),
+  };
+  return Object.values(health).some((value) => value !== undefined) ? health : undefined;
+}
 
 export async function GET(req: NextRequest) {
   const isAuthorized = (await hasValidPortalSession(req, ['admin'])) || hasValidKioskKey(req);
@@ -19,7 +45,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ workers: [], synced_at: lastSync, ...demoWriteMetadata() });
   }
   try {
-    const result = await updateKioskLastSync(kioskId, lastSync);
+    const result = await updateKioskLastSync(kioskId, lastSync, parseKioskHealth(req.nextUrl.searchParams));
     if (!result.updated) {
       console.warn('next_secured_ingest_kiosk_sync_not_found', { kioskId });
     }

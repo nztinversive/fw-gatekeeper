@@ -85,7 +85,11 @@ mkdir -p "$INSTALL_DIR"
 
 # Clone or update repo
 if [ -d "$INSTALL_DIR/.git" ]; then
-  cd "$INSTALL_DIR" && git pull origin master
+  cd "$INSTALL_DIR"
+  # Older setup.sh versions appended a config_local import to the tracked
+  # config.py; restore it so the pull doesn't fail on a dirty tree.
+  git checkout -- pi-kiosk/config.py 2>/dev/null || true
+  git pull origin master
 else
   git clone https://github.com/nztinversive/fw-gatekeeper.git "$INSTALL_DIR"
 fi
@@ -125,19 +129,9 @@ KIOSK_API_KEY = "$KIOSK_API_KEY"
 KIOSK_UI_KEY = "$KIOSK_UI_KEY"
 KIOSK_SUPERVISOR_PIN = "$KIOSK_SUPERVISOR_PIN"
 CONFEOF
-
-# Patch config.py to load local overrides. Keep this out of the tracked source
-# file so existing installed repos with the generated block can still pull.
-if ! grep -q "config_local" config.py; then
-  cat >> config.py << 'PATCHEOF'
-
-# Load local overrides if present
-try:
-    from config_local import *  # noqa: F401, F403
-except ImportError:
-    pass
-PATCHEOF
-fi
+chmod 600 config_local.py
+# Note: config.py imports config_local itself — never mutate tracked files
+# here, or `git pull` upgrades fail on a dirty tree.
 
 # ─── 6. Systemd Services ───────────────────────────────────────
 echo "[6/8] Installing systemd services..."

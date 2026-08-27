@@ -533,7 +533,8 @@
     </dialog>
 
     <footer class="footer">
-        <span>Blink verification required before recognition</span>
+        <span id="livenessNote"></span>
+        <span id="syncChip"></span>
         <span id="lastUpdated">Last update: --</span>
     </footer>
 
@@ -558,6 +559,8 @@
         const supervisorCancel = document.getElementById("supervisorCancel");
         const adminPanel = document.getElementById("adminPanel");
         const lastUpdated = document.getElementById("lastUpdated");
+        const livenessNote = document.getElementById("livenessNote");
+        const syncChip = document.getElementById("syncChip");
         let adminVisible = false;
         let supervisorStateVersion = 0;
 
@@ -579,6 +582,7 @@
         function statusMessageFromState(state, message, name, action) {
             if (message) return message;
             if (state === "WAITING_FOR_BLINK") return "Blink to verify";
+            if (state === "SERVICE_DEGRADED") return "Scanner unavailable - please use the sign-in sheet";
             if (state === "FACE_DETECTED") return "Face detected";
             if (state === "MATCHED") return name ? `Welcome, ${name}!` : "Face matched";
             if (state === "CLOCKED_IN") {
@@ -597,7 +601,7 @@
             if (normalizedState === "CLOCKED_IN" || normalizedState === "ALREADY_CLOCKED") {
                 borderColor = "#2fa36b";
                 textColor = "#2fa36b";
-            } else if (normalizedState === "NOT_RECOGNIZED") {
+            } else if (normalizedState === "NOT_RECOGNIZED" || normalizedState === "SERVICE_DEGRADED" || normalizedState === "ERROR") {
                 borderColor = "#bf4934";
                 textColor = "#bf4934";
             }
@@ -666,6 +670,34 @@
                 knownValue.textContent = `Workers: ${data.known_workers || 0}`;
                 liveValue.textContent = `Liveness: ${data.liveness_confirmed ? "Yes" : "No"}`;
                 lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+
+                // Footer claims must match what the kiosk actually enforces.
+                const health = data.health || {};
+                if (data.liveness_required && health.liveness_available) {
+                    livenessNote.textContent = "Blink verification required before recognition";
+                    livenessNote.style.color = "";
+                } else if (data.liveness_required) {
+                    livenessNote.textContent = "Blink verification unavailable - scans recorded unverified";
+                    livenessNote.style.color = "#e0a343";
+                } else {
+                    livenessNote.textContent = "";
+                }
+
+                const queued = (health.queued_logs || 0) + (health.queued_attempts || 0);
+                if (health.sync_online === true) {
+                    syncChip.textContent = queued > 0
+                        ? `Syncing - ${queued} record${queued === 1 ? "" : "s"} queued`
+                        : (health.last_sync_at
+                            ? `Synced ${new Date(health.last_sync_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`
+                            : "Connected");
+                    syncChip.style.color = queued > 0 ? "#e0a343" : "#87dfb3";
+                } else if (health.sync_online === false) {
+                    syncChip.textContent = `Offline - ${queued} scan${queued === 1 ? "" : "s"} queued`;
+                    syncChip.style.color = "#e0a343";
+                } else {
+                    syncChip.textContent = "Sync disabled";
+                    syncChip.style.color = "#ff9e8f";
+                }
 
                 if (requestSupervisorStateVersion !== supervisorStateVersion) {
                     return;

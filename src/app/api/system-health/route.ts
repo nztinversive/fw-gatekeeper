@@ -13,6 +13,17 @@ const STALE_THRESHOLD_MS = 60 * 60 * 1000;
 const CACHE_TTL_MS = 30 * 1000;
 
 type KioskStatus = 'online' | 'stale' | 'offline' | 'never_synced';
+type KioskDeviceHealth = {
+  camera_ok: boolean | null;
+  model_ok: boolean | null;
+  liveness_available: boolean | null;
+  known_workers: number | null;
+  queued_logs: number | null;
+  queued_attempts: number | null;
+  degraded_reason: string | null;
+  last_scan_at: string | null;
+  reported_at: string;
+};
 type FaceServiceHealth = {
   status: 'online' | 'degraded' | 'offline';
   http_status: number | null;
@@ -40,6 +51,8 @@ type SystemHealthPayload = {
       status: KioskStatus;
       expected_worker_count: number;
       last_attendance_upload: string | null;
+      health: KioskDeviceHealth | null;
+      device_issues: string[];
     }>;
   };
   sync: { ready_worker_count: number; last_attendance_upload: string | null };
@@ -70,6 +83,28 @@ function getKioskStatus(lastSync: string | null): KioskStatus {
   if (ageMs <= ONLINE_THRESHOLD_MS) return 'online';
   if (ageMs <= STALE_THRESHOLD_MS) return 'stale';
   return 'offline';
+}
+
+const DEGRADED_REASON_LABELS: Record<string, string> = {
+  camera_error: 'camera failure — the kiosk cannot scan',
+  model_error: 'recognition model failed to load — all scans are rejected',
+  encoding_mismatch: 'face encodings do not match the kiosk model — all workers are rejected',
+  no_workers_synced: 'no workers synced — every scan is rejected',
+  liveness_unavailable: 'blink verification unavailable — scans are recorded unverified',
+};
+
+function getDeviceIssues(health: KioskDeviceHealth | null): string[] {
+  if (!health) return [];
+  const issues: string[] = [];
+  if (health.camera_ok === false) issues.push(DEGRADED_REASON_LABELS.camera_error);
+  if (health.model_ok === false) issues.push(DEGRADED_REASON_LABELS.model_error);
+  if (health.degraded_reason && health.degraded_reason !== 'camera_error' && health.degraded_reason !== 'model_error') {
+    issues.push(DEGRADED_REASON_LABELS[health.degraded_reason] ?? `degraded (${health.degraded_reason})`);
+  }
+  if ((health.queued_logs ?? 0) > 0) {
+    issues.push(`${health.queued_logs} attendance record${health.queued_logs === 1 ? '' : 's'} queued on-device`);
+  }
+  return issues;
 }
 
 function latestTimestamp(records: Array<{ timestamp?: string }>) {
@@ -130,6 +165,8 @@ export async function GET(req: NextRequest) {
           status: 'online',
           expected_worker_count: readyWorkerCount,
           last_attendance_upload: null,
+          health: null,
+          device_issues: [],
         })),
       },
       sync: { ready_worker_count: readyWorkerCount, last_attendance_upload: null },
@@ -174,6 +211,8 @@ export async function GET(req: NextRequest) {
         status,
         expected_worker_count: readyWorkerCount,
         last_attendance_upload: latestTimestamp(matchingEvents),
+        health: kiosk.health ?? null,
+        device_issues: getDeviceIssues(kiosk.health ?? null),
       };
     });
 
@@ -185,7 +224,12 @@ export async function GET(req: NextRequest) {
       { online: 0, stale: 0, offline: 0, never_synced: 0 } as Record<KioskStatus, number>,
     );
 
+    const deviceWarnings = kioskRows.flatMap((kiosk) =>
+      kiosk.device_issues.map((issue) => `Kiosk ${kiosk.name}: ${issue}`),
+    );
+
     const warnings = [
+      ...deviceWarnings,
       ...(faceService.status === 'offline' ? ['Face service is offline or not responding. Enrollment may fail.'] : []),
       ...(faceService.status === 'degraded' ? ['Face service is degraded. Enrollment or recognition may be unreliable.'] : []),
       ...(faceService.status !== 'offline' && !faceService.model_ready ? ['Face service models are not ready. Face enrollment may fail.'] : []),

@@ -214,6 +214,14 @@ def _empty_recognition_result(face_loc, decision="rejected_unknown"):
 
 
 def _log_recognition_attempt(result, decision):
+    try:
+        _write_recognition_attempt(result, decision)
+    except Exception as e:
+        # Telemetry writes must never take the scan loop down.
+        logger.error("Failed to log recognition attempt (%s): %s", decision, e)
+
+
+def _write_recognition_attempt(result, decision):
     database.log_recognition_attempt(
         timestamp=_now_iso(),
         kiosk_id=config.KIOSK_ID,
@@ -260,7 +268,8 @@ def run(args):
     database.init_db()
 
     # Pre-download MobileFaceNet model, but continue booting if offline.
-    if not ensure_rec_model():
+    model_ready = ensure_rec_model()
+    if not model_ready:
         logger.warning("Recognition model unavailable at startup; kiosk will keep retrying in the background.")
 
     logger.info("Starting web UI on port %d...", config.KIOSK_PORT)
@@ -270,7 +279,43 @@ def run(args):
     recognizer.load_faces()
     logger.info("Loaded %d known faces", recognizer.known_count)
 
-    sync_worker = SyncWorker(recognizer=recognizer) if sync_enabled else None
+    # Blink verification. If the shape predictor is missing, keep the door
+    # working but record events as unverified and report the kiosk degraded —
+    # never claim liveness we don't have.
+    liveness = recognizer.liveness_checker if config.LIVENESS_REQUIRED else None
+    if config.LIVENESS_REQUIRED and liveness is None:
+        logger.critical(
+            "Liveness model missing: clock events will be recorded WITHOUT blink "
+            "verification and this kiosk will report itself degraded."
+        )
+
+    web_app.update_health(
+        model_ok=model_ready,
+        liveness_available=liveness is not None,
+        known_workers=recognizer.known_count,
+        degraded_reason="liveness_unavailable" if config.LIVENESS_REQUIRED and liveness is None else None,
+    )
+
+    def kiosk_health():
+        snapshot = web_app.get_health_snapshot()
+        snapshot["known_workers"] = recognizer.known_count
+        return snapshot
+
+    def base_degraded_reason():
+        """The standing degradation, if any, once transient faults clear."""
+        if config.LIVENESS_REQUIRED and liveness is None:
+            return "liveness_unavailable"
+        return None
+
+    sync_worker = (
+        SyncWorker(
+            recognizer=recognizer,
+            health_provider=kiosk_health,
+            health_reporter=web_app.update_health,
+        )
+        if sync_enabled
+        else None
+    )
     if sync_worker:
         sync_worker.start()
 
@@ -280,6 +325,7 @@ def run(args):
     while True:
         try:
             camera.start()
+            web_app.update_health(camera_ok=True, degraded_reason=base_degraded_reason())
             if camera_attempts:
                 logger.info("Camera initialized after %d retry attempt(s)", camera_attempts)
             break
@@ -290,6 +336,7 @@ def run(args):
             if camera_attempts >= 10 and not critical_logged:
                 logger.critical("Camera failed to initialize after %d attempts; continuing to retry every 30 seconds", camera_attempts)
                 critical_logged = True
+            web_app.update_health(camera_ok=False, degraded_reason="camera_error")
             web_app.update_status(state="ERROR", message=f"Camera error: {e}. Retrying in 30s", worker_id=None, face_detected=False)
             time.sleep(30)
 
@@ -376,6 +423,15 @@ def run(args):
                     enc_dim = len(known_encs[0])
                     cand_dim = len(smoothed_embedding)
 
+                    if enc_dim != cand_dim:
+                        # Server-side encodings don't match this kiosk's model:
+                        # every worker would be silently rejected. Surface it as
+                        # a kiosk fault, not a failed recognition.
+                        logger.warning("Dim mismatch: known=%d vs live=%d", enc_dim, cand_dim)
+                        embedding_history.clear()
+                        current_result[0] = _empty_recognition_result(face_loc, decision="rejected_dim_mismatch")
+                        continue
+
                     if enc_dim == cand_dim:
                         # Both 512-dim - cosine similarity
                         scores = []
@@ -390,8 +446,6 @@ def run(args):
                         logger.info("Match: sim=%.3f name=%s window=%d", conf, known_names[best_idx], len(embedding_history))
                         if conf >= config.RECOGNITION_MATCH_THRESHOLD:
                             matched = known_names[best_idx]
-                    else:
-                        logger.warning("Dim mismatch: known=%d vs live=%d", enc_dim, cand_dim)
 
                 margin = conf - second_score if second_score is not None else None
                 candidate_worker_id = known_ids[best_idx] if best_idx is not None else None
@@ -430,14 +484,71 @@ def run(args):
                           worker_id=None, known_workers=recognizer.known_count, face_detected=False)
     logger.info("Kiosk ready")
 
+    # Liveness wait state: set when a matched worker still needs to blink.
+    pending_clock = [None]
+
+    def record_clock(result, worker_id, display_name, display_id, confidence, liveness_confirmed):
+        """Log the clock event + telemetry, update the display. Returns True on success."""
+        if config.KIOSK_TYPE == "entry":
+            action = "clock_in"
+        elif config.KIOSK_TYPE == "exit":
+            action = "clock_out"
+        else:
+            last_action = database.get_last_action(worker_id)
+            action = "clock_out" if last_action == "clock_in" else "clock_in"
+
+        result["liveness_confirmed"] = liveness_confirmed
+        try:
+            database.log_attendance(
+                worker_id=worker_id, worker_name=display_name,
+                action=action, liveness_confirmed=liveness_confirmed, confidence=confidence,
+            )
+            _log_recognition_attempt(result, "accepted")
+        except Exception as e:
+            # A busy/locked SQLite must never take the kiosk down.
+            logger.error("Failed to record attendance for %s: %s", display_name, e, exc_info=True)
+            web_app.update_status(state="ERROR", message="Could not record scan - please try again",
+                                  worker_name=display_name, worker_id=display_id, face_detected=True,
+                                  confidence=confidence, known_workers=recognizer.known_count)
+            return False
+
+        last_clocks[worker_id] = datetime.now()
+        web_app.update_health(last_scan_at=_now_iso(), degraded_reason=base_degraded_reason())
+
+        time_str = datetime.now().strftime("%I:%M %p")
+        pct = int(confidence * 100)
+        id_text = f" ID: {display_id}" if display_id else ""
+        msg = (
+            f"Welcome, {display_name}!{id_text} ({pct}%) - {time_str}"
+            if action == "clock_in"
+            else f"Goodbye, {display_name}!{id_text} ({pct}%) - {time_str}"
+        )
+        web_app.update_status(state="CLOCKED_IN", message=msg,
+                              worker_name=display_name, worker_id=display_id, action=action,
+                              confidence=confidence, face_detected=True,
+                              liveness_confirmed=liveness_confirmed,
+                              known_workers=recognizer.known_count)
+        logger.info("%s: %s id=%s (confidence: %.2f, liveness=%s)",
+                    action.replace("_", " ").title(), display_name, display_id or "n/a",
+                    confidence, liveness_confirmed)
+        return True
+
+    camera_healthy = True
     try:
         while True:
             try:
                 bgr_frame, rgb_frame = camera.capture()
             except Exception as e:
                 logger.error("Capture error: %s", e)
+                if camera_healthy:
+                    camera_healthy = False
+                    web_app.update_health(camera_ok=False, degraded_reason="camera_error")
                 time.sleep(1)
                 continue
+
+            if not camera_healthy:
+                camera_healthy = True
+                web_app.update_health(camera_ok=True, degraded_reason=base_degraded_reason())
 
             now = time.time()
 
@@ -449,17 +560,59 @@ def run(args):
                 if pending_frame[0] is None:
                     pending_frame[0] = (bgr_frame.copy(), rgb_frame.copy())
 
-            # 3. Skip during display hold
+            # 3. Skip during display hold; drop results that land mid-hold so a
+            #    lingering face can't re-trigger off stale data every cycle.
             if now < display_until[0]:
+                current_result[0] = None
                 time.sleep(0.05)
                 continue
 
-            # 4. Process detection result
+            # 4. Blink verification window for an already-matched worker
+            pending = pending_clock[0]
+            if pending is not None:
+                fresh = current_result[0]
+                if fresh is not None:
+                    current_result[0] = None
+                    if fresh.get("face_loc") is not None:
+                        box_loc = fresh.get("face_loc")
+
+                confirmed = liveness.update(bgr_frame, box_loc) if box_loc is not None else False
+                if confirmed:
+                    pending_clock[0] = None
+                    recorded = record_clock(
+                        pending["result"], pending["worker_id"], pending["display_name"],
+                        pending["display_id"], pending["confidence"], liveness_confirmed=True,
+                    )
+                    liveness.reset()
+                    display_until[0] = now + (config.DISPLAY_TIME_SEC if recorded else 2)
+                elif now > pending["deadline"]:
+                    pending_clock[0] = None
+                    _log_recognition_attempt(pending["result"], "rejected_liveness_timeout")
+                    web_app.update_status(state="NOT_RECOGNIZED",
+                                          message="Blink not detected - please try again",
+                                          worker_name=pending["display_name"], worker_id=pending["display_id"],
+                                          face_detected=True, confidence=pending["confidence"],
+                                          ear=liveness.get_ear(), known_workers=recognizer.known_count)
+                    liveness.reset()
+                    display_until[0] = now + 2
+                else:
+                    web_app.update_status(state="WAITING_FOR_BLINK",
+                                          message=f"Blink to verify, {pending['display_name']}",
+                                          worker_name=pending["display_name"], worker_id=pending["display_id"],
+                                          face_detected=True, confidence=pending["confidence"],
+                                          ear=liveness.get_ear(), known_workers=recognizer.known_count)
+                    time.sleep(0.03)
+                continue
+
+            # 5. Consume the detection result exactly once (a result must never
+            #    be reprocessed across loop ticks).
             result = current_result[0]
+            if result is not None:
+                current_result[0] = None
 
             if result is None:
-                unknown_streak = 0
                 if box_loc is not None:
+                    unknown_streak = 0
                     box_loc = None
                     box_label = None
                     web_app.update_status(state="IDLE", message="Step toward camera",
@@ -470,9 +623,36 @@ def run(args):
             face_loc = result.get("face_loc")
             name = result.get("name")
             confidence = result.get("confidence") or 0.0
+            decision = result.get("decision")
             box_loc = face_loc
 
+            # 6. Kiosk faults are not the worker's fault: say the scanner is
+            #    down instead of blaming their face.
+            degraded_fault = None
+            if decision == "rejected_model_error":
+                degraded_fault = "model_error"
+                web_app.update_health(model_ok=False, degraded_reason=degraded_fault)
+            elif decision == "rejected_dim_mismatch":
+                degraded_fault = "encoding_mismatch"
+                web_app.update_health(degraded_reason=degraded_fault)
+            elif recognizer.known_count == 0:
+                degraded_fault = "no_workers_synced"
+                web_app.update_health(degraded_reason=degraded_fault)
+
+            if degraded_fault:
+                box_color = RED
+                box_label = None
+                _log_recognition_attempt(result, decision or "rejected_unknown")
+                web_app.update_status(state="SERVICE_DEGRADED",
+                                      message="Scanner unavailable - please use the sign-in sheet",
+                                      worker_id=None, face_detected=True,
+                                      known_workers=recognizer.known_count)
+                display_until[0] = now + config.DISPLAY_TIME_SEC
+                continue
+
             if name is None:
+                # unknown_streak counts consumed detection results, so this is
+                # N real recognition attempts, not N camera frames.
                 unknown_streak += 1
                 box_color = GOLD if unknown_streak < config.RECOGNITION_UNKNOWN_STREAK else RED
                 box_label = None
@@ -481,7 +661,8 @@ def run(args):
                                           worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
                 else:
-                    _log_recognition_attempt(result, result.get("decision") or "rejected_unknown")
+                    unknown_streak = 0
+                    _log_recognition_attempt(result, decision or "rejected_unknown")
                     web_app.update_status(state="NOT_RECOGNIZED", message="Face not recognized",
                                           worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
@@ -523,36 +704,27 @@ def run(args):
                 display_until[0] = now + config.DISPLAY_TIME_SEC
                 continue
 
-            if config.KIOSK_TYPE == "entry":
-                action = "clock_in"
-            elif config.KIOSK_TYPE == "exit":
-                action = "clock_out"
-            else:
-                last_action = database.get_last_action(worker_id)
-                action = "clock_out" if last_action == "clock_in" else "clock_in"
+            if liveness is not None:
+                # Matched - now require a blink before the event is recorded.
+                liveness.reset()
+                pending_clock[0] = {
+                    "result": result,
+                    "worker_id": worker_id,
+                    "display_name": display_name,
+                    "display_id": display_id,
+                    "confidence": confidence,
+                    "deadline": now + config.LIVENESS_WAIT_SEC,
+                }
+                web_app.update_status(state="WAITING_FOR_BLINK",
+                                      message=f"Blink to verify, {display_name}",
+                                      worker_name=display_name, worker_id=display_id,
+                                      face_detected=True, confidence=confidence,
+                                      ear=liveness.get_ear(), known_workers=recognizer.known_count)
+                continue
 
-            database.log_attendance(
-                worker_id=worker_id, worker_name=display_name,
-                action=action, liveness_confirmed=False, confidence=confidence,
-            )
-            _log_recognition_attempt(result, "accepted")
-            last_clocks[worker_id] = datetime.now()
-
-            time_str = datetime.now().strftime("%I:%M %p")
-            pct = int(confidence * 100)
-            id_text = f" ID: {display_id}" if display_id else ""
-            msg = (
-                f"Welcome, {display_name}!{id_text} ({pct}%) - {time_str}"
-                if action == "clock_in"
-                else f"Goodbye, {display_name}!{id_text} ({pct}%) - {time_str}"
-            )
-
-            web_app.update_status(state="CLOCKED_IN", message=msg,
-                                  worker_name=display_name, worker_id=display_id, action=action,
-                                  confidence=confidence, face_detected=True,
-                                  known_workers=recognizer.known_count)
-            logger.info("%s: %s id=%s (confidence: %.2f)", action.replace("_", " ").title(), display_name, display_id or "n/a", confidence)
-            display_until[0] = now + config.DISPLAY_TIME_SEC
+            recorded = record_clock(result, worker_id, display_name, display_id, confidence,
+                                    liveness_confirmed=False)
+            display_until[0] = now + (config.DISPLAY_TIME_SEC if recorded else 2)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")

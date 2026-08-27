@@ -225,14 +225,6 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* Status indicator */}
-        <div className="px-4 py-3 mx-3 mb-3 glass-card rounded-xl">
-          <div className="flex items-center gap-2">
-            <span className="status-dot-pulse bg-emerald-400" />
-            <span className="text-xs font-mono text-slate-400">System Online</span>
-          </div>
-        </div>
-
         {/* Logout */}
         <div className="p-3 border-t border-navy-600/40">
           {logoutError && (
@@ -299,12 +291,9 @@ export default function Sidebar() {
             id="mobile-more-menu"
             className="absolute left-3 right-3 bottom-24 rounded-3xl border border-navy-600/60 bg-navy-900/95 p-3 shadow-2xl shadow-black/40"
           >
-            <div className="flex items-center justify-between px-2 pb-2">
-              <div>
-                <p className="section-label">More pages</p>
-                <p className="text-xs text-slate-500">Secondary tools stay here instead of crowding the bottom bar.</p>
-              </div>
-              <span className="status-dot-pulse bg-emerald-400" />
+            <div className="px-2 pb-2">
+              <p className="section-label">More pages</p>
+              <p className="text-xs text-slate-500">Secondary tools stay here instead of crowding the bottom bar.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {mobileSecondaryLinks.map((l) => {

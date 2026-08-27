@@ -127,6 +127,20 @@ export default defineSchema({
     type: v.string(),
     location: v.string(),
     lastSync: v.optional(v.string()),
+    // Self-reported device health, sent alongside each worker sync. A kiosk
+    // whose network is up but whose camera/model is broken must not look
+    // healthy on the dashboard.
+    health: v.optional(v.object({
+      cameraOk: v.optional(v.boolean()),
+      modelOk: v.optional(v.boolean()),
+      livenessAvailable: v.optional(v.boolean()),
+      knownWorkers: v.optional(v.float64()),
+      queuedLogs: v.optional(v.float64()),
+      queuedAttempts: v.optional(v.float64()),
+      degradedReason: v.optional(v.string()),
+      lastScanAt: v.optional(v.string()),
+      reportedAt: v.string(),
+    })),
     active: v.boolean(),
   }).index("by_active", ["active"])
     .index("by_kiosk_id", ["kioskId"]),

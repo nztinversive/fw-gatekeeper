@@ -92,11 +92,12 @@ The kiosk works **without internet** after the initial sync:
 ### Command Line
 
 ```bash
-python3 kiosk.py --server URL --kiosk-id ID --camera [auto|pi|usb] --threshold 0.6
+python3 main.py --server URL --kiosk-id ID --camera [auto|pi|usb]
 ```
 
-- `--threshold`: Face match distance (0-1). Lower = stricter. Default 0.6.
 - `--camera`: `pi` for Pi Camera, `usb` for USB webcam, `auto` to try both.
+- The match threshold is configured, not a flag: set `RECOGNITION_MATCH_THRESHOLD`
+  in `config_local.py` (cosine similarity, 0-1, **higher = stricter**, default `0.45`).
 
 ## Performance on Pi 3B
 
@@ -115,8 +116,8 @@ For faster detection, use a Pi 4 (~1 second total).
 | "KIOSK_API_KEY is required" | Configure the server-matching key and restart `fw-gatekeeper-kiosk.service` |
 | "KIOSK_UI_KEY is required" | Rerun setup with a generated Pi-local UI key and restart `fw-gatekeeper-kiosk.service` |
 | Slow face detection | Normal for Pi 3B — HOG model is CPU-only |
-| False rejections | Lower threshold: `--threshold 0.7` |
-| False matches | Raise threshold: `--threshold 0.5` |
+| False rejections | Lower `RECOGNITION_MATCH_THRESHOLD` slightly (e.g. `0.40`) in `config_local.py` |
+| False matches | Raise `RECOGNITION_MATCH_THRESHOLD` (e.g. `0.50`–`0.55`) in `config_local.py` |
 | Camera permission denied | Run `sudo raspi-config` → Interface → Camera → Enable |
 
 ## Architecture
