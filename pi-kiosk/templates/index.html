@@ -137,36 +137,52 @@
             display: block;
         }
 
+        /* Worker-facing result banner: large, wrapping, readable from a few
+           feet away. Engineering metadata lives behind supervisor mode. */
         .status-card {
             background: var(--bg-2);
             border: 1px solid var(--line);
-            border-left: 4px solid var(--gold);
+            border-left: 6px solid var(--gold);
             border-radius: 10px;
-            padding: 10px 12px;
+            padding: 14px 18px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
             overflow: hidden;
         }
 
-        .status-label {
-            color: var(--muted);
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06rem;
-            white-space: nowrap;
+        .status-glyph {
+            font-size: clamp(2rem, 6vw, 4rem);
+            font-weight: 700;
+            line-height: 1;
             flex-shrink: 0;
+            min-width: 1em;
+            text-align: center;
+        }
+
+        .status-glyph:empty {
+            display: none;
         }
 
         .status-text {
-            font-size: clamp(0.95rem, 1.8vw, 1.2rem);
+            font-size: clamp(1.5rem, 4.5vw, 3.2rem);
             font-weight: 700;
-            line-height: 1.1;
+            line-height: 1.15;
             flex: 1;
             min-width: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow-wrap: break-word;
+            text-wrap: balance;
+        }
+
+        /* Debug strip is supervisor-only: workers should never read EAR or
+           roster counts off the door screen. */
+        .status-meta {
+            display: none;
+        }
+
+        body.supervisor-mode .status-meta {
+            display: flex;
         }
 
         .admin-controls {
@@ -182,7 +198,6 @@
         .status-meta {
             color: var(--muted);
             font-size: 0.76rem;
-            display: flex;
             gap: 8px;
             flex-wrap: nowrap;
             min-width: 0;
@@ -489,7 +504,7 @@
                 <img src="/feed" alt="Live camera feed">
             </div>
             <div class="status-card">
-                <div class="status-label">Live Status</div>
+                <div id="statusGlyph" class="status-glyph" aria-hidden="true"></div>
                 <div id="statusText" class="status-text">Step toward camera</div>
                 <div class="status-meta">
                     <span id="stateValue">State: IDLE</span>
@@ -540,6 +555,7 @@
 
     <script>
         const statusText = document.getElementById("statusText");
+        const statusGlyph = document.getElementById("statusGlyph");
         const statusCard = document.querySelector(".status-card");
         const stateValue = document.getElementById("stateValue");
         const workerIdValue = document.getElementById("workerIdValue");
@@ -597,17 +613,25 @@
             const normalizedState = state || "IDLE";
             let borderColor = "#b8860b";
             let textColor = "";
+            // Glyph gives a color-independent success/failure signal.
+            let glyph = "";
 
             if (normalizedState === "CLOCKED_IN" || normalizedState === "ALREADY_CLOCKED") {
                 borderColor = "#2fa36b";
                 textColor = "#2fa36b";
+                glyph = "✓";
             } else if (normalizedState === "NOT_RECOGNIZED" || normalizedState === "SERVICE_DEGRADED" || normalizedState === "ERROR") {
                 borderColor = "#bf4934";
                 textColor = "#bf4934";
+                glyph = "✗";
+            } else if (normalizedState === "WAITING_FOR_BLINK") {
+                glyph = "👁";
             }
 
             statusCard.style.borderLeftColor = borderColor;
             statusText.style.color = textColor;
+            statusGlyph.textContent = glyph;
+            statusGlyph.style.color = textColor || borderColor;
         }
 
         function setAdminVisible(visible) {
@@ -615,6 +639,7 @@
             adminVisible = visible;
             adminControls.classList.toggle("active", adminVisible);
             adminPanel.classList.toggle("active", adminVisible);
+            document.body.classList.toggle("supervisor-mode", adminVisible);
             supervisorUnlock.textContent = adminVisible ? "Lock supervisor controls" : "Supervisor controls (A)";
         }
 

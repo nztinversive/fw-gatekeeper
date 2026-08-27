@@ -33,9 +33,15 @@ export default function ReportsPage() {
   const [lateThreshold, setLateThreshold] = useState('06:00');
   const [workerHours, setWorkerHours] = useState<WorkerHours[]>([]);
   const [dailyCounts, setDailyCounts] = useState<DayCount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     const fetchReport = async () => {
+      setLoading(true);
+      setError('');
+      try {
       const start = parseLocalDate(startDate);
       const end = parseLocalDate(endDate);
       const allEvents: { worker_id: string; worker_name: string; worker_department: string; event_type: string; timestamp: string }[] = [];
@@ -44,14 +50,14 @@ export default function ReportsPage() {
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = getLocalDateString(d);
         const res = await fetch(`/api/attendance?date=${dateStr}`);
+        if (!res.ok) throw new Error(`Failed to load attendance for ${dateStr}`);
         const events = await res.json();
+        if (!Array.isArray(events)) throw new Error(`Unexpected attendance data for ${dateStr}`);
         allEvents.push(...events);
 
         const uniqueWorkers = new Set(events.filter((e: { event_type: string }) => e.event_type === 'clock_in').map((e: { worker_id: string }) => e.worker_id));
         counts.push({ date: dateStr.slice(5), count: uniqueWorkers.size });
       }
-
-      setDailyCounts(counts);
 
       const workerMap = new Map<string, { name: string; department: string; ins: string[]; outs: string[] }>();
 
@@ -89,10 +95,23 @@ export default function ReportsPage() {
       }
 
       hours.sort((a, b) => a.name.localeCompare(b.name));
+      if (cancelled) return;
+      setDailyCounts(counts);
       setWorkerHours(hours);
+      } catch (err) {
+        if (cancelled) return;
+        setDailyCounts([]);
+        setWorkerHours([]);
+        setError(err instanceof Error ? err.message : 'Failed to load report');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
 
     fetchReport();
+    return () => {
+      cancelled = true;
+    };
   }, [startDate, endDate, lateThreshold]);
 
   return (
@@ -125,6 +144,16 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {error && (
+        <div role="alert" className="mb-8 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="glass-card p-6 text-sm text-slate-400">Loading report...</div>
+      ) : error ? null : (
+      <>
       {/* Chart */}
       <div className="glass-card p-5 md:p-6 mb-8">
         <div className="flex items-center gap-2 mb-5">
@@ -166,6 +195,11 @@ export default function ReportsPage() {
           <h2 className="font-display font-semibold text-slate-200">Worker Hours</h2>
           <span className="text-xs font-mono text-slate-500 ml-auto">{workerHours.length} workers</span>
         </div>
+        {workerHours.length === 0 ? (
+          <div className="px-5 py-10 text-center text-sm text-slate-500">
+            No attendance activity recorded for this date range.
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -198,7 +232,10 @@ export default function ReportsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthActions } from '@convex-dev/auth/react';
@@ -10,6 +10,7 @@ import { api } from '../../convex/_generated/api';
 const links = [
   {
     href: '/',
+    group: 'Shift',
     label: 'Dashboard',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -19,6 +20,7 @@ const links = [
   },
   {
     href: '/briefing',
+    group: 'Shift',
     label: 'Briefing',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -29,6 +31,7 @@ const links = [
   },
   {
     href: '/log',
+    group: 'Evidence',
     label: 'Activity Log',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -38,6 +41,7 @@ const links = [
   },
   {
     href: '/exceptions',
+    group: 'Shift',
     label: 'Exceptions',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -47,6 +51,7 @@ const links = [
   },
   {
     href: '/closeout',
+    group: 'Shift',
     label: 'Closeout',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -58,6 +63,7 @@ const links = [
   },
   {
     href: '/workers',
+    group: 'Setup',
     label: 'Workers',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -67,6 +73,7 @@ const links = [
   },
   {
     href: '/enroll',
+    group: 'Setup',
     label: 'Enroll Face',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -77,6 +84,7 @@ const links = [
   },
   {
     href: '/calibration/recognition',
+    group: 'Evidence',
     label: 'Recognition Lab',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -87,6 +95,7 @@ const links = [
   },
   {
     href: '/onboarding',
+    group: 'Setup',
     label: 'Onboarding Guide',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -96,6 +105,7 @@ const links = [
   },
   {
     href: '/accounts',
+    group: 'Setup',
     label: 'Accounts',
     adminOnly: true,
     icon: (
@@ -106,6 +116,7 @@ const links = [
   },
   {
     href: '/kiosks',
+    group: 'Setup',
     label: 'Kiosks',
     adminOnly: true,
     icon: (
@@ -116,6 +127,7 @@ const links = [
   },
   {
     href: '/schedules',
+    group: 'Setup',
     label: 'Schedules',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -125,6 +137,7 @@ const links = [
   },
   {
     href: '/reports',
+    group: 'Setup',
     label: 'Reports',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -134,7 +147,9 @@ const links = [
   },
 ];
 
-const primaryMobileLinks = ['/', '/workers', '/enroll'];
+// The mobile tab bar carries the supervisor loop, not admin setup tasks.
+const primaryMobileLinks = ['/', '/exceptions', '/closeout'];
+const navGroups = ['Shift', 'Evidence', 'Setup'];
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -150,24 +165,44 @@ export default function Sidebar() {
   const moreIsActive = mobileSecondaryLinks.some((link) => link.href === pathname);
   const [logoutError, setLogoutError] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openExceptions, setOpenExceptions] = useState(0);
+
+  // Badge the Exceptions link so supervisors see the open count without
+  // visiting the page. Refreshes each minute; failures just hide the badge.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOpenCount() {
+      try {
+        const res = await fetch('/api/shift-exceptions', { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (!cancelled) setOpenExceptions(Number(body?.summary?.open) || 0);
+      } catch {
+        // Leave the last known count in place.
+      }
+    }
+    loadOpenCount();
+    const interval = setInterval(loadOpenCount, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [pathname]);
+
+  function badgeFor(href: string) {
+    return href === '/exceptions' && openExceptions > 0 ? openExceptions : null;
+  }
 
   async function handleLogout() {
     setLogoutError('');
 
-    let legacyLogoutOk = false;
     try {
-      const legacyLogout = await fetch('/api/auth/logout', { method: 'POST' });
-      legacyLogoutOk = legacyLogout.ok;
+      // Best-effort legacy cookie cleanup; never let it block sign-out.
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
       if (authActions?.signOut) {
         await authActions.signOut();
       }
     } catch {
-      setLogoutError('Sign out failed. Please try again.');
-      router.refresh();
-      return;
-    }
-
-    if (!legacyLogoutOk) {
       setLogoutError('Sign out failed. Please try again.');
       router.refresh();
       return;
@@ -198,29 +233,41 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          <p className="section-label px-3 mb-2">Navigation</p>
-          {visibleLinks.map((l) => {
-            const isActive = pathname === l.href;
+        {/* Navigation, grouped by the shift-trust loop */}
+        <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+          {navGroups.map((group) => {
+            const groupLinks = visibleLinks.filter((l) => l.group === group);
+            if (groupLinks.length === 0) return null;
             return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
-                  isActive
-                    ? 'bg-gold/10 text-gold border border-gold/15 shadow-sm shadow-gold/5'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-navy-700/50 border border-transparent'
-                }`}
-              >
-                <span className={`transition-colors ${isActive ? 'text-gold' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                  {l.icon}
-                </span>
-                {l.label}
-                {isActive && (
-                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-gold animate-pulse-slow" />
-                )}
-              </Link>
+              <div key={group} className="space-y-0.5">
+                <p className="section-label px-3 mb-2">{group}</p>
+                {groupLinks.map((l) => {
+                  const isActive = pathname === l.href;
+                  const badge = badgeFor(l.href);
+                  return (
+                    <Link
+                      key={l.href}
+                      href={l.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                        isActive
+                          ? 'bg-gold/10 text-gold border border-gold/15 shadow-sm shadow-gold/5'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-navy-700/50 border border-transparent'
+                      }`}
+                    >
+                      <span className={`transition-colors ${isActive ? 'text-gold' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                        {l.icon}
+                      </span>
+                      {l.label}
+                      {badge !== null && (
+                        <span className="ml-auto min-w-[1.4rem] rounded-full bg-red-400/15 px-1.5 py-0.5 text-center text-[11px] font-semibold text-red-300">
+                          {badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>
@@ -289,7 +336,7 @@ export default function Sidebar() {
           />
           <div
             id="mobile-more-menu"
-            className="absolute left-3 right-3 bottom-24 rounded-3xl border border-navy-600/60 bg-navy-900/95 p-3 shadow-2xl shadow-black/40"
+            className="absolute left-3 right-3 bottom-24 max-h-[65vh] overflow-y-auto rounded-3xl border border-navy-600/60 bg-navy-900/95 p-3 shadow-2xl shadow-black/40"
           >
             <div className="px-2 pb-2">
               <p className="section-label">More pages</p>
@@ -303,6 +350,7 @@ export default function Sidebar() {
                     key={l.href}
                     href={l.href}
                     onClick={() => setMobileMenuOpen(false)}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-sm font-medium transition-colors ${
                       isActive
                         ? 'border-gold/25 bg-gold/10 text-gold'
@@ -343,11 +391,19 @@ export default function Sidebar() {
             <Link
               key={l.href}
               href={l.href}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-medium transition-colors ${
                 isActive ? 'text-gold' : 'text-slate-500'
               }`}
             >
-              <span className={isActive ? 'text-gold' : 'text-slate-500'}>{l.icon}</span>
+              <span className="relative">
+                <span className={isActive ? 'text-gold' : 'text-slate-500'}>{l.icon}</span>
+                {badgeFor(l.href) !== null && (
+                  <span className="absolute -right-2.5 -top-1.5 min-w-[1.1rem] rounded-full bg-red-400/90 px-1 text-center text-[10px] font-bold leading-4 text-navy-950">
+                    {badgeFor(l.href)}
+                  </span>
+                )}
+              </span>
               <span className="max-w-full truncate">{l.label.replace(' Face', '')}</span>
             </Link>
           );

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/Toast';
@@ -199,6 +199,9 @@ function ExceptionsPageContent() {
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [isPending, startTransition] = useTransition();
   const canOperate = canOperateExceptions(currentRole);
+  const correctionModalRef = useRef<HTMLElement | null>(null);
+  const correctionTriggerRef = useRef<HTMLElement | null>(null);
+  const correctionOpen = correctionDraft !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -307,6 +310,7 @@ function ExceptionsPageContent() {
       return;
     }
     const existingReason = noteDrafts[exception.key] || exception.review_note || '';
+    correctionTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setCorrectionDraft({
       exception,
       action: resolution.action,
@@ -329,6 +333,46 @@ function ExceptionsPageContent() {
         correctedTime,
       };
     });
+  }
+
+  function getCorrectionFocusables(): HTMLElement[] {
+    if (!correctionModalRef.current) return [];
+    return Array.from(
+      correctionModalRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+  }
+
+  useEffect(() => {
+    if (!correctionOpen) return;
+    const [firstFocusable] = getCorrectionFocusables();
+    firstFocusable?.focus();
+    return () => {
+      correctionTriggerRef.current?.focus();
+      correctionTriggerRef.current = null;
+    };
+  }, [correctionOpen]);
+
+  function handleCorrectionKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      if (!savingCorrection) setCorrectionDraft(null);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = getCorrectionFocusables();
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || !correctionModalRef.current?.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !correctionModalRef.current?.contains(active))) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function applySuggestedReviewNote(exception: ShiftException, note: string) {
@@ -685,12 +729,18 @@ function ExceptionsPageContent() {
       )}
 
       {correctionDraft && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-4 py-6 backdrop-blur-sm md:items-center">
-          <section className="w-full max-w-2xl rounded-2xl border border-navy-600/70 bg-navy-950 p-6 shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-4 py-6 backdrop-blur-sm md:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="correction-modal-title"
+          onKeyDown={handleCorrectionKeyDown}
+        >
+          <section ref={correctionModalRef} className="w-full max-w-2xl rounded-2xl border border-navy-600/70 bg-navy-950 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="section-label mb-2">Supervisor correction</p>
-                <h2 className="font-display text-2xl text-slate-100">Correct attendance</h2>
+                <h2 id="correction-modal-title" className="font-display text-2xl text-slate-100">Correct attendance</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-400">{correctionDraft.exception.title}</p>
               </div>
               <button type="button" className="btn-ghost text-xs" onClick={() => setCorrectionDraft(null)} disabled={savingCorrection}>

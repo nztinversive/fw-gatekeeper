@@ -16,8 +16,7 @@ assert.match(dashboard, /Live data gaps/, 'Dashboard should show a visible parti
 assert.match(dashboard, /Partial live data/, 'Dashboard live indicator should call out partial data');
 assert.match(dashboard, /signalFreshness/, 'Dashboard should track freshness for each live signal');
 assert.match(dashboard, /Refresh attempted/, 'Dashboard should not imply a partial refresh made every slice fresh');
-assert.match(dashboard, /actionFreshnessBadge/, 'Dashboard action cards should visibly flag stale source data with source-aware badges');
-assert.match(dashboard, /getProactiveActionFreshnessLabel/, 'Dashboard action stale badges should use shared proactive freshness semantics');
+assert.match(dashboard, /item\.freshnessLabel/, 'Dashboard Sentinel cards should visibly flag stale source data with source-aware badges');
 assert.match(dashboard, /System health cached/, 'Dashboard readiness should visibly flag cached system health');
 assert.match(dashboard, /Attendance status cached/, 'Dashboard worker statuses should visibly flag cached attendance');
 assert.match(dashboard, /buildProactiveActions\(\{\s*date:\s*actionDate,/, 'Dashboard Action Center should pass the local action date into proactive links');

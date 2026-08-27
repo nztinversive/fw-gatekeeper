@@ -156,10 +156,15 @@ def _now_iso():
 
 
 def draw_box(frame_bgr, face_loc, color, label=None):
-    out = frame_bgr.copy()
+    # Mirror the display copy so workers see themselves as in a mirror
+    # (detection still runs on the unflipped frame). Overlays are drawn
+    # after the flip so labels stay readable.
+    out = cv2.flip(frame_bgr, 1)
     if face_loc is None:
         return out
     top, right, bottom, left = face_loc
+    width = out.shape[1]
+    left, right = width - right, width - left
     cv2.rectangle(out, (left, top), (right, bottom), color, 2)
     if label:
         cv2.putText(out, label, (left, max(20, top - 10)),
@@ -515,13 +520,13 @@ def run(args):
         last_clocks[worker_id] = datetime.now()
         web_app.update_health(last_scan_at=_now_iso(), degraded_reason=base_degraded_reason())
 
+        # Worker-facing copy: name and time only. Confidence percentages are
+        # operator data and live in the recognition telemetry, not on the door.
         time_str = datetime.now().strftime("%I:%M %p")
-        pct = int(confidence * 100)
-        id_text = f" ID: {display_id}" if display_id else ""
         msg = (
-            f"Welcome, {display_name}!{id_text} ({pct}%) - {time_str}"
+            f"Welcome, {display_name}! {time_str}"
             if action == "clock_in"
-            else f"Goodbye, {display_name}!{id_text} ({pct}%) - {time_str}"
+            else f"Goodbye, {display_name}! {time_str}"
         )
         web_app.update_status(state="CLOCKED_IN", message=msg,
                               worker_name=display_name, worker_id=display_id, action=action,
@@ -584,7 +589,7 @@ def run(args):
                         pending["display_id"], pending["confidence"], liveness_confirmed=True,
                     )
                     liveness.reset()
-                    display_until[0] = now + (config.DISPLAY_TIME_SEC if recorded else 2)
+                    display_until[0] = now + (config.DISPLAY_TIME_SUCCESS_SEC if recorded else 2)
                 elif now > pending["deadline"]:
                     pending_clock[0] = None
                     _log_recognition_attempt(pending["result"], "rejected_liveness_timeout")
@@ -687,14 +692,18 @@ def run(args):
             id_suffix = f" | ID: {display_id}" if display_id else ""
             box_label = f"{display_name}{id_suffix}"
 
+            # Debounce against the database (not just memory) so a service
+            # restart can't re-arm double-clocking, and word it by what
+            # actually happened last — an exit kiosk must not say "clocked in".
             last = last_clocks.get(worker_id)
-            if last and datetime.now() - last < timedelta(minutes=config.CLOCK_DEBOUNCE_MINUTES):
-                pct = int(confidence * 100)
-                already_msg = (
-                    f"Already clocked in, {display_name}! ID: {display_id} ({pct}%)"
-                    if display_id
-                    else f"Already clocked in, {display_name}! ({pct}%)"
-                )
+            recently_clocked = (
+                (last and datetime.now() - last < timedelta(minutes=config.CLOCK_DEBOUNCE_MINUTES))
+                or database.was_recently_clocked(worker_id, config.CLOCK_DEBOUNCE_MINUTES)
+            )
+            if recently_clocked:
+                last_action = database.get_last_action(worker_id)
+                verb = "clocked out" if last_action == "clock_out" else "clocked in"
+                already_msg = f"Already {verb}, {display_name}!"
                 web_app.update_status(state="ALREADY_CLOCKED",
                                       message=already_msg,
                                       worker_name=display_name, worker_id=display_id, face_detected=True,
@@ -724,7 +733,7 @@ def run(args):
 
             recorded = record_clock(result, worker_id, display_name, display_id, confidence,
                                     liveness_confirmed=False)
-            display_until[0] = now + (config.DISPLAY_TIME_SEC if recorded else 2)
+            display_until[0] = now + (config.DISPLAY_TIME_SUCCESS_SEC if recorded else 2)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")

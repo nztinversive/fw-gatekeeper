@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import StatsBar from '@/components/StatsBar';
 import WorkerCard from '@/components/WorkerCard';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { getLocalDateString } from '@/lib/date';
-import { buildLiveShiftSentinelItems, buildProactiveActions, buildProactiveShiftTrustPlan, getLiveShiftSentinelSnapshot, getProactiveActionEvidenceChips, getProactiveActionFreshnessLabel, getProactiveActionOutcomeChips, getProactiveActionProofLink } from '@/lib/proactive-actions';
+import { buildLiveShiftSentinelItems, buildProactiveActions, getLiveShiftSentinelSnapshot } from '@/lib/proactive-actions';
 import type { LiveShiftSentinelItem, LiveShiftSentinelSnapshot, ProactiveActionFreshness, ProactiveSignalFreshness } from '@/lib/proactive-actions';
 import type { ShiftBriefingResponse, ShiftCloseoutResponse, ShiftException, ShiftExceptionsResponse, ShiftTrustBriefStatus } from '@/lib/types';
 
@@ -40,7 +39,6 @@ interface AttendanceEvent {
 }
 
 type OpsReadinessStatus = 'ready' | 'attention' | 'critical';
-type CommandGroupKey = 'needs-action' | 'closeout-blockers' | 'watch-signals';
 
 interface RecentEvent {
   id: string;
@@ -65,6 +63,7 @@ interface KioskHealthRow {
   status: 'online' | 'stale' | 'offline' | 'never_synced';
   expected_worker_count: number;
   last_attendance_upload: string | null;
+  device_issues?: string[];
 }
 
 interface SystemHealth {
@@ -164,15 +163,6 @@ function getSignalFreshnessCopy(freshness: SignalFreshnessMap, key: SignalFailur
   return lastSuccess ? `${fallback} from ${lastSuccess}` : `${fallback}; no confirmed refresh`;
 }
 
-function isActionFreshnessStale(freshness: ProactiveActionFreshness) {
-  return freshness.status === 'stale' || Boolean(freshness.failed || freshness.unavailable);
-}
-
-function getActionFreshnessBadge(freshness: ProactiveActionFreshness) {
-  if (!isActionFreshnessStale(freshness)) return null;
-  return getProactiveActionFreshnessLabel(freshness);
-}
-
 function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -260,12 +250,6 @@ function getTrustLabel(status: ShiftTrustBriefStatus | OpsReadinessStatus | null
   return 'Needs attention';
 }
 
-function getCommandGroupKey(action: ReturnType<typeof buildProactiveActions>[number]): CommandGroupKey {
-  if (action.blocksReadiness || action.priority === 'critical') return 'needs-action';
-  if (action.blocksCloseout || action.priority === 'closeout') return 'closeout-blockers';
-  return 'watch-signals';
-}
-
 function parseSentinelState(value: string | null): { snapshot: LiveShiftSentinelSnapshot; hasFullBaseline: boolean } {
   if (!value) return { snapshot: {}, hasFullBaseline: false };
   try {
@@ -341,6 +325,9 @@ export default function Dashboard() {
   const [sentinelStorageReady, setSentinelStorageReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Read by fetchData without being a dependency, so the polling interval
+  // isn't torn down and re-armed on every successful refresh.
+  const attendanceEventsRef = useRef<AttendanceEvent[]>([]);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -394,6 +381,7 @@ export default function Dashboard() {
         } else if (signal.key === 'attendance') {
           successfulKeys.add(signal.key);
           nextAttendance = Array.isArray(json) ? json : [];
+          attendanceEventsRef.current = nextAttendance;
           setAttendanceEvents(nextAttendance);
         } else if (signal.key === 'system-health') {
           successfulKeys.add(signal.key);
@@ -420,7 +408,7 @@ export default function Dashboard() {
       });
 
       const statusMap = new Map<string, { event_type: string; timestamp: string }>();
-      const attendanceForRoster = nextAttendance || attendanceEvents;
+      const attendanceForRoster = nextAttendance || attendanceEventsRef.current;
       for (const e of attendanceForRoster) {
         const existing = statusMap.get(e.worker_id);
         if (!existing || e.timestamp > existing.timestamp) {
@@ -500,7 +488,7 @@ export default function Dashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [attendanceEvents]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -529,8 +517,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => fetchData(true), 10000);
-    return () => clearInterval(interval);
+    // Skip refreshes while the tab is hidden; catch up as soon as it returns.
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchData(true);
+    }, 10000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchData(true);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [fetchData]);
 
   const actionDate = getLocalDateString();
@@ -581,7 +579,6 @@ export default function Dashboard() {
   );
   const missingFaceWorkers = workers.filter((w) => w.encoding_status === 'missing' || (!w.encoding_status && !w.has_face_encoding));
   const invalidFaceWorkers = workers.filter((w) => w.encoding_status === 'invalid');
-  const absentWorkers = workers.filter((w) => w.status === 'absent');
   const failedSignalKeys = new Set(signalFailures.map((failure) => failure.key));
   const staleSignalSummaries = [
     getSignalFreshnessCopy(signalFreshness, 'stats', 'Stats cached'),
@@ -599,7 +596,6 @@ export default function Dashboard() {
   const systemHealthStaleCopy = getSignalFreshnessCopy(signalFreshness, 'system-health', 'System health cached');
   const sentinelChangedCount = sentinelItems.filter((item) => item.changedSinceSeen).length;
   const sentinelCriticalCount = sentinelItems.filter((item) => item.priority === 'critical').length;
-  const shiftTrustPlan = buildProactiveShiftTrustPlan(actionItems);
   const canOpenAdminOps = dashboardRole === 'admin';
   const canOpenEnrollmentOps = dashboardRole === 'admin' || dashboardRole === 'enrollment';
   const canOperateExceptionWork = dashboardRole === 'admin' || dashboardRole === 'enrollment';
@@ -719,26 +715,6 @@ export default function Dashboard() {
   const openExceptionRows = (shiftExceptions?.exceptions || [])
     .filter((exception) => exception.status === 'open')
     .slice(0, 4);
-  const commandGroups = [
-    {
-      key: 'needs-action' as const,
-      label: 'Needs action',
-      description: 'Blocking readiness, kiosk, enrollment, schedule, or critical exception work.',
-      items: actionItems.filter((item) => getCommandGroupKey(item) === 'needs-action'),
-    },
-    {
-      key: 'closeout-blockers' as const,
-      label: 'Closeout blockers',
-      description: 'Work that must be reviewed or acknowledged before the shift record is trusted.',
-      items: actionItems.filter((item) => getCommandGroupKey(item) === 'closeout-blockers'),
-    },
-    {
-      key: 'watch-signals' as const,
-      label: 'Watch signals',
-      description: 'Non-blocking attendance and audit signals to keep in view.',
-      items: actionItems.filter((item) => getCommandGroupKey(item) === 'watch-signals'),
-    },
-  ];
 
   function markSentinelSeen(items: LiveShiftSentinelItem[], establishBaseline = false) {
     const next = {
@@ -954,136 +930,6 @@ export default function Dashboard() {
           )}
         </section>
 
-        {shiftTrustPlan && (
-          <div className="mt-5 border-l-4 border-gold/70 bg-navy-950/25 px-4 py-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <p className="section-label text-gold">Next best action</p>
-                <h3 className="mt-1 font-display text-base font-semibold text-slate-100">{shiftTrustPlan.label}</h3>
-                <p className="mt-1 text-sm leading-5 text-slate-400">{shiftTrustPlan.description}</p>
-                <p className="mt-2 text-xs font-mono text-slate-500">{shiftTrustPlan.impactLabel}</p>
-                {shiftTrustPlan.evidenceChips.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2" aria-label={`${shiftTrustPlan.label} evidence`}>
-                    {shiftTrustPlan.evidenceChips.map((chip) => (
-                      <span key={chip} className="rounded border border-navy-500/60 bg-navy-950/35 px-2 py-1 text-[10px] font-mono text-slate-400">
-                        {chip}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {shiftTrustPlan.outcomeChips.map((chip) => (
-                    <span key={chip} className="badge border border-gold/20 bg-gold/10 text-[10px] text-gold">
-                      {chip}
-                    </span>
-                  ))}
-                  {shiftTrustPlan.staleLabel && (
-                    <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">
-                      {shiftTrustPlan.staleLabel}
-                    </span>
-                  )}
-                  {shiftTrustPlan.access === 'review' && (
-                    <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">
-                      Review only
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-3 self-start md:self-auto">
-                <Link href={shiftTrustPlan.href} className="btn-primary text-xs">
-                  {shiftTrustPlan.cta}
-                </Link>
-                {shiftTrustPlan.proofLink && (
-                  <Link href={shiftTrustPlan.proofLink.href} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
-                    {shiftTrustPlan.proofLink.label} →
-                  </Link>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-3">
-          {commandGroups.map((group) => (
-            <section key={group.key} className="rounded-2xl border border-white/10 bg-navy-950/25 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-display text-base font-semibold text-slate-100">{group.label}</h3>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{group.description}</p>
-                </div>
-                <span className="badge border bg-navy-900/60 text-slate-400 border-navy-600/50">
-                  {group.items.length}
-                </span>
-              </div>
-              <div className="mt-4 space-y-3">
-                {group.items.map((item) => {
-                  const priorityTone = {
-                    critical: 'border-red-400/20 bg-red-400/10 text-red-300',
-                    warning: 'border-amber-400/20 bg-amber-400/10 text-amber-300',
-                    closeout: 'border-blue-400/20 bg-blue-400/10 text-blue-300',
-                    info: 'border-slate-400/20 bg-slate-400/10 text-slate-300',
-                  }[item.priority];
-                  const actionFreshnessBadge = getActionFreshnessBadge(item.freshness);
-                  const evidenceChips = getProactiveActionEvidenceChips(item);
-                  const outcomeChips = getProactiveActionOutcomeChips(item);
-                  const proofLink = getProactiveActionProofLink(item);
-                  return (
-                    <article key={item.key} className="rounded-xl border border-navy-600/50 bg-navy-900/45 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`badge border text-[10px] ${priorityTone}`}>{item.priority}</span>
-                            {actionFreshnessBadge && (
-                              <span className="badge border border-amber-400/15 bg-amber-400/5 text-[10px] text-amber-300">{actionFreshnessBadge}</span>
-                            )}
-                            {!item.actionability.canOperate && (
-                              <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review only</span>
-                            )}
-                          </div>
-                          <h4 className="mt-2 font-display text-sm font-semibold text-slate-100">{item.label}</h4>
-                          <p className="mt-1 text-xs leading-5 text-slate-400">{item.description}</p>
-                        </div>
-                        <span className="text-2xl font-display font-bold tabular-nums text-slate-200">{item.value}</span>
-                      </div>
-                      {evidenceChips.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2" aria-label={`${item.label} evidence`}>
-                          {evidenceChips.map((chip) => (
-                            <span key={chip} className="rounded border border-navy-500/60 bg-navy-950/35 px-2 py-1 text-[10px] font-mono text-slate-400">
-                              {chip}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="mt-3 flex flex-wrap gap-2" aria-label={`${item.label} outcomes`}>
-                        {outcomeChips.map((chip) => (
-                          <span key={chip} className="badge border border-gold/15 bg-gold/5 text-[10px] text-gold">
-                            {chip}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <Link href={item.href} className="inline-flex text-xs font-semibold text-gold hover:text-gold-light">
-                          {item.cta} →
-                        </Link>
-                        {proofLink && (
-                          <Link href={proofLink.href} className="inline-flex text-xs font-semibold text-slate-300 hover:text-gold-light">
-                            {proofLink.label} →
-                          </Link>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-                {group.items.length === 0 && (
-                  <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-3 text-sm text-emerald-200">
-                    Clear right now.
-                  </div>
-                )}
-              </div>
-            </section>
-          ))}
-        </div>
-
         {actionItems.length === 0 ? (
           <div className="mt-5 rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4 flex items-start gap-3">
             <span className="status-dot-pulse bg-emerald-400 mt-1.5" />
@@ -1166,8 +1012,6 @@ export default function Dashboard() {
         )}
       </section>
 
-      <StatsBar stats={stats} />
-
       {/* System Health */}
       <section className="glass-card p-5 mb-6">
         <div className="flex items-start justify-between gap-4 mb-4">
@@ -1186,44 +1030,6 @@ export default function Dashboard() {
 
         {systemHealth ? (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-              <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/5 p-4">
-                <p className="section-label">Portal</p>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className={`badge border ${healthTone(systemHealth.portal.status)}`}>Online</span>
-                  <span className="text-xs font-mono text-slate-500">Live</span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
-                <p className="section-label">Face service</p>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className={`badge border ${healthTone(systemHealth.face_service.status)}`}>{healthLabel(systemHealth.face_service.status)}</span>
-                  <span className="text-xs font-mono text-slate-500">{systemHealth.face_service.latency_ms}ms</span>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500 truncate">
-                  {systemHealth.face_service.model_ready ? 'Recognition models ready' : 'Model readiness unknown'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
-                <p className="section-label">Kiosks</p>
-                <div className="mt-3 flex items-end gap-2">
-                  <span className="text-3xl font-display font-bold text-emerald-400">{systemHealth.kiosks.counts.online}</span>
-                  <span className="pb-1 text-sm text-slate-500">of {systemHealth.kiosks.total} kiosks online</span>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  {systemHealth.kiosks.counts.stale} stale · {systemHealth.kiosks.counts.offline + systemHealth.kiosks.counts.never_synced} offline/never
-                </p>
-              </div>
-              <div className="rounded-2xl border border-navy-600/50 bg-navy-900/45 p-4">
-                <p className="section-label">Worker data ready</p>
-                <div className="mt-3 flex items-end gap-2">
-                  <span className="text-3xl font-display font-bold text-gold">{systemHealth.sync.ready_worker_count}</span>
-                  <span className="pb-1 text-sm text-slate-500">workers enrolled</span>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">Last event upload {formatRelativeTime(systemHealth.sync.last_attendance_upload)}</p>
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               {systemHealth.kiosks.rows.slice(0, 4).map((kiosk) => (
                 <div key={kiosk.id} className="rounded-2xl border border-navy-600/45 bg-navy-900/40 p-4 flex items-start justify-between gap-4">
@@ -1234,6 +1040,9 @@ export default function Dashboard() {
                     </div>
                     <p className="mt-1 text-xs font-mono text-slate-500 truncate">{kiosk.location || kiosk.kiosk_id || 'No location set'}</p>
                     <p className="mt-2 text-[11px] text-slate-500">Last sync {formatRelativeTime(kiosk.last_sync)} · Last upload {formatRelativeTime(kiosk.last_attendance_upload)}</p>
+                    {(kiosk.device_issues || []).map((issue) => (
+                      <p key={issue} className="mt-1 text-[11px] text-amber-300">{issue}</p>
+                    ))}
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-2xl font-display font-bold text-slate-200">{kiosk.expected_worker_count}</p>

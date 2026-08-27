@@ -70,7 +70,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
 
       {/* Toast container */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none md:bottom-8 md:right-8">
+      <div role="status" aria-live="polite" className="fixed bottom-24 right-6 z-50 flex flex-col gap-2 pointer-events-none md:bottom-8 md:right-8">
         {toasts.map((t) => (
           <div
             key={t.id}

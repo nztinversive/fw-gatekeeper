@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useToast } from '@/components/Toast';
 import { Worker } from '@/lib/types';
 
+type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+
 function getEncodingStatus(worker: Worker) {
   if (worker.encoding_status) return worker.encoding_status;
   return worker.has_face_encoding ? 'valid' : 'missing';
@@ -25,14 +27,42 @@ export default function WorkersPage() {
   const [name, setName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [department, setDepartment] = useState('');
+  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const canEdit = currentRole === 'admin';
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-role', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!cancelled && typeof payload?.role === 'string') {
+          setCurrentRole(payload.role);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchWorkers = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
       const res = await fetch('/api/workers');
-      if (!res.ok) throw new Error('Failed to fetch workers');
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? 'Your account does not have access to the worker list.' : 'Failed to load workers');
+      }
       setWorkers(await res.json());
     } catch (err) {
-      console.error('Failed to fetch workers', err);
+      setWorkers([]);
+      setError(err instanceof Error ? err.message : 'Failed to load workers');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -100,6 +130,12 @@ export default function WorkersPage() {
           <p className="text-sm text-slate-500 mt-1 font-mono">
             {workers.length} registered workers · {enrolledCount} face enrolled · {missingFaceCount} needs enrollment · {invalidFaceCount} invalid
           </p>
+          {!canEdit && (
+            <p className="mt-2 flex items-center gap-2">
+              <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review-only</span>
+              <span className="text-xs text-slate-500">Editing worker records requires an admin account.</span>
+            </p>
+          )}
         </div>
         <div className="flex gap-3 flex-wrap">
           <Link href="/onboarding" className="btn-secondary flex items-center gap-2">
@@ -177,6 +213,20 @@ export default function WorkersPage() {
         </div>
       )}
 
+      {error && (
+        <div role="alert" className="mb-6 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="glass-card p-6 text-sm text-slate-400">Loading workers...</div>
+      ) : !error && workers.length === 0 ? (
+        <div className="glass-card p-12 text-center">
+          <p className="text-slate-400 font-display">No workers registered yet</p>
+          <p className="text-xs text-slate-600 mt-1">Use Enroll Face to add the first worker.</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {workers.map((w, i) => {
           const encodingStatus = getEncodingStatus(w);
@@ -214,18 +264,27 @@ export default function WorkersPage() {
                 </p>
               </div>
               <div className="flex gap-2 pt-1">
-                <button onClick={() => startEdit(w)} className="btn-secondary flex-1 text-xs">Edit</button>
-                <Link href={`/enroll?worker_id=${encodeURIComponent(w.id)}`} className={`flex-1 text-center text-xs ${faceReady ? 'btn-ghost' : 'btn-primary'}`}>
-                  {faceReady ? 'Re-enroll' : faceInvalid ? 'Re-enroll' : 'Enroll now'}
-                </Link>
-                <button onClick={() => deactivate(w.id)} className="px-3 py-2 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
-                  Deactivate
-                </button>
+                {canEdit ? (
+                  <>
+                    <button onClick={() => startEdit(w)} className="btn-secondary flex-1 text-xs">Edit</button>
+                    <Link href={`/enroll?worker_id=${encodeURIComponent(w.id)}`} className={`flex-1 text-center text-xs ${faceReady ? 'btn-ghost' : 'btn-primary'}`}>
+                      {faceReady ? 'Re-enroll' : faceInvalid ? 'Re-enroll' : 'Enroll now'}
+                    </Link>
+                    <button onClick={() => deactivate(w.id)} className="px-3 py-2 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
+                      Deactivate
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="btn-secondary flex-1 text-xs" disabled>
+                    Review-only
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
+      )}
     </div>
   );
 }

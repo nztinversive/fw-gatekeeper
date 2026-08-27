@@ -27,6 +27,8 @@ function LogPageContent() {
   const [date, setDate] = useState(queryDate);
   const [events, setEvents] = useState<AttendanceWithWorker[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const hasSourceContext = Boolean(queryWorkerId || queryAttendanceId);
   const fullDayHref = `/log?date=${encodeURIComponent(date)}`;
 
@@ -42,15 +44,34 @@ function LogPageContent() {
       correctionParams.set('worker_id', queryWorkerId);
     }
 
-    Promise.all([
-      fetch(`/api/attendance?${attendanceParams.toString()}`).then((r) => r.json()),
-      fetch(`/api/attendance-corrections?${correctionParams.toString()}`).then((r) => r.json()),
-    ])
-      .then(([eventRows, correctionPayload]: [AttendanceWithWorker[], AttendanceCorrectionsResponse]) => {
+    let cancelled = false;
+    const fetchLog = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const [attendanceRes, correctionsRes] = await Promise.all([
+          fetch(`/api/attendance?${attendanceParams.toString()}`),
+          fetch(`/api/attendance-corrections?${correctionParams.toString()}`),
+        ]);
+        if (!attendanceRes.ok || !correctionsRes.ok) throw new Error('Failed to load activity log');
+        const eventRows: AttendanceWithWorker[] = await attendanceRes.json();
+        const correctionPayload: AttendanceCorrectionsResponse = await correctionsRes.json();
+        if (cancelled) return;
         setEvents(Array.isArray(eventRows) ? eventRows : []);
         setCorrections(Array.isArray(correctionPayload.corrections) ? correctionPayload.corrections : []);
-      })
-      .catch(console.error);
+      } catch (err) {
+        if (cancelled) return;
+        setEvents([]);
+        setCorrections([]);
+        setError(err instanceof Error ? err.message : 'Failed to load activity log');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchLog();
+    return () => {
+      cancelled = true;
+    };
   }, [date, queryWorkerId]);
 
   useEffect(() => {
@@ -123,6 +144,16 @@ function LogPageContent() {
         </div>
       )}
 
+      {error && (
+        <div role="alert" className="mb-6 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="glass-card p-6 text-sm text-slate-400">Loading activity log...</div>
+      ) : error ? null : (
+      <>
       <div className="glass-card overflow-hidden">
         <AttendanceTable events={events} targetAttendanceId={queryAttendanceId} />
       </div>
@@ -168,6 +199,8 @@ function LogPageContent() {
           </div>
         )}
       </section>
+      </>
+      )}
     </div>
   );
 }

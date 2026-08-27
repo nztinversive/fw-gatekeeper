@@ -40,9 +40,12 @@ RECOGNITION_MODEL_VERSION = "mobilefacenet-buffalo_s-onnx"
 RECOGNITION_ATTEMPTS_ENDPOINT = "/api/recognition-attempts/bulk"
 
 # Gatekeeper behavior
-CLOCK_DEBOUNCE_MINUTES = 60  # Don't re-scan same person for 1 hour
+# Ignore repeat scans of the same person for this long. Keep it short: a long
+# debounce blocks workers from clocking out again after a quick errand.
+CLOCK_DEBOUNCE_MINUTES = 5
 AUTO_CLOCKOUT_HOURS = 12
-DISPLAY_TIME_SEC = 5  # Show result for 5 seconds before scanning again
+DISPLAY_TIME_SEC = 5  # Hold failure/info results so the worker can read why
+DISPLAY_TIME_SUCCESS_SEC = 2  # Successful scans clear fast to keep the line moving
 
 # Web server
 FLASK_HOST = "0.0.0.0"
