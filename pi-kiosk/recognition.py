@@ -79,18 +79,21 @@ class FaceRecognizer:
 
         self.last_face_location: Optional[tuple[int, int, int, int]] = None
         self.last_face_detected: bool = False
-        self._liveness_enabled = True
+        self._liveness_enabled = False
+        self.liveness_checker = None
 
-        try:
-            self.liveness_checker = LivenessChecker()
-        except FileNotFoundError as exc:
-            self._liveness_enabled = False
-            self.liveness_checker = None
-            logger.error(str(exc))
-            logger.error(
-                "Blink verification is unavailable; clock events will be recorded "
-                "without liveness and the kiosk will report itself degraded."
-            )
+        # Only load the (large) landmark model when this kiosk actually
+        # enforces blink verification; it is off by default.
+        if getattr(config, "LIVENESS_REQUIRED", False):
+            try:
+                self.liveness_checker = LivenessChecker()
+                self._liveness_enabled = True
+            except FileNotFoundError as exc:
+                logger.error(str(exc))
+                logger.error(
+                    "Blink verification is unavailable; clock events will be recorded "
+                    "without liveness and the kiosk will report itself degraded."
+                )
 
     @property
     def liveness_enabled(self) -> bool:

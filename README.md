@@ -12,7 +12,7 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 │  Pi Kiosk (x4)          │         │  Render (Cloud)          │
 │                         │         │                          │
 │  Camera → Face Detect   │◄──WiFi──┤  FW Gatekeeper (Next.js) │
-│  → Liveness (blink)     │  sync   │  ├── Dashboard           │
+│  → Blink (optional)     │  sync   │  ├── Dashboard           │
 │  → Local Match          │  5min   │  ├── Enrollment          │
 │  → HDMI Display         │────────►│  ├── Reports             │
 │    (Chromium fullscreen) │         │  └── API                 │
@@ -33,7 +33,7 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 | Database | Convex (cloud) |
 | Face Encoding | ArcFace ONNX (512-dim embeddings) |
 | Face Detection (Pi) | dlib HOG + Haar cascade |
-| Liveness | dlib 68-point landmarks (blink detection) |
+| Liveness | dlib 68-point landmarks (blink detection) — optional, off by default |
 | Pi Kiosk | Python 3.11 + OpenCV + face_recognition |
 | Hosting | Render (free tier) |
 
@@ -271,8 +271,10 @@ Flash → SSH → Connect hardware → Run setup script (with unique KIOSK_ID) �
 
 ### For Workers
 1. Walk up to the kiosk (monitor shows "Step toward camera" with live camera feed)
-2. Look at the camera for 2-3 seconds (monitor shows "Blink to verify")
-3. Blink naturally (liveness check prevents photos/videos being used)
+2. Look at the camera for a few seconds while it matches your face
+3. If the kiosk has blink verification enabled (`LIVENESS_REQUIRED = True` in
+   `config_local.py`; off by default), the monitor shows "Blink to verify" —
+   blink naturally to confirm
 4. Monitor shows **✅ Welcome, [Name]!** with department and time → proceed through door
 5. If not recognized: **❌ Face not recognized — Please see a manager**
 
@@ -288,7 +290,7 @@ Flash → SSH → Connect hardware → Run setup script (with unique KIOSK_ID) �
 Each kiosk runs a local web UI (Flask on port 5555) displayed fullscreen via Firefox ESR in kiosk mode. The display shows:
 
 - **Live camera feed** — workers see themselves on screen
-- **Status messages** — "Step toward camera", "Blink to verify", "✅ Welcome!", "❌ Not recognized"
+- **Status messages** — "Step toward camera", "✅ Welcome!", "❌ Not recognized" (plus "Blink to verify" when liveness is enabled)
 - **Real-time clock** and date
 - **Today's scan log** — recent clock-in/out events (6 max, compact layout)
 - **Manual clock** option — type a name if camera has issues

@@ -19,7 +19,11 @@ CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 
 # Liveness / recognition
-LIVENESS_REQUIRED = True  # Require a blink before accepting a clock event
+# Blink verification before accepting a clock event. Off by default — it has
+# caused scan issues on deployed boxes. Opt in per kiosk by setting
+# LIVENESS_REQUIRED = True in config_local.py; the UI and health reporting
+# reflect whichever mode is actually running.
+LIVENESS_REQUIRED = False
 LIVENESS_EAR_THRESHOLD = 0.21
 LIVENESS_BLINK_FRAMES = 2
 LIVENESS_TIMEOUT_SEC = 5
