@@ -35,6 +35,8 @@ assert.match(kioskApp, /snapshot\.pop\("admin", None\)/, 'Roster metadata must b
 assert.match(kioskApp, /_supervisor_attempt_limiter\.is_locked\(\)/, 'Supervisor passcode attempts must be rate-limited.');
 assert.match(kioskTemplate, /supervisor\/unlock/, 'Kiosk UI must unlock through the supervisor-auth endpoint.');
 assert.doesNotMatch(kioskTemplate, /setAdminVisible\(!adminVisible\)/, 'Keyboard shortcuts must not bypass supervisor authentication.');
+assert.match(kioskTemplate, /adminVisible && !data\.admin/, 'Expired supervisor sessions must relock the kiosk UI.');
+assert.match(kioskTemplate, /requestSupervisorStateVersion !== supervisorStateVersion/, 'Stale status polls must not undo a successful supervisor unlock.');
 
 const demoRoutes = [
   'src/app/api/workers/route.ts',
@@ -49,6 +51,7 @@ const demoRoutes = [
   'src/app/api/recognition-attempts/route.ts',
   'src/app/api/enroll/route.ts',
   'src/app/api/worker-encode/route.ts',
+  'src/app/api/worker-photos/route.ts',
   'src/app/api/attendance/bulk/route.ts',
   'src/app/api/recognition-attempts/bulk/route.ts',
   'src/app/api/sync/route.ts',
