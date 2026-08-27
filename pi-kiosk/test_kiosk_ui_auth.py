@@ -18,6 +18,7 @@ from kiosk_ui_auth import (  # noqa: E402
     has_valid_supervisor_credential,
     kiosk_ui_session_token,
     require_kiosk_ui_key,
+    SupervisorAttemptLimiter,
     supervisor_session_token,
 )
 
@@ -71,6 +72,8 @@ class KioskUiAuthTests(unittest.TestCase):
         )
         self.assertIn('snapshot.pop("admin", None)', app_source)
         self.assertIn('@app.route("/supervisor/unlock", methods=["POST"])', app_source)
+        self.assertIn('_supervisor_attempt_limiter.is_locked()', app_source)
+        self.assertIn('"retry_after_seconds"', app_source)
         self.assertIn('KIOSK_SUPERVISOR_PIN = "$KIOSK_SUPERVISOR_PIN"', setup_source)
         self.assertEqual(get_kiosk_ui_host(), "127.0.0.1")
         self.assertEqual(get_encode_service_host(), "127.0.0.1")
@@ -90,6 +93,26 @@ class KioskUiAuthTests(unittest.TestCase):
         self.assertTrue(has_valid_supervisor_credential(session_token=supervisor_session_token("supervisor-only")))
         expired = supervisor_session_token("supervisor-only", int(time.time()) - 301)
         self.assertFalse(has_valid_supervisor_credential(session_token=expired))
+
+    def test_supervisor_attempts_lock_and_recover_after_timeout(self):
+        now = [100.0]
+        limiter = SupervisorAttemptLimiter(
+            max_attempts=3,
+            window_seconds=60,
+            lockout_seconds=300,
+            clock=lambda: now[0],
+        )
+
+        self.assertFalse(limiter.record_failure())
+        self.assertFalse(limiter.record_failure())
+        self.assertTrue(limiter.record_failure())
+        self.assertTrue(limiter.is_locked())
+        self.assertEqual(limiter.retry_after_seconds(), 300)
+
+        now[0] += 301
+        self.assertFalse(limiter.is_locked())
+        limiter.record_success()
+        self.assertEqual(limiter.retry_after_seconds(), 0)
 
 
 if __name__ == "__main__":

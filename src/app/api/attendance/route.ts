@@ -29,6 +29,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (isDemoWriteMode()) {
+      return NextResponse.json(
+        { error: 'Attendance capture is disabled in local demo mode.' },
+        { status: 409 },
+      );
+    }
     const body = await req.json().catch(() => ({}));
     const { worker_id, event_type, type, kiosk_id, timestamp } = body;
     const resolvedType = event_type || type;

@@ -5,7 +5,15 @@ import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
-import { deactivateDemoWorker, getDemoWorker, isDemoWriteMode, listDemoWorkers, updateDemoWorker } from '@/lib/demo-write-mode';
+import {
+  createDemoWorker,
+  deactivateDemoWorker,
+  demoWriteMetadata,
+  getDemoWorker,
+  isDemoWriteMode,
+  listDemoWorkers,
+  updateDemoWorker,
+} from '@/lib/demo-write-mode';
 
 async function requireAdmin(req: NextRequest) {
   return (await hasValidPortalSession(req, ['admin'])) ? null : unauthorizedApiResponse();
@@ -84,6 +92,10 @@ export async function POST(req: NextRequest) {
   const { name, employee_id, department, face_encoding } = body;
 
   if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 });
+  if (isDemoWriteMode()) {
+    const result = createDemoWorker({ name, employee_id, department, enrolled: false });
+    return NextResponse.json({ ...result, ...demoWriteMetadata() }, { status: 201 });
+  }
   if (!isSupportedEncoding(face_encoding)) {
     return NextResponse.json(
       { error: `Face enrollment required. Use /api/enroll so photos are encoded first. ${getEncodingValidationMessage('face_encoding')}` },

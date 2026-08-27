@@ -223,6 +223,9 @@ export async function PATCH(req: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
     const reviewStatus = optionalString(body.review_status) || optionalString(body.reviewStatus) || 'confirmed';
+    if (isDemoWriteMode()) {
+      return NextResponse.json({ ok: true, id, review_status: reviewStatus, ...demoWriteMetadata() });
+    }
     const result = await convex.mutation((api as any).recognitionAttempts.updateReview, {
       id: id as any,
       reviewed: reviewStatus !== 'unreviewed',

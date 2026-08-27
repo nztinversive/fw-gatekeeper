@@ -141,6 +141,28 @@ export function listDemoWorkers() {
   return workers().filter((worker) => worker.active === 1).map((worker) => ({ ...worker }));
 }
 
+export function createDemoWorker(input: {
+  name: string;
+  employee_id?: string;
+  department?: string;
+  enrolled?: boolean;
+}) {
+  const enrolled = input.enrolled === true;
+  const created: Worker = {
+    id: demoId('demo_worker'),
+    name: input.name,
+    employee_id: input.employee_id || '',
+    department: input.department || '',
+    photo_url: null,
+    has_face_encoding: enrolled,
+    encoding_status: enrolled ? 'valid' : 'missing',
+    enrolled_at: enrolled ? nowIso() : '',
+    active: 1,
+  };
+  workers().push(created);
+  return { ...created };
+}
+
 export function getDemoWorker(id: string) {
   const worker = workers().find((candidate) => candidate.id === id && candidate.active === 1);
   return worker ? { ...worker } : null;
@@ -150,6 +172,15 @@ export function updateDemoWorker(id: string, updates: Partial<Pick<Worker, 'name
   const worker = workers().find((candidate) => candidate.id === id && candidate.active === 1);
   if (!worker) return null;
   Object.assign(worker, updates);
+  return { ...worker };
+}
+
+export function markDemoWorkerEnrolled(id: string) {
+  const worker = workers().find((candidate) => candidate.id === id && candidate.active === 1);
+  if (!worker) return null;
+  worker.has_face_encoding = true;
+  worker.encoding_status = 'valid';
+  worker.enrolled_at = nowIso();
   return { ...worker };
 }
 

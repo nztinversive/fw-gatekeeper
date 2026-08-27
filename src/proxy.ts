@@ -6,7 +6,11 @@ import { hasPortalMemberAccess, type PortalMemberRole } from '@/lib/portal-membe
 const PUBLIC_PATHS = ['/login', '/api/auth', '/api/convex-auth', '/api/health'];
 
 function isLocalDemoWriteMode() {
-  return process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.FW_DEMO_WRITE_MODE === '1' &&
+    process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1'
+  );
 }
 
 function isPublicPath(pathname: string): boolean {

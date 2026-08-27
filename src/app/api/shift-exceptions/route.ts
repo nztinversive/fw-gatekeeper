@@ -142,6 +142,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'status must be open, reviewed, ignored, or resolved' }, { status: 400 });
     }
 
+    if (isDemoWriteMode()) {
+      return NextResponse.json({ ok: true, exception_key: exceptionKey, status, ...demoWriteMetadata() });
+    }
+
     const result = await convex.mutation((api as any).shiftExceptions.review, {
       exceptionKey,
       date,

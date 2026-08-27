@@ -3,8 +3,9 @@
 import hashlib
 import hmac
 import os
+import threading
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 import config
 
@@ -15,6 +16,58 @@ KIOSK_SUPERVISOR_SESSION_COOKIE = "fw-kiosk-supervisor"
 _SESSION_CONTEXT = b"fw-gatekeeper-kiosk-ui-session-v1"
 _SUPERVISOR_CONTEXT = b"fw-gateway-kiosk-supervisor-session-v1"
 SUPERVISOR_SESSION_TTL_SECONDS = 5 * 60
+SUPERVISOR_MAX_FAILED_ATTEMPTS = 5
+SUPERVISOR_FAILURE_WINDOW_SECONDS = 60
+SUPERVISOR_LOCKOUT_SECONDS = 5 * 60
+
+
+class SupervisorAttemptLimiter:
+    """Bound supervisor passcode attempts across the kiosk-local UI."""
+
+    def __init__(
+        self,
+        max_attempts: int = SUPERVISOR_MAX_FAILED_ATTEMPTS,
+        window_seconds: int = SUPERVISOR_FAILURE_WINDOW_SECONDS,
+        lockout_seconds: int = SUPERVISOR_LOCKOUT_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self.lockout_seconds = lockout_seconds
+        self.clock = clock
+        self._failed_at: list[float] = []
+        self._locked_until = 0.0
+        self._lock = threading.Lock()
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - self.window_seconds
+        self._failed_at = [failed_at for failed_at in self._failed_at if failed_at > cutoff]
+
+    def retry_after_seconds(self) -> int:
+        with self._lock:
+            return max(0, int(self._locked_until - self.clock() + 0.999))
+
+    def is_locked(self) -> bool:
+        with self._lock:
+            return self._locked_until > self.clock()
+
+    def record_failure(self) -> bool:
+        with self._lock:
+            now = self.clock()
+            if self._locked_until > now:
+                return True
+            self._prune(now)
+            self._failed_at.append(now)
+            if len(self._failed_at) >= self.max_attempts:
+                self._locked_until = now + self.lockout_seconds
+                self._failed_at.clear()
+                return True
+            return False
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._failed_at.clear()
+            self._locked_until = 0.0
 
 
 def _config_or_env(config_name: str, env_name: str, default: str = "") -> str:

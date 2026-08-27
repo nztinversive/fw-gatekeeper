@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
+import { demoWriteMetadata, getDemoWorker, isDemoWriteMode, markDemoWorkerEnrolled } from '@/lib/demo-write-mode';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +15,19 @@ export async function POST(req: NextRequest) {
     }
     if (!isSupportedEncoding(encoding)) {
       return NextResponse.json({ error: getEncodingValidationMessage('encoding') }, { status: 400 });
+    }
+
+    if (isDemoWriteMode()) {
+      const worker = getDemoWorker(worker_id);
+      if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
+      markDemoWorkerEnrolled(worker_id);
+      return NextResponse.json({
+        ok: true,
+        worker_id,
+        name: worker.name,
+        encoding_length: encoding.length,
+        ...demoWriteMetadata(),
+      });
     }
 
     const worker = await convex.query(api.workers.get, { id: worker_id as any });

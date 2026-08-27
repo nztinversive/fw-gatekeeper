@@ -3,14 +3,16 @@ import 'server-only';
 import { convexAuthNextjsToken } from '@convex-dev/auth/nextjs/server';
 import { ConvexHttpClient } from "convex/browser";
 
-const LOCAL_DEMO_CONVEX_URL = "https://demo-fw-gatekeeper.convex.cloud";
-
 function isServerDemoWriteMode() {
   return process.env.NODE_ENV !== "production" && process.env.FW_DEMO_WRITE_MODE === "1";
 }
 
 function getConvexUrl() {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || (isServerDemoWriteMode() ? LOCAL_DEMO_CONVEX_URL : "");
+  if (isServerDemoWriteMode()) {
+    throw new Error("Convex access is disabled in local demo mode.");
+  }
+
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
   if (!convexUrl) {
     throw new Error("NEXT_PUBLIC_CONVEX_URL is required to use Convex.");
   }

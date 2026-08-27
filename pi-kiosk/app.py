@@ -18,6 +18,7 @@ from kiosk_ui_auth import (
     KIOSK_UI_SESSION_COOKIE,
     KIOSK_SUPERVISOR_SESSION_COOKIE,
     SUPERVISOR_SESSION_TTL_SECONDS,
+    SupervisorAttemptLimiter,
     get_kiosk_ui_host,
     has_valid_kiosk_ui_credential,
     has_valid_supervisor_credential,
@@ -49,6 +50,7 @@ _status = {
 }
 
 _server_thread = None
+_supervisor_attempt_limiter = SupervisorAttemptLimiter()
 
 
 def set_frame(frame):
@@ -240,9 +242,23 @@ def manual_clock():
 @app.route("/supervisor/unlock", methods=["POST"])
 @kiosk_ui_auth_required
 def supervisor_unlock():
+    if _supervisor_attempt_limiter.is_locked():
+        return jsonify({
+            "success": False,
+            "error": "Too many failed attempts. Try again later.",
+            "retry_after_seconds": _supervisor_attempt_limiter.retry_after_seconds(),
+        }), 429
     payload = request.get_json(silent=True) or {}
     if not has_valid_supervisor_credential(provided_pin=str(payload.get("pin", ""))):
+        locked = _supervisor_attempt_limiter.record_failure()
+        if locked:
+            return jsonify({
+                "success": False,
+                "error": "Too many failed attempts. Try again later.",
+                "retry_after_seconds": _supervisor_attempt_limiter.retry_after_seconds(),
+            }), 429
         return jsonify({"success": False, "error": "Invalid supervisor passcode"}), 401
+    _supervisor_attempt_limiter.record_success()
     response = jsonify({"success": True})
     response.set_cookie(
         KIOSK_SUPERVISOR_SESSION_COOKIE,
