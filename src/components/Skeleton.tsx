@@ -35,32 +35,6 @@ export function SkeletonStatCard() {
   );
 }
 
-export function SkeletonTable({ rows = 5 }: { rows?: number }) {
-  return (
-    <div className="space-y-0">
-      {/* Header */}
-      <div className="flex gap-4 px-4 py-3.5 border-b border-navy-600/50">
-        <Skeleton className="h-3 w-16 rounded-lg" />
-        <Skeleton className="h-3 w-24 rounded-lg" />
-        <Skeleton className="h-3 w-16 rounded-lg" />
-        <Skeleton className="h-3 w-16 rounded-lg" />
-      </div>
-      {/* Rows */}
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-navy-700/30">
-          <Skeleton className="h-3.5 w-20 rounded-lg" />
-          <div className="flex-1 space-y-1.5">
-            <Skeleton className="h-3.5 w-28 rounded-lg" />
-            <Skeleton className="h-2.5 w-16 rounded-lg" />
-          </div>
-          <Skeleton className="h-5 w-16 rounded-full" />
-          <Skeleton className="h-3 w-12 rounded-lg" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function DashboardSkeleton() {
   return (
     <div className="animate-fade-in">

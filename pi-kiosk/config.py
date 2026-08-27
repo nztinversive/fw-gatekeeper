@@ -28,7 +28,6 @@ LIVENESS_EAR_THRESHOLD = 0.21
 LIVENESS_BLINK_FRAMES = 2
 LIVENESS_TIMEOUT_SEC = 5
 LIVENESS_WAIT_SEC = 8  # How long the kiosk waits for a blink after a face match
-RECOGNITION_TOLERANCE = 0.5
 # Cosine similarity accept threshold (higher = stricter). ArcFace-family
 # embeddings are usually reliable in the 0.45-0.55 band; 0.30 accepts
 # look-alikes. Tune per site with the Recognition Lab, via config_local.py.
@@ -43,14 +42,11 @@ RECOGNITION_ATTEMPTS_ENDPOINT = "/api/recognition-attempts/bulk"
 # Ignore repeat scans of the same person for this long. Keep it short: a long
 # debounce blocks workers from clocking out again after a quick errand.
 CLOCK_DEBOUNCE_MINUTES = 5
-AUTO_CLOCKOUT_HOURS = 12
 DISPLAY_TIME_SEC = 5  # Hold failure/info results so the worker can read why
 DISPLAY_TIME_SUCCESS_SEC = 2  # Successful scans clear fast to keep the line moving
 
-# Web server
-FLASK_HOST = "0.0.0.0"
+# Web server (bind host comes from kiosk_ui_auth.get_kiosk_ui_host, loopback by default)
 KIOSK_PORT = 5555
-FLASK_PORT = KIOSK_PORT  # backward-compatible alias
 
 # Storage
 DATA_DIR = "data"

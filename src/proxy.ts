@@ -3,7 +3,7 @@ import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
 import { hasValidKioskKey, isKioskRequestAllowed, unauthorizedApiResponse } from '@/lib/auth';
 import { hasPortalMemberAccess, type PortalMemberRole } from '@/lib/portal-member';
 
-const PUBLIC_PATHS = ['/login', '/api/auth', '/api/convex-auth', '/api/health'];
+const PUBLIC_PATHS = ['/login', '/api/convex-auth', '/api/health'];
 
 function isLocalDemoWriteMode() {
   return (

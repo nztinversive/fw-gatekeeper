@@ -418,7 +418,7 @@ def run(args):
                 smoothed_embedding = normalize_embedding(np.mean(np.stack(embedding_history), axis=0))
 
                 # Match against known workers
-                known_encs, known_ids, known_names = recognizer._snapshot_known_faces()
+                known_encs, known_ids, known_names = recognizer.snapshot_known_faces()
                 matched = None
                 conf = 0.0
                 best_idx = None
@@ -677,7 +677,7 @@ def run(args):
             unknown_streak = 0
             box_color = GREEN
 
-            _, known_ids, known_names = recognizer._snapshot_known_faces()
+            _, known_ids, known_names = recognizer.snapshot_known_faces()
             worker_id = None
             if name in known_names:
                 idx = known_names.index(name)

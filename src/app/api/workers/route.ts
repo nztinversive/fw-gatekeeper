@@ -84,35 +84,6 @@ export async function GET(req: NextRequest) {
   })));
 }
 
-export async function POST(req: NextRequest) {
-  const unauthorized = await requireAdmin(req);
-  if (unauthorized) return unauthorized;
-
-  const body = await req.json();
-  const { name, employee_id, department, face_encoding } = body;
-
-  if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 });
-  if (isDemoWriteMode()) {
-    const result = createDemoWorker({ name, employee_id, department, enrolled: false });
-    return NextResponse.json({ ...result, ...demoWriteMetadata() }, { status: 201 });
-  }
-  if (!isSupportedEncoding(face_encoding)) {
-    return NextResponse.json(
-      { error: `Face enrollment required. Use /api/enroll so photos are encoded first. ${getEncodingValidationMessage('face_encoding')}` },
-      { status: 400 }
-    );
-  }
-
-  const result = await convex.mutation(api.workers.create, {
-    name,
-    employeeId: employee_id || undefined,
-    department: department || undefined,
-    faceEncoding: face_encoding,
-  });
-
-  return NextResponse.json(result, { status: 201 });
-}
-
 export async function PATCH(req: NextRequest) {
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;

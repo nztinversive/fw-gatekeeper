@@ -309,7 +309,7 @@ function getSentinelStatusTone(item: LiveShiftSentinelItem) {
 
 export default function Dashboard() {
   const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
-  const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null, scheduleWarning: undefined as string | undefined });
+  const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null });
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
   const [attendanceEvents, setAttendanceEvents] = useState<AttendanceEvent[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
@@ -336,7 +336,7 @@ export default function Dashboard() {
       const attemptedAtIso = attemptedAt.toISOString();
       const today = getLocalDateString();
       const signals: Array<{ key: SignalFailureKey; label: string; href: string; request: () => Promise<Response> }> = [
-        { key: 'stats', label: 'Dashboard stats', href: '/reports', request: () => fetch(`/api/stats?date=${today}`) },
+        { key: 'stats', label: 'Dashboard stats', href: `/log?date=${today}`, request: () => fetch(`/api/stats?date=${today}`) },
         { key: 'workers', label: 'Worker roster', href: '/workers', request: () => fetch('/api/workers?scope=dashboard') },
         { key: 'attendance', label: 'Attendance events', href: `/log?date=${today}`, request: () => fetch(`/api/attendance?date=${today}`) },
         { key: 'system-health', label: 'Kiosk and system health', href: '/kiosks', request: () => fetch(`/api/system-health?date=${today}`) },
@@ -633,19 +633,16 @@ export default function Dashboard() {
   const readinessCopy = {
     ready: {
       label: 'Ready for shift',
-      title: 'Employees can clock in now',
       description: 'Portal, face service, kiosk sync, and worker enrollment are all healthy.',
       tone: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200',
     },
     attention: {
       label: 'Needs attention before shift',
-      title: 'Review a few items before launch',
       description: 'Core services are reachable, but at least one readiness check needs review.',
       tone: 'border-amber-400/25 bg-amber-400/10 text-amber-200',
     },
     critical: {
       label: 'Not ready for shift',
-      title: 'Clock-in flow needs attention',
       description: !systemHealth
         ? 'System health is unavailable, so readiness cannot be confirmed.'
         : systemHealth.kiosks.total === 0

@@ -4,19 +4,10 @@ import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
-import { createDemoKiosk, demoWriteMetadata, isDemoWriteMode, listDemoKiosks } from '@/lib/demo-write-mode';
+import { createDemoKiosk, demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 async function requireAdmin(req: NextRequest) {
   return (await hasValidPortalSession(req, ['admin'])) ? null : unauthorizedApiResponse();
-}
-
-export async function GET(req: NextRequest) {
-  const unauthorized = await requireAdmin(req);
-  if (unauthorized) return unauthorized;
-
-  if (isDemoWriteMode()) return NextResponse.json(listDemoKiosks());
-  const kiosks = await convex.query(api.kiosks.list, {});
-  return NextResponse.json(kiosks);
 }
 
 export async function POST(req: NextRequest) {

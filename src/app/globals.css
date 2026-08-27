@@ -119,22 +119,6 @@ body {
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
 /* Glow border effect */
-.glow-border {
-  position: relative;
-}
-.glow-border::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), transparent 50%, rgba(6, 182, 212, 0.08));
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-.glow-border:hover::after {
-  opacity: 1;
-}
 
 /* Skeleton shimmer */
 @keyframes shimmer {

@@ -1,45 +1,46 @@
 # FW Gatekeeper — Pi Kiosk Face Scanner
 
-Raspberry Pi 3B face recognition kiosk for factory building access control.
+Raspberry Pi face recognition kiosk for factory clock-in/clock-out.
 
 ## How It Works
 
-1. Camera captures faces continuously
-2. Matches against enrolled worker face encodings (stored locally)
-3. Shows ✅ Welcome or ❌ Not Recognized
-4. Logs activity locally (works **offline** — no WiFi required)
-5. Syncs gatekeeper records to server every 5 minutes when WiFi is available
+- `main.py` is the entry point (run by the `fw-gatekeeper-kiosk` systemd service).
+- The camera runs continuously; dlib HOG finds faces, MobileFaceNet ONNX
+  encodes them as 512-dim embeddings (the same model family the server uses),
+  and matching is cosine similarity against locally cached worker encodings.
+- A Flask web UI on port `5555` (loopback by default) shows the live camera
+  feed, status messages, and today's log; Firefox ESR in kiosk mode displays it
+  fullscreen on the attached monitor via XDG autostart.
+- Everything is logged to SQLite at `data/attendance.db` and works **offline**;
+  a background worker syncs with the server every 30 seconds
+  (`config.SYNC_INTERVAL`): it downloads worker encodings, uploads queued
+  attendance and recognition-telemetry records, and reports kiosk health
+  (camera/model/liveness state, queue depths) to the dashboard. The on-screen
+  sync chip shows online/offline state and how many records are queued.
+- Blink liveness is **optional and off by default** (`LIVENESS_REQUIRED = False`).
+  When enabled, a matched worker must blink before the clock event is recorded;
+  if the landmark model is missing, the kiosk keeps working, records events as
+  unverified, and reports itself degraded.
+- Supervisor controls (manual clock-in/out) are behind a separate PIN
+  (`KIOSK_SUPERVISOR_PIN`) with a five-minute session and attempt lockout.
 
 ## What You Need
 
-- Raspberry Pi 3 Model B (or newer)
-- Pi Camera Module v2 (or USB webcam)
-- microSD card (16GB+) with [Raspberry Pi OS Lite](https://www.raspberrypi.com/software/)
-- Display (HDMI or 7" touchscreen)
-- USB power supply (5V 2.5A minimum)
+- Raspberry Pi 4 recommended (3B works, slower); Pi Camera Module or USB webcam
+- HDMI display at the door
+- microSD (16GB+) with **Raspberry Pi OS with Desktop (64-bit)** — not Lite.
+  The kiosk shows a fullscreen browser on the monitor, which needs the desktop
+  session that Desktop images ship preconfigured.
 
 ## Setup
 
-### 1. Flash Raspberry Pi OS
-
-Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to flash **Raspberry Pi OS Lite (64-bit)**.
-
-In imager settings:
-- Enable SSH
-- Set WiFi credentials
-- Set hostname to `fw-kiosk`
-
-### 2. Boot & SSH In
-
-```bash
-ssh pi@fw-kiosk.local
-```
-
-### 3. Run Setup Script
+1. Flash **Raspberry Pi OS with Desktop (64-bit)** with Raspberry Pi Imager
+   (enable SSH, set WiFi, hostname e.g. `fw-kiosk`).
+2. SSH in (`ssh pi@fw-kiosk.local`) or open a terminal on the desktop.
+3. Run the setup script:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/nztinversive/fw-gatekeeper/master/pi-kiosk/setup.sh -o setup.sh
-sudo chmod +x setup.sh
 sudo KIOSK_API_KEY="replace-with-the-server-key" \
   KIOSK_UI_KEY="$(openssl rand -hex 24)" \
   KIOSK_SUPERVISOR_PIN="<set-a-separate-supervisor-passcode>" \
@@ -48,46 +49,40 @@ sudo KIOSK_API_KEY="replace-with-the-server-key" \
   ./setup.sh
 ```
 
-`KIOSK_API_KEY` is required for worker, attendance, and recognition synchronization. Setup fails immediately if it is missing. If an existing installation starts without the key, the kiosk logs a critical error, disables server sync, and keeps local records queued until the key is configured and the service is restarted.
+Setup fails immediately if `KIOSK_API_KEY`, `KIOSK_UI_KEY`, or
+`KIOSK_SUPERVISOR_PIN` is missing. It writes them to `config_local.py`
+(imported by `config.py`, never committed), installs the systemd service and
+watchdog timer, and configures the Firefox kiosk display autostart.
 
-`KIOSK_UI_KEY` is a separate, Pi-local secret for the camera feed, roster/status, and attendance log routes. Manual attendance additionally requires `KIOSK_SUPERVISOR_PIN`; its HttpOnly supervisor session expires after five minutes. The UI and auxiliary encoding/enrollment preview servers bind to `127.0.0.1`, so they are not reachable from the factory LAN. Missing credentials fail closed.
+By default setup **skips** the 97MB dlib shape predictor used for blink
+liveness. To install it, rerun setup with `ENABLE_LIVENESS=1`, then set
+`LIVENESS_REQUIRED = True` in `config_local.py`.
 
-### 4. Enroll Workers
-
-On the web app (https://fw-gatekeeper.onrender.com):
-1. Go to **Enroll Face**
-2. Enter worker name + department
-3. Capture 3 photos from webcam
-4. Photos are encoded into face vectors
-
-### 5. Reboot the Pi
-
-```bash
-sudo reboot
-```
-
-The Pi boots directly into the face scanner. It syncs worker encodings from the server on startup, then runs face matching locally.
-
-## Offline Mode
-
-The kiosk works **without internet** after the initial sync:
-
-- Worker face encodings are cached in `~/fw-kiosk/data/encodings.json`
-- Gatekeeper scans are logged to `~/fw-kiosk/data/attendance_offline.json`
-- When WiFi reconnects, pending records sync to the server automatically
+4. Enroll workers on the web dashboard (**Enroll Face**). The kiosk pulls new
+   encodings on the next sync cycle (≤30 seconds).
+5. `sudo reboot` — the scanner service and fullscreen display start
+   automatically.
 
 ## Configuration
 
-### Environment Variables
+All settings live in `config.py` with per-kiosk overrides in
+`config_local.py` (written by `setup.sh`). Key values:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER_URL` | `https://fw-gatekeeper.onrender.com` | Server URL |
-| `KIOSK_ID` | `kiosk-1` | Unique kiosk identifier |
-| `KIOSK_API_KEY` | none | Required shared secret matching the Gatekeeper server |
-| `KIOSK_UI_KEY` | none | Required Pi-local secret protecting camera, PII, and manual-clock routes |
-| `KIOSK_SUPERVISOR_PIN` | none | Required separate passcode that unlocks manual attendance for five minutes |
-| `KIOSK_UI_HOST` | `127.0.0.1` | Kiosk web bind address; keep loopback-only unless an authenticated remote-admin design is added |
+| Setting / env | Default | Description |
+|---------------|---------|-------------|
+| `SERVER_URL` | `https://fw-gatekeeper.onrender.com` | Gatekeeper server |
+| `SYNC_INTERVAL` | `30` | Seconds between sync cycles |
+| `KIOSK_ID` / `KIOSK_NAME` | `kiosk-entry-1` / `Main Entry` | Kiosk identity |
+| `KIOSK_TYPE` | `entry` | `entry`, `exit`, or `auto` (toggles by last action) |
+| `KIOSK_API_KEY` (env or local) | none | **Required** shared secret for server sync; without it sync is disabled and records stay queued |
+| `KIOSK_UI_KEY` (env or local) | none | **Required** Pi-local secret for camera feed, roster/status, and log routes |
+| `KIOSK_SUPERVISOR_PIN` (env or local) | none | **Required** separate passcode for manual attendance (5-minute session) |
+| `KIOSK_UI_HOST` (env or local) | `127.0.0.1` | Web UI bind address; keep loopback-only |
+| `KIOSK_PORT` | `5555` | Web UI port |
+| `RECOGNITION_MATCH_THRESHOLD` | `0.45` | Cosine similarity accept threshold, **higher = stricter** (tune 0.40–0.55 in `config_local.py`) |
+| `LIVENESS_REQUIRED` | `False` | Require a blink before recording a clock event |
+| `CLOCK_DEBOUNCE_MINUTES` | `5` | Ignore repeat scans of the same worker |
+| `CAMERA_INDEX` / `CAMERA_WIDTH` / `CAMERA_HEIGHT` | `0` / `640` / `480` | Camera settings |
 
 ### Command Line
 
@@ -95,43 +90,41 @@ The kiosk works **without internet** after the initial sync:
 python3 main.py --server URL --kiosk-id ID --camera [auto|pi|usb]
 ```
 
-- `--camera`: `pi` for Pi Camera, `usb` for USB webcam, `auto` to try both.
-- The match threshold is configured, not a flag: set `RECOGNITION_MATCH_THRESHOLD`
-  in `config_local.py` (cosine similarity, 0-1, **higher = stricter**, default `0.45`).
+The match threshold is not a flag: set `RECOGNITION_MATCH_THRESHOLD` in
+`config_local.py`.
 
-## Performance on Pi 3B
+## Tools
 
-- Face detection: ~2-3 seconds per frame (HOG model)
-- Face matching: <0.5 seconds against 50 workers
-- Total scan time: ~3-4 seconds
-
-For faster detection, use a Pi 4 (~1 second total).
+- `enroll.py` — local enrollment CLI (add/list/remove workers) with a
+  loopback-only browser preview on `:5556`.
+- `tools/liveness_check.py` — field diagnostic for blink detection; serves a
+  loopback-only preview on `:5599` (stop the kiosk service first to free the
+  camera).
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| "No camera available" | Check `vcgencmd get_camera` (Pi) or `lsusb` (USB) |
-| "No enrolled workers found" | Enroll faces on the web app first, ensure WiFi for initial sync |
+| "No camera available" | Check `ls /dev/video*` (USB) or `libcamera-hello` (Pi camera) |
+| "No enrolled workers found" | Enroll on the dashboard first; check WiFi for the initial sync |
 | "KIOSK_API_KEY is required" | Configure the server-matching key and restart `fw-gatekeeper-kiosk.service` |
-| "KIOSK_UI_KEY is required" | Rerun setup with a generated Pi-local UI key and restart `fw-gatekeeper-kiosk.service` |
-| Slow face detection | Normal for Pi 3B — HOG model is CPU-only |
+| "KIOSK_UI_KEY is required" | Rerun setup with a generated Pi-local UI key and restart the service |
 | False rejections | Lower `RECOGNITION_MATCH_THRESHOLD` slightly (e.g. `0.40`) in `config_local.py` |
 | False matches | Raise `RECOGNITION_MATCH_THRESHOLD` (e.g. `0.50`–`0.55`) in `config_local.py` |
-| Camera permission denied | Run `sudo raspi-config` → Interface → Camera → Enable |
+| Scanner degraded on dashboard | Check `journalctl -u fw-gatekeeper-kiosk -f` for camera/model/liveness errors |
 
 ## Architecture
 
 ```
-Pi 3B (Kiosk)                    Render (Server)
-┌─────────────┐                  ┌──────────────────┐
-│ Camera      │                  │ FW Gatekeeper App │
-│ ↓           │   WiFi sync     │                   │
-│ face_rec    │ ←──────────────→ │ /api/workers      │
-│ (local)     │   (every 5min)  │ /api/attendance   │
-│ ↓           │                  │ /api/enroll       │
-│ Terminal UI │                  │                   │
-│ ↓           │                  │ face-service      │
-│ Local Log   │                  │ (encode only)     │
-└─────────────┘                  └──────────────────┘
+Pi (Kiosk)                              Render (Server)
+┌────────────────────────┐              ┌──────────────────────┐
+│ Camera                 │              │ FW Gatekeeper App    │
+│  ↓ dlib HOG detect     │  WiFi sync   │  /api/sync           │
+│  ↓ MobileFaceNet ONNX  │ ←──────────→ │  /api/attendance     │
+│  ↓ cosine match        │  every 30s   │  /api/recognition-   │
+│  ↓ (optional blink)    │  + health    │      attempts/bulk   │
+│ SQLite attendance.db   │              │                      │
+│ Flask UI :5555         │              │ face-service         │
+│  └ Firefox fullscreen  │              │  (encode only)       │
+└────────────────────────┘              └──────────────────────┘
 ```

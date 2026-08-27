@@ -165,18 +165,6 @@ export const createFromHttp = internalMutation({
   },
 });
 
-export const clearAll = internalMutation({
-  args: {},
-  returns: v.object({ deleted: v.number() }),
-  handler: async (ctx) => {
-    const all = await ctx.db.query("attendance").collect();
-    for (const r of all) {
-      await ctx.db.delete(r._id);
-    }
-    return { deleted: all.length };
-  },
-});
-
 const attendanceEventInput = v.object({
   id: v.optional(v.string()),
   workerId: v.string(),

@@ -13,9 +13,9 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 │                         │         │                          │
 │  Camera → Face Detect   │◄──WiFi──┤  FW Gatekeeper (Next.js) │
 │  → Blink (optional)     │  sync   │  ├── Dashboard           │
-│  → Local Match          │  5min   │  ├── Enrollment          │
-│  → HDMI Display         │────────►│  ├── Reports             │
-│    (Chromium fullscreen) │         │  └── API                 │
+│  → Local Match          │  30s    │  ├── Enrollment          │
+│  → HDMI Display         │────────►│  ├── Shift workflows     │
+│    (Firefox fullscreen)  │         │  └── API                 │
 │                         │         │                          │
 │  Flask Web UI (:5555)   │         │  Face Service (FastAPI)  │
 │  SQLite (offline log)   │         │  └── ArcFace ONNX encode │
@@ -110,7 +110,7 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 ## Step 1: Flash Raspberry Pi OS
 
 1. Download [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
-2. Choose **Raspberry Pi OS with Desktop (64-bit)** — NOT Lite (we need X server + Chromium for the monitor display)
+2. Choose **Raspberry Pi OS with Desktop (64-bit)** — NOT Lite (we need a desktop session + browser for the monitor display)
 3. Click the ⚙️ gear icon and configure:
    - **Hostname:** `fw-kiosk-1` (increment for each Pi: `fw-kiosk-2`, etc.)
    - **Enable SSH:** Yes, use password authentication
@@ -121,7 +121,7 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 4. Flash to microSD card
 5. Insert card into Pi, connect camera + HDMI monitor, power on
 
-> ⚠️ **Why Desktop and not Lite?** The kiosk displays a fullscreen Chromium browser on the HDMI monitor showing live camera feed + welcome messages. This requires X server and GPU drivers, which come pre-installed with the Desktop version. Lite would need ~15 min of extra package installs and is more prone to driver issues.
+> ⚠️ **Why Desktop and not Lite?** The kiosk displays a fullscreen Firefox browser on the HDMI monitor showing live camera feed + welcome messages. This requires a graphical session and GPU drivers, which come pre-installed with the Desktop version. Lite would need ~15 min of extra package installs and is more prone to driver issues.
 
 ## Step 2: Open a Terminal
 
@@ -306,7 +306,7 @@ The display auto-starts on boot via XDG autostart:
 - Kiosks work **without internet** after initial sync
 - Face encodings are cached locally in SQLite
 - Attendance events log to local storage
-- When WiFi reconnects, pending records sync automatically (every 5 min)
+- When WiFi reconnects, pending records sync automatically (every 30 seconds)
 
 ---
 
@@ -380,7 +380,7 @@ If Firefox doesn't open after reboot:
 If monitor doesn't wake up:
 - Check HDMI cable connection
 - Try a different HDMI port on the Pi (Pi 4 has two)
-- Add `hdmi_force_hotplug=1` to `/boot/config.txt` and reboot
+- Add `hdmi_force_hotplug=1` to `/boot/firmware/config.txt` (older Pi OS: `/boot/config.txt`) and reboot
 
 ### Power loss recovery
 - Kiosks auto-restart on boot (systemd + watchdog timer)
@@ -413,7 +413,7 @@ done
 
 ### Add a new worker
 1. Dashboard → Enroll Face → capture photos
-2. Kiosks pick up new encodings on next sync cycle (≤5 min)
+2. Kiosks pick up new encodings on next sync cycle (≤30 seconds)
 3. Or force immediate sync: restart kiosk service
 
 ### Deactivate a worker
@@ -493,7 +493,7 @@ The match threshold is not a CLI flag: set `RECOGNITION_MATCH_THRESHOLD` in
 | USB 2.0 extension cable 3ft | 4 | $5 each | Amazon |
 | **Total (4 kiosks)** | | **~$580-660** | |
 
-> 💡 **Budget option:** Skip the HDMI displays ($160-240 savings) and run headless with terminal UI. Workers just hear a beep / see a small LED. Less polished but functional.
+> 💡 **Budget option:** Skip the HDMI displays ($160-240 savings) and run headless — the scanner and sync still run without a monitor, workers just get no on-screen feedback. Less polished but functional.
 
 > 💡 **Premium option:** Use Pi 5 ($60 each) + Logitech C920 ($70 each) for faster recognition and sharper camera image.
 

@@ -228,6 +228,37 @@ function EnrollPageContent() {
             <p className="text-slate-400 mt-2 text-sm">{workerId ? 'Update face data for an existing team member' : 'Add a new team member to the gatekeeper system'}</p>
           </div>
 
+          <details className="glass-card mb-4 px-5 py-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-300">
+              Enrollment tips &amp; troubleshooting
+            </summary>
+            <div className="mt-3 space-y-3 text-sm text-slate-400">
+              <div>
+                <p className="font-semibold text-slate-300">Good photos make good recognition</p>
+                <ul className="mt-1 list-disc pl-5 space-y-1">
+                  <li>Face the camera straight on, in even lighting — no hats, sunglasses, or masks.</li>
+                  <li>Fill the frame with the face; avoid strong backlight from windows.</li>
+                  <li>Capture 2–3 photos with slightly different expressions.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-300">After enrolling</p>
+                <ul className="mt-1 list-disc pl-5 space-y-1">
+                  <li>Kiosks pull new workers on their next sync cycle (about 30 seconds).</li>
+                  <li>Check the Workers page — the worker should show “Face enrolled”.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-300">If the kiosk doesn’t recognize someone</p>
+                <ul className="mt-1 list-disc pl-5 space-y-1">
+                  <li>Re-enroll from the Workers page with better lighting.</li>
+                  <li>Review low-confidence scans in the Recognition Lab.</li>
+                  <li>Confirm the kiosk shows online on the Kiosks page.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
           <div className="glass-card p-6 space-y-5">
             <div className="relative">
               <label htmlFor="employee-name" className="section-label mb-1.5 block">Full Name *</label>

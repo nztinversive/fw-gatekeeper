@@ -261,20 +261,3 @@ export const generateUploadUrl = mutation({
     return await ctx.storage.generateUploadUrl();
   },
 });
-
-export const getPhotoUrls = query({
-  args: { id: v.id("workers") },
-  handler: async (ctx, args) => {
-    await assertPortalRole(ctx, ["admin", "enrollment"]);
-    const w = await ctx.db.get(args.id);
-    if (!w || !w.active) return null;
-    const photos: string[] = [];
-    if (w.photoStorageIds) {
-      for (const sid of w.photoStorageIds) {
-        const url = await ctx.storage.getUrl(sid);
-        if (url) photos.push(url);
-      }
-    }
-    return { worker_id: w._id, name: w.name, photos, count: photos.length };
-  },
-});

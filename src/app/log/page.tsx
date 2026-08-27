@@ -79,18 +79,61 @@ function LogPageContent() {
     document.getElementById(attendanceRowId(queryAttendanceId))?.scrollIntoView({ block: 'center' });
   }, [events, queryAttendanceId]);
 
+  const downloadCSV = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const exportCSV = () => {
     const header = 'Time,Worker,Department,Event,Kiosk,Source,Correction Reason\n';
     const rows = events.map((e) =>
       `${e.timestamp},${e.worker_name},${e.worker_department},${e.event_type},${e.kiosk_name || ''},${e.source || 'kiosk'},${e.correction_reason || ''}`
     ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `gatekeeper-${date}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCSV(header + rows, `gatekeeper-${date}.csv`);
+  };
+
+  const exportHoursCSV = () => {
+    // Pair clock_in/clock_out events per worker in timestamp order; an open
+    // interval (still clocked in) is reported with an empty Out and 0 hours
+    // rather than a guess.
+    const byWorker = new Map<string, { name: string; department: string; events: AttendanceWithWorker[] }>();
+    for (const event of [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp))) {
+      const entry = byWorker.get(event.worker_id) || {
+        name: event.worker_name || event.worker_id,
+        department: event.worker_department || '',
+        events: [],
+      };
+      entry.events.push(event);
+      byWorker.set(event.worker_id, entry);
+    }
+
+    const rows: string[] = [];
+    for (const entry of byWorker.values()) {
+      let totalMs = 0;
+      let firstIn: string | null = null;
+      let lastOut: string | null = null;
+      let openIn: string | null = null;
+      for (const event of entry.events) {
+        if (event.event_type === 'clock_in') {
+          openIn = event.timestamp;
+          if (!firstIn) firstIn = event.timestamp;
+        } else if (event.event_type === 'clock_out' && openIn) {
+          totalMs += new Date(event.timestamp).getTime() - new Date(openIn).getTime();
+          lastOut = event.timestamp;
+          openIn = null;
+        }
+      }
+      const hours = totalMs > 0 ? (totalMs / 3_600_000).toFixed(2) : '0.00';
+      rows.push(`${entry.name},${entry.department},${firstIn || ''},${lastOut || ''},${hours},${openIn ? 'still clocked in' : ''}`);
+    }
+
+    const header = 'Worker,Department,First In,Last Out,Hours,Note\n';
+    downloadCSV(header + rows.join('\n'), `gatekeeper-hours-${date}.csv`);
   };
 
   return (
@@ -112,6 +155,9 @@ function LogPageContent() {
             onChange={(e) => setDate(e.target.value)}
             className="input-field w-auto"
           />
+          <button onClick={exportHoursCSV} className="btn-secondary flex items-center gap-2">
+            Export hours CSV
+          </button>
           <button onClick={exportCSV} className="btn-primary flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />

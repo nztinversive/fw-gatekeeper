@@ -6,9 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint .",
-    "test": "npm run test:convex-auth && npm run test:employee-directory && npm run test:kiosk-sync-auth && npm run test:kiosk-ui-auth && npm run test:face-service-auth && npm run test:auth-scaffold && npm run test:login-error-copy && npm run test:worker-ui && npm run test:enrollment-permissions && npm run test:kiosk-readiness && npm run test:recognition-attempts && npm run test:secured-ingest && npm run test:dashboard-demo-mode && npm run test:launch-readiness && npm run test:shift-exceptions && npm run test:shift-briefing && npm run test:shift-closeout && npm run test:proactive-actions && npm run test:attendance-corrections && npm run test:date && npm run test:convex-local-date",
+    "test": "npm run test:convex-auth && npm run test:employee-directory && npm run test:kiosk-sync-auth && npm run test:kiosk-ui-auth && npm run test:face-service-auth && npm run test:login-error-copy && npm run test:worker-ui && npm run test:enrollment-permissions && npm run test:kiosk-readiness && npm run test:recognition-attempts && npm run test:secured-ingest && npm run test:dashboard-demo-mode && npm run test:shift-exceptions && npm run test:shift-briefing && npm run test:shift-closeout && npm run test:proactive-actions && npm run test:attendance-corrections && npm run test:date && npm run test:convex-local-date",
     "start": "next start",
-    "test:auth-scaffold": "node scripts/test-convex-auth-scaffold.mjs",
     "test:convex-auth": "vitest run convex/access.test.ts",
     "test:employee-directory": "vitest run src/lib/employee-directory.test.ts",
     "test:kiosk-sync-auth": "python3 pi-kiosk/test_sync_auth.py",
@@ -21,7 +20,6 @@
     "test:recognition-attempts": "node scripts/test-recognition-attempts-contract.mjs",
     "test:secured-ingest": "node scripts/test-secured-ingest-contract.mjs",
     "test:dashboard-demo-mode": "node scripts/test-dashboard-demo-mode-contract.mjs",
-    "test:launch-readiness": "node scripts/test-launch-readiness-contract.mjs",
     "test:shift-exceptions": "node scripts/test-shift-exceptions-contract.mjs",
     "test:shift-briefing": "node scripts/test-shift-briefing-contract.mjs",
     "test:shift-closeout": "node scripts/test-shift-closeout-contract.mjs",
@@ -35,8 +33,7 @@
     "convex": "^1.32.0",
     "next": "^16.3.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "recharts": "^2.15.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

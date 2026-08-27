@@ -1,4 +1,4 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { assertPortalRole } from "./access";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
@@ -98,24 +98,6 @@ export const create = mutation({
       active: true,
     });
     return { id, name: args.name, type: args.type };
-  },
-});
-
-export const findByKioskId = internalQuery({
-  args: { kioskId: v.string() },
-  returns: v.union(v.object({
-    id: v.id("kiosks"),
-    name: v.string(),
-    kiosk_id: v.union(v.string(), v.null()),
-    type: v.string(),
-    location: v.string(),
-    last_sync: v.union(v.string(), v.null()),
-    health: healthSerialized,
-    active: v.number(),
-  }), v.null()),
-  handler: async (ctx, args) => {
-    const match = await findActiveKioskByIdentifier(ctx, args.kioskId);
-    return match ? serializeKiosk(match) : null;
   },
 });
 
