@@ -80,6 +80,7 @@ assert.match(apiRoute, /closeout_draft:\s*\{[\s\S]*source_counts:\s*\{[\s\S]*tot
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'GET route should allow portal viewers.');
 assert.match(apiRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment'\]\)/, 'PATCH route should restrict closeout writes.');
 assert.match(apiRoute, /action must be save, complete, or reopen/, 'PATCH route must validate closeout actions.');
+assert.match(apiRoute, /isDemoWriteMode\(\)[\s\S]*can_complete:\s*true/, 'Blocker-free demo closeouts should allow the completion workflow to be exercised.');
 
 assert.match(page, /\/api\/shift-closeout\?date=\$\{date\}/, 'Closeout page must fetch the closeout API.');
 assert.match(page, /Shift <span className="text-gold">Closeout<\/span>/, 'Closeout page must render the Shift Closeout surface.');

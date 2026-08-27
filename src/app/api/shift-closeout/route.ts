@@ -93,7 +93,14 @@ export async function GET(req: NextRequest) {
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
-  if (isDemoWriteMode()) return NextResponse.json(withDemoCloseout({ ...emptyResponse(date), backend_unavailable: false, ...demoWriteMetadata() }, date));
+  if (isDemoWriteMode()) {
+    return NextResponse.json(withDemoCloseout({
+      ...emptyResponse(date),
+      can_complete: true,
+      backend_unavailable: false,
+      ...demoWriteMetadata(),
+    }, date));
+  }
 
   try {
     const payload = await convex.query((api as any).shiftCloseouts.get, { date });
