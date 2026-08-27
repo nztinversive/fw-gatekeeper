@@ -82,7 +82,7 @@ assert.match(page, /searchParams\.get\('severity'\)/, 'Exceptions page should in
 assert.match(page, /searchParams\.get\('status'\)/, 'Exceptions page should initialize status filtering from query params.');
 assert.match(page, /searchParams\.get\('exception_key'\)/, 'Exceptions page should read exact exception-row action links.');
 assert.match(page, /searchParams\.get\('intent'\)/, 'Exceptions page should read action intent query params.');
-assert.match(page, /\/api\/portal-role/, 'Exceptions page should resolve the current portal role before exposing direct write intent.');
+assert.match(page, /usePortalRole|portalMembers\.current/, 'Exceptions page should resolve the current portal role before exposing direct write intent.');
 assert.match(page, /function canOperateExceptions/, 'Exceptions page should centralize write-role checks.');
 assert.match(page, /function suggestedReviewNotes/, 'Exceptions page should provide deterministic review-note suggestions.');
 assert.match(page, /exception\.suggested_resolution/, 'Exceptions page should consume server-side suggested resolutions.');

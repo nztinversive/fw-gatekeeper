@@ -5,14 +5,6 @@ import { hasPortalMemberAccess, type PortalMemberRole } from '@/lib/portal-membe
 
 const PUBLIC_PATHS = ['/login', '/api/convex-auth', '/api/health'];
 
-function isLocalDemoWriteMode() {
-  return (
-    process.env.NODE_ENV !== 'production' &&
-    process.env.FW_DEMO_WRITE_MODE === '1' &&
-    process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1'
-  );
-}
-
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
@@ -42,10 +34,6 @@ function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
   }
 
   if (pathname === '/api/recognition-attempts' && method === 'GET') {
-    return ['admin', 'enrollment', 'viewer'];
-  }
-
-  if (pathname === '/api/portal-role' && method === 'GET') {
     return ['admin', 'enrollment', 'viewer'];
   }
 
@@ -142,9 +130,6 @@ const authenticatedMiddleware = convexAuthNextjsMiddleware(async (req, { convexA
 });
 
 export function proxy(req: NextRequest, event: NextFetchEvent) {
-  if (isLocalDemoWriteMode()) {
-    return NextResponse.next();
-  }
   return authenticatedMiddleware(req, event);
 }
 

@@ -4,8 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } fr
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/Toast';
-import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 import { getLocalDateString } from '@/lib/date';
+import { usePortalRole } from '@/hooks/usePortalRole';
 import {
   ShiftCloseoutChecklistItem,
   ShiftCloseoutResponse,
@@ -50,7 +50,7 @@ function checklistExportLine(item: ShiftCloseoutChecklistItem) {
 
 function exportText(payload: ShiftCloseoutResponse, supervisorName: string, notes: string) {
   const lines = [
-    `FW Gateway shift closeout - ${payload.date}`,
+    `FW Gatekeeper shift closeout - ${payload.date}`,
     `Status: ${payload.closeout?.status || 'open'}`,
     `Supervisor: ${supervisorName || payload.closeout?.supervisor_name || 'Not set'}`,
     `Completed: ${formatDateTime(payload.closeout?.completed_at)}`,
@@ -160,7 +160,7 @@ function ShiftCloseoutPageContent() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
-  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const currentRole = usePortalRole();
   const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftCloseoutResponse | null>(null);
   const [supervisorName, setSupervisorName] = useState('');
@@ -174,23 +174,6 @@ function ShiftCloseoutPageContent() {
   useEffect(() => {
     setDate(queryDate);
   }, [queryDate]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/portal-role', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!cancelled && typeof payload?.role === 'string') {
-          setCurrentRole(payload.role);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentRole(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const fetchCloseout = useCallback(async () => {
     setLoading(true);
@@ -289,8 +272,7 @@ function ShiftCloseoutPageContent() {
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error || 'Failed to update closeout');
-        const suffix = body?.demo_write ? ' locally' : '';
-        toast(action === 'complete' ? `Shift closeout completed${suffix}` : action === 'reopen' ? `Shift closeout reopened${suffix}` : `Closeout notes saved${suffix}`);
+        toast(action === 'complete' ? 'Shift closeout completed' : action === 'reopen' ? 'Shift closeout reopened' : 'Closeout notes saved');
         await fetchCloseout();
       } catch (err) {
         toast(err instanceof Error ? err.message : 'Failed to update closeout', 'error');
@@ -322,8 +304,6 @@ function ShiftCloseoutPageContent() {
           </button>
         </div>
       </div>
-
-      <DemoWriteModeBanner />
 
       {error && (
         <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">

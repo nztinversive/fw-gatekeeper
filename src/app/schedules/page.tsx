@@ -3,11 +3,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Schedule } from '@/lib/types';
 import { useToast } from '@/components/Toast';
-import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
+import { usePortalRole } from '@/hooks/usePortalRole';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
 
 export default function SchedulesPage() {
   const { toast } = useToast();
@@ -20,27 +18,10 @@ export default function SchedulesPage() {
   const [endTime, setEndTime] = useState('14:30');
   const [department, setDepartment] = useState('');
   const [departments, setDepartments] = useState<string[]>([]);
-  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const currentRole = usePortalRole();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const canEdit = currentRole === 'admin';
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/portal-role', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!cancelled && typeof payload?.role === 'string') {
-          setCurrentRole(payload.role);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentRole(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const fetchSchedules = useCallback(async () => {
     setLoading(true);
@@ -116,12 +97,12 @@ export default function SchedulesPage() {
         const res = await fetch('/api/schedules', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const responseBody = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(responseBody?.error || 'Failed to update schedule');
-        toast(responseBody?.demo_write ? `Demo schedule "${name}" updated locally` : `Schedule "${name}" updated`);
+        toast(`Schedule "${name}" updated`);
       } else {
         const res = await fetch('/api/schedules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const responseBody = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(responseBody?.error || 'Failed to create schedule');
-        toast(responseBody?.demo_write ? `Demo schedule "${name}" created locally` : `Schedule "${name}" created`);
+        toast(`Schedule "${name}" created`);
       }
 
       resetForm();
@@ -137,7 +118,7 @@ export default function SchedulesPage() {
       const res = await fetch(`/api/schedules?id=${id}`, { method: 'DELETE' });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || 'Failed to delete schedule');
-      toast(body?.demo_write ? 'Demo schedule removed locally' : 'Schedule deleted');
+      toast('Schedule deleted');
       fetchSchedules();
     } catch {
       toast('Failed to delete schedule', 'error');
@@ -182,10 +163,6 @@ export default function SchedulesPage() {
             )}
           </button>
         )}
-      </div>
-
-      <div className="mb-6">
-        <DemoWriteModeBanner />
       </div>
 
       {canEdit && showForm && (

@@ -11,6 +11,7 @@ import {
   RecognitionReviewStatus,
 } from '@/lib/types';
 import { getLocalDateString } from '@/lib/date';
+import { usePortalRole } from '@/hooks/usePortalRole';
 
 const decisionOptions: Array<{ value: RecognitionDecision | 'all'; label: string }> = [
   { value: 'all', label: 'All decisions' },
@@ -108,7 +109,7 @@ function RecognitionCalibrationLabContent() {
   const queryConfidenceBand = validConfidenceParam(searchParams.get('confidence_band'));
   const queryKioskId = searchParams.get('kiosk_id') || '';
   const queryAttemptId = searchParams.get('attempt_id') || '';
-  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const currentRole = usePortalRole();
   const [date, setDate] = useState(queryDate);
   const [decision, setDecision] = useState<RecognitionDecision | 'all'>(queryDecision);
   const [reviewStatus, setReviewStatus] = useState<RecognitionReviewStatus | 'all'>(queryReviewStatus);
@@ -127,23 +128,6 @@ function RecognitionCalibrationLabContent() {
     setConfidenceBand(queryConfidenceBand);
     setKioskId(queryKioskId);
   }, [queryConfidenceBand, queryDate, queryDecision, queryKioskId, queryReviewStatus]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/portal-role', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!cancelled && typeof payload?.role === 'string') {
-          setCurrentRole(payload.role);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentRole(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ date, limit: queryAttemptId ? '1000' : '150' });

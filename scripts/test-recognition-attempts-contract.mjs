@@ -58,7 +58,7 @@ assert.match(apiRoute, /const attemptMatches = !attemptId \|\| attempt\.id === a
 assert.match(apiRoute, /const decisionMatches =\s*attemptId \|\|/, 'Exact attempt links should not be hidden by decision filters.');
 assert.match(apiRoute, /const confidenceMatches =\s*attemptId \|\|/, 'Exact attempt links should not be hidden by confidence filters.');
 assert.match(page, /RecognitionCalibrationLab/, 'Recognition calibration page must render the lab component.');
-assert.match(lab, /\/api\/portal-role/, 'Recognition Lab should resolve portal role before exposing review write controls.');
+assert.match(lab, /usePortalRole|portalMembers\.current/, 'Recognition Lab should resolve portal role before exposing review write controls.');
 assert.match(lab, /function canOperateRecognition/, 'Recognition Lab should centralize write-role checks.');
 assert.match(lab, /return role === 'admin' \|\| role === 'enrollment'/, 'Recognition Lab writes should remain limited to admin and enrollment roles.');
 assert.match(lab, /if \(!canOperate\)[\s\S]*Only admin or enrollment roles can update recognition reviews/, 'Recognition review mutations should be guarded client-side for read-only roles.');

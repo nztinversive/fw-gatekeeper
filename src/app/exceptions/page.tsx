@@ -4,8 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransit
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/Toast';
-import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 import { createLocalIsoTimestamp, getLocalDateString } from '@/lib/date';
+import { usePortalRole } from '@/hooks/usePortalRole';
 import {
   AttendanceCorrectionAction,
   ShiftException,
@@ -183,7 +183,7 @@ function ExceptionsPageContent() {
   const queryStatus = validStatusParam(searchParams.get('status'));
   const queryExceptionKey = searchParams.get('exception_key') || '';
   const queryIntent = searchParams.get('intent') || '';
-  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const currentRole = usePortalRole();
   const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftExceptionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -202,23 +202,6 @@ function ExceptionsPageContent() {
   const correctionModalRef = useRef<HTMLElement | null>(null);
   const correctionTriggerRef = useRef<HTMLElement | null>(null);
   const correctionOpen = correctionDraft !== null;
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/portal-role', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!cancelled && typeof payload?.role === 'string') {
-          setCurrentRole(payload.role);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentRole(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     setDate(queryDate);
@@ -436,7 +419,7 @@ function ExceptionsPageContent() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || 'Failed to save correction');
-      toast(body?.demo_write ? 'Demo attendance correction saved locally' : 'Attendance correction saved');
+      toast('Attendance correction saved');
       setCorrectionDraft(null);
       await fetchExceptions();
     } catch (err) {
@@ -479,8 +462,6 @@ function ExceptionsPageContent() {
           </button>
         </div>
       </div>
-
-      <DemoWriteModeBanner />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[

@@ -8,6 +8,7 @@ import { getLocalDateString } from '@/lib/date';
 import { buildLiveShiftSentinelItems, buildProactiveActions, getLiveShiftSentinelSnapshot } from '@/lib/proactive-actions';
 import type { LiveShiftSentinelItem, LiveShiftSentinelSnapshot, ProactiveActionFreshness, ProactiveSignalFreshness } from '@/lib/proactive-actions';
 import type { ShiftBriefingResponse, ShiftCloseoutResponse, ShiftException, ShiftExceptionsResponse, ShiftTrustBriefStatus } from '@/lib/types';
+import { usePortalRole } from '@/hooks/usePortalRole';
 
 interface WorkerWithStatus {
   id: string;
@@ -85,7 +86,6 @@ interface SystemHealth {
 }
 
 type SignalFailureKey = 'stats' | 'workers' | 'attendance' | 'system-health' | 'shift-briefing' | 'shift-exceptions' | 'shift-closeout';
-type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
 type SignalFreshnessMap = Partial<Record<SignalFailureKey, ProactiveSignalFreshness>>;
 
 const SENTINEL_SEEN_STORAGE_KEY = 'fw-gatekeeper:live-shift-sentinel:v1:seen';
@@ -308,7 +308,7 @@ function getSentinelStatusTone(item: LiveShiftSentinelItem) {
 }
 
 export default function Dashboard() {
-  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const currentRole = usePortalRole();
   const [stats, setStats] = useState({ totalWorkers: 0, clockedIn: 0, clockedOut: 0, notArrived: 0, avgArrival: null as string | null });
   const [workers, setWorkers] = useState<WorkerWithStatus[]>([]);
   const [attendanceEvents, setAttendanceEvents] = useState<AttendanceEvent[]>([]);
@@ -488,23 +488,6 @@ export default function Dashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/portal-role', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!cancelled && typeof payload?.role === 'string') {
-          setCurrentRole(payload.role);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentRole(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {

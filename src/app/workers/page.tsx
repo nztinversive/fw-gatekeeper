@@ -4,8 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/Toast';
 import { Worker } from '@/lib/types';
-
-type PortalRole = 'admin' | 'enrollment' | 'viewer' | string;
+import { usePortalRole } from '@/hooks/usePortalRole';
 
 function getEncodingStatus(worker: Worker) {
   if (worker.encoding_status) return worker.encoding_status;
@@ -27,27 +26,10 @@ export default function WorkersPage() {
   const [name, setName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [department, setDepartment] = useState('');
-  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const currentRole = usePortalRole();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const canEdit = currentRole === 'admin';
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/portal-role', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!cancelled && typeof payload?.role === 'string') {
-          setCurrentRole(payload.role);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentRole(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const fetchWorkers = useCallback(async () => {
     setLoading(true);

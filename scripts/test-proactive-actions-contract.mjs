@@ -978,9 +978,8 @@ assert.deepEqual(
 );
 
 const dashboardSource = read('src/app/page.tsx');
-const portalRoleRoute = read('src/app/api/portal-role/route.ts');
 const middlewareSource = read('src/proxy.ts');
-assert.match(dashboardSource, /\/api\/portal-role/, 'Dashboard should resolve role through the lightweight portal role API.');
+assert.match(dashboardSource, /usePortalRole|portalMembers\.current/, 'Dashboard should resolve role through the shared Convex portal role hook.');
 assert.match(dashboardSource, /const dashboardRole = currentRole \|\| 'viewer'/, 'Dashboard should default unresolved portal roles to review-safe actionability until role lookup confirms operator access.');
 assert.match(dashboardSource, /currentRole:\s*dashboardRole/, 'Dashboard proactive actions should use the review-safe role fallback instead of raw unresolved role state.');
 assert.match(dashboardSource, /\/api\/workers\?scope=dashboard/, 'Dashboard should use the read-scoped worker roster endpoint so review-only roles do not see artificial roster failures.');
@@ -1052,9 +1051,7 @@ assert.match(source, /action\.source === 'enrollment'[\s\S]*evidence\.firstWorke
 assert.match(source, /action\.key === 'recognition-review'[\s\S]*evidence\.firstExceptionKey[\s\S]*Exact row ready/, 'Recognition review evidence chips should disclose exact exception-row handoffs.');
 assert.match(source, /action\.source === 'closeout'[\s\S]*evidence\.firstBlockerProof[\s\S]*Exact source ready/, 'Closeout evidence chips should disclose exact closeout proof handoffs when available.');
 assert.doesNotMatch(dashboardSource, /from 'convex\/react'/, 'Dashboard should not add a Convex client query just to resolve action roles.');
-assert.doesNotMatch(portalRoleRoute, /hasValidAdminSession|legacy-admin/, 'Portal role API must not elevate legacy shared-PIN sessions.');
-assert.match(portalRoleRoute, /getPortalMemberForToken/, 'Portal role API should resolve Convex portal member roles.');
-assert.match(middlewareSource, /pathname === '\/api\/portal-role' && method === 'GET'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow all active portal roles to resolve dashboard actionability.');
+assert.doesNotMatch(middlewareSource, /portal[-]role/, 'Middleware must not keep an allowlist entry for the removed portal role API route.');
 assert.match(middlewareSource, /pathname === '\/api\/workers' && method === 'GET' && searchParams\.get\('scope'\) === 'dashboard'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow dashboard-scoped worker reads for all dashboard portal roles.');
 assert.match(middlewareSource, /pathname === '\/api\/stats' \|\| pathname === '\/api\/attendance' \|\| pathname === '\/api\/system-health'[\s\S]*\['admin', 'enrollment', 'viewer'\]/, 'Middleware should allow dashboard read signals for all dashboard portal roles without broadening write APIs.');
 const workersRoute = read('src/app/api/workers/route.ts');

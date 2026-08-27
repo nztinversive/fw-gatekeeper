@@ -135,9 +135,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const authActions = useAuthActions();
-  const demoWriteMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
-  const queriedMember = useQuery(api.portalMembers.current, demoWriteMode ? 'skip' : {});
-  const currentMember = demoWriteMode ? { role: 'admin' as const } : queriedMember;
+  const currentMember = useQuery(api.portalMembers.current, {});
   const visibleLinks = links.filter((link) => !link.adminOnly || currentMember?.role === 'admin');
   const mobilePrimaryLinks = visibleLinks.filter((link) => primaryMobileLinks.includes(link.href));
   const mobileSecondaryLinks = visibleLinks.filter((link) => !primaryMobileLinks.includes(link.href));
@@ -204,7 +202,7 @@ export default function Sidebar() {
             </div>
             <div>
               <h1 className="text-base font-display font-bold text-slate-100 tracking-tight">
-                <span className="text-gold">FW</span> Gateway
+                <span className="text-gold">FW</span> Gatekeeper
               </h1>
               <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Command Center</p>
             </div>
@@ -279,7 +277,7 @@ export default function Sidebar() {
               </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">FW Gateway</p>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">FW Gatekeeper</p>
               <h1 className="text-base font-display font-semibold text-slate-100 truncate">
                 {currentLink?.label ?? 'Command Center'}
               </h1>
