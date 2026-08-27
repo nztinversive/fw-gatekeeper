@@ -3,6 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import {
+  EmployeeDirectoryEntry,
+  searchEmployeeDirectory,
+} from '@/lib/employee-directory';
 
 type Step = 'name' | 'camera' | 'capturing' | 'processing' | 'done' | 'error';
 
@@ -16,6 +20,9 @@ function EnrollPageContent() {
   const [name, setName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [department, setDepartment] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeDirectoryEntry | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
   const [captureCount, setCaptureCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
@@ -28,10 +35,48 @@ function EnrollPageContent() {
   const employeeIdRef = useRef(employeeId);
   const departmentRef = useRef(department);
   const workerIdRef = useRef(workerId);
+  const suggestions = workerId ? [] : searchEmployeeDirectory(name);
   nameRef.current = name;
   employeeIdRef.current = employeeId;
   departmentRef.current = department;
   workerIdRef.current = workerId;
+
+  const selectEmployee = (employee: EmployeeDirectoryEntry) => {
+    setName(employee.name);
+    setEmployeeId(employee.employeeId);
+    setDepartment(employee.department);
+    setSelectedEmployee(employee);
+    setShowSuggestions(false);
+    setActiveSuggestion(0);
+  };
+
+  const handleNameChange = (value: string) => {
+    if (selectedEmployee && value !== selectedEmployee.name) {
+      if (employeeId === selectedEmployee.employeeId) setEmployeeId('');
+      if (department === selectedEmployee.department) setDepartment('');
+      setSelectedEmployee(null);
+    }
+    setName(value);
+    setShowSuggestions(Boolean(value.trim()));
+    setActiveSuggestion(0);
+  };
+
+  const handleNameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveSuggestion((current) => (current + 1) % suggestions.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveSuggestion((current) => (current - 1 + suggestions.length) % suggestions.length);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      selectEmployee(suggestions[activeSuggestion]);
+    } else if (event.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
 
   const stopCamera = useCallback(() => {
     if (captureTimerRef.current) {
@@ -184,26 +229,74 @@ function EnrollPageContent() {
           </div>
 
           <div className="glass-card p-6 space-y-5">
-            <div>
-              <label className="section-label mb-1.5 block">Full Name *</label>
+            <div className="relative">
+              <label htmlFor="employee-name" className="section-label mb-1.5 block">Full Name *</label>
               <input
+                id="employee-name"
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. John Smith"
+                onChange={(e) => handleNameChange(e.target.value)}
+                onFocus={() => setShowSuggestions(Boolean(name.trim()) && !workerId)}
+                onBlur={() => setShowSuggestions(false)}
+                onKeyDown={handleNameKeyDown}
+                placeholder="Start typing a name, ID, or area"
                 autoFocus
+                autoComplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={showSuggestions && suggestions.length > 0}
+                aria-controls="employee-suggestions"
+                aria-activedescendant={showSuggestions && suggestions.length > 0 ? `employee-suggestion-${activeSuggestion}` : undefined}
                 className="input-field text-lg py-3"
               />
+              {!workerId && showSuggestions && suggestions.length > 0 && (
+                <div
+                  id="employee-suggestions"
+                  role="listbox"
+                  className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-navy-600 bg-navy-900 shadow-2xl shadow-black/40"
+                >
+                  {suggestions.map((employee, index) => (
+                    <button
+                      key={employee.employeeId}
+                      id={`employee-suggestion-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === activeSuggestion}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectEmployee(employee)}
+                      onMouseEnter={() => setActiveSuggestion(index)}
+                      className={`flex w-full items-center justify-between gap-4 border-b border-navy-700/60 px-4 py-3 text-left last:border-b-0 ${index === activeSuggestion ? 'bg-gold/10' : 'hover:bg-navy-800'}`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-slate-100">{employee.name}</span>
+                        <span className="block truncate text-xs text-slate-500">{employee.department}</span>
+                      </span>
+                      <span className="shrink-0 rounded-md bg-navy-700 px-2 py-1 font-mono text-xs text-gold">
+                        {employee.employeeId}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!workerId && name.trim() && showSuggestions && suggestions.length === 0 && (
+                <div className="absolute z-20 mt-2 w-full rounded-xl border border-navy-600 bg-navy-900 px-4 py-3 text-sm text-slate-400 shadow-2xl shadow-black/40">
+                  No roster match. You can continue with a new name.
+                </div>
+              )}
+              {!workerId && (
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Select a roster match to fill the employee ID and area automatically.
+                </p>
+              )}
             </div>
 
             <div>
               <label className="section-label mb-1.5 block">Employee ID Number</label>
               <input
                 type="text"
-                inputMode="numeric"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
-                placeholder="e.g. 1042"
+                placeholder="e.g. F-2"
                 className="input-field"
               />
             </div>
@@ -214,7 +307,7 @@ function EnrollPageContent() {
                 type="text"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                placeholder="e.g. Production, QC, Electrical"
+                placeholder="e.g. Area Manager, Mill, Station 4"
                 className="input-field"
               />
             </div>

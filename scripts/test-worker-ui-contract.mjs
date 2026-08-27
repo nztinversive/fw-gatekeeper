@@ -12,6 +12,7 @@ const dashboardPage = read('src/app/page.tsx');
 const convexWorkers = read('convex/workers.ts');
 const types = read('src/lib/types.ts');
 const proactiveActions = read('src/lib/proactive-actions.ts');
+const employeeDirectory = read('src/lib/employee-directory.ts');
 
 assert.doesNotMatch(workersPage, /include_encodings=true/, 'Portal worker management must never download raw biometric vectors.');
 assert.match(workersPage, /Face enrolled/, 'Workers page must show a Face enrolled badge.');
@@ -31,6 +32,11 @@ assert.match(enrollPage, /workerId: workerIdRef\.current/, 'Enroll submit payloa
 assert.match(enrollPage, /Employee ID Number[\s\S]*Department/, 'Enroll page must show Employee ID Number between Full Name and Department.');
 assert.match(enrollPage, /employeeId: employeeIdRef\.current\.trim\(\)/, 'Enroll submit payload must include the employee ID number.');
 assert.match(enrollPage, /setEmployeeId\(worker\.employee_id \|\| ''\)/, 'Re-enrollment prefill must load the existing employee ID number.');
+assert.match(enrollPage, /searchEmployeeDirectory\(name\)/, 'New enrollment should suggest workers from the supplied employee directory.');
+assert.match(enrollPage, /selectEmployee[\s\S]*setEmployeeId\(employee\.employeeId\)[\s\S]*setDepartment\(employee\.department\)/, 'Selecting a directory match must fill its employee ID and area.');
+assert.match(enrollPage, /role="combobox"[\s\S]*role="listbox"[\s\S]*role="option"/, 'Employee suggestions must expose accessible combobox semantics.');
+assert.match(enrollPage, /No roster match\. You can continue with a new name\./, 'Enrollment must preserve manual entry for people outside the supplied roster.');
+assert.match(employeeDirectory, /Camilo \(Kevin Rojas\) Pacheco/, 'Employee directory should retain roster aliases used for search.');
 assert.match(enrollPage, /<Link href="\/enroll" className="btn-primary w-full py-3\.5 text-base block text-center">/, 'Done state must clear worker_id by navigating to a fresh /enroll URL before enrolling another person.');
 assert.match(enrollRoute, /employeeId\?: string/, 'Enroll API must accept an optional employee ID number.');
 assert.match(enrollRoute, /workerId\?: string/, 'Enroll API must accept an optional existing worker id.');

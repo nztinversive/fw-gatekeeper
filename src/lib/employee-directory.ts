@@ -1,0 +1,130 @@
+export type EmployeeDirectoryEntry = {
+  name: string;
+  employeeId: string;
+  department: string;
+};
+
+export const employeeDirectory: EmployeeDirectoryEntry[] = [
+  { name: 'Alex Gonzalez', employeeId: 'F-2', department: 'Area Manager' },
+  { name: 'Amanda Bonapace', employeeId: 'S-1', department: 'Sales' },
+  { name: 'Angel Centeno Bastardo', employeeId: 'F-29', department: 'Area Manager' },
+  { name: 'Angel Julio Alvaraz', employeeId: 'F-24', department: 'Station 2' },
+  { name: 'Antonio Fernandez', employeeId: 'F-43', department: 'Station 6' },
+  { name: 'Antonio Mora', employeeId: 'F-3', department: 'Mill' },
+  { name: 'Aquiles Jose Gomez Caballero', employeeId: 'F-70', department: 'Station 12' },
+  { name: 'Arbenis Yofran Calderas Marrufo', employeeId: 'F-6', department: 'Mill' },
+  { name: 'Basilio De Jesus Chario Sangrong', employeeId: 'F-5', department: 'Mill' },
+  { name: 'Ben Little', employeeId: 'IT-1', department: 'IT' },
+  { name: 'Brandi Lowe', employeeId: 'EHS-1', department: 'EHS' },
+  { name: 'Bryan Bustos Mauricio Contreras Suarez', employeeId: 'F-71', department: 'Station 12' },
+  { name: 'Byrdie Ambercrombie', employeeId: 'S-5', department: 'Sales' },
+  { name: 'Camilo (Kevin Rojas) Pacheco', employeeId: 'F-88', department: 'Station 14' },
+  { name: 'Carlos Diaz Mijares', employeeId: 'F-76', department: 'Station 13' },
+  { name: 'Carole Vowel', employeeId: 'S-3', department: 'Sales' },
+  { name: 'Cassie Jaufmann', employeeId: 'S-4', department: 'Sales' },
+  { name: 'Cleiber Bolano Machado', employeeId: 'F-12', department: 'Floor Table' },
+  { name: 'Daniel Colina Chirino', employeeId: 'F-7', department: 'Mill' },
+  { name: 'Danny Quintero Jaimes', employeeId: 'F-52', department: 'Station 7' },
+  { name: 'Delwin E. Cubilan Chourio', employeeId: 'F-53', department: 'Station 7' },
+  { name: 'Denises Andreina Julio Cortez', employeeId: 'F-23', department: 'Station 1' },
+  { name: 'Diana Herrera Payarez', employeeId: 'F-72', department: 'Station 12' },
+  { name: 'Diana M. Granada', employeeId: 'F-90', department: 'Station 17' },
+  { name: 'Dixon Rivas', employeeId: 'F-9', department: 'Ceiling Table' },
+  { name: 'Eddie Aulich', employeeId: 'F-19', department: 'Int. Wall Table' },
+  { name: 'Edgar Yovanny Camacaro Montilla', employeeId: 'F-89', department: 'Station 17' },
+  { name: 'Eduardo Jose Estremor Caraballo', employeeId: 'F-46', department: 'Station 7' },
+  { name: 'Ender (Samuel Morales) Torres', employeeId: 'F-40', department: 'Area Manager' },
+  { name: 'Enderson Jesus Astudillo Rivero', employeeId: 'F-42', department: 'Station 6' },
+  { name: 'Enrique Esparza', employeeId: 'F-18', department: 'Int. Wall Table' },
+  { name: 'Frank Munn', employeeId: 'F-86', department: 'Station 14' },
+  { name: 'Freddy Arrieta Gonzales', employeeId: 'F-22', department: 'Ext. Wall Table' },
+  { name: 'Freddy Arrieta Vergara', employeeId: 'F-44', department: 'Station 6' },
+  { name: 'Fredy Camacho Rodriguez', employeeId: 'F-67', department: 'Station 11' },
+  { name: 'Genesis Vasquez', employeeId: 'F-75', department: 'Station 13' },
+  { name: 'Gilbelys Lozada', employeeId: 'F-59', department: 'Station 9' },
+  { name: 'Gleiver Rafael Puente Morales', employeeId: 'F-84', department: 'Station 14' },
+  { name: 'Hector Depablos Martinez', employeeId: 'F-11', department: 'Ceiling Table' },
+  { name: 'Hector Esparza', employeeId: 'F-38', department: 'Station 4' },
+  { name: 'Isaih Romero', employeeId: 'F-26', department: 'Area Manager' },
+  { name: 'Jessica(Ery Camargo) Jones', employeeId: 'F-60', department: 'Station 10' },
+  { name: 'Joe Roode', employeeId: 'IT-3', department: 'IT' },
+  { name: 'Joel Giraud Guzman', employeeId: 'F-50', department: 'Station 7' },
+  { name: 'Jon Leder', employeeId: 'F-14', department: 'Area Manager' },
+  { name: 'Jose (Jesus) Perez (Barboza)', employeeId: 'F-54', department: 'Station 9' },
+  { name: 'Jose Bolano Martinez', employeeId: 'F-61', department: 'Station 10' },
+  { name: 'Jose D Garcia', employeeId: 'F-21', department: 'Ext. Wall Table' },
+  { name: 'Jose Josef Moina Garcia', employeeId: 'F-55', department: 'Station 9' },
+  { name: 'Jose Luis Chavez Valles', employeeId: 'F-66', department: 'Station 11' },
+  { name: 'Jose Orobio', employeeId: 'F-20', department: 'Ext. Wall Table' },
+  { name: 'Jose Pina Sanchez', employeeId: 'F-4', department: 'Mill' },
+  { name: 'Jose Polido Sanjuan', employeeId: 'F-41', department: 'Station 6' },
+  { name: 'Jose Yepez', employeeId: 'F-30', department: 'Area Manager' },
+  { name: 'Josue Figueroa Paz', employeeId: 'F-73', department: 'Station 12' },
+  { name: 'Juaris Arrieta Naravaez', employeeId: 'F-47', department: 'Station 7' },
+  { name: 'Katiuska Bolivar Perara', employeeId: 'F-13', department: 'Floor Table' },
+  { name: 'Keven Barnes', employeeId: 'F-45', department: 'Area Manager' },
+  { name: 'Kevin Lemus Rivas', employeeId: 'F-36', department: 'Station 4' },
+  { name: 'Laura Bautista Centeno', employeeId: 'F-15', department: 'Truss Press' },
+  { name: 'Laura Garcia', employeeId: 'F-34', department: 'Station 4' },
+  { name: 'Layton Chupp', employeeId: 'F-25', department: 'Station 2' },
+  { name: 'Leonardo Enrique Hernandez Moreno', employeeId: 'F-31', department: 'Area Manager' },
+  { name: 'Leonel Rafael Guete Rojano', employeeId: 'F-68', department: 'Station 11' },
+  { name: 'Luis Barboza', employeeId: 'F-39', department: 'Station 4' },
+  { name: 'Malachai Little', employeeId: 'IT-2', department: 'IT' },
+  { name: 'Miguel Angel Atacho Chavez', employeeId: 'F-93', department: 'Station 17' },
+  { name: 'Nicolas Esteban Dominguez Gomez', employeeId: 'F-8', department: 'Ceiling Table' },
+  { name: 'Omaira Granada Henao', employeeId: 'F-91', department: 'Station 17' },
+  { name: 'Over Espana Noriega', employeeId: 'F-49', department: 'Station 7' },
+  { name: 'Paula Rodriguez Jimenez', employeeId: 'F-32', department: 'Area Manager' },
+  { name: 'Rodrigo (Diego) Tovar Garcia', employeeId: 'F-77', department: 'Station 13' },
+  { name: 'Roger Dekpe Moise', employeeId: 'F-83', department: 'Station 14' },
+  { name: 'Sandra Milena Bayorno', employeeId: 'F-10', department: 'Ceiling Table' },
+  { name: 'Sean Haver', employeeId: 'F-56', department: 'Station 9' },
+  { name: 'Steven Wheeler (D)', employeeId: 'F-1', department: 'Operations' },
+  { name: 'Valentina Heredia Rodriguez', employeeId: 'F-33', department: 'Station 4' },
+  { name: 'Winder Romero', employeeId: 'F-63', department: 'Station 10' },
+  { name: 'Yamal Romero', employeeId: 'F-78', department: 'Station 13' },
+  { name: 'Yaniree Mauren Fermin Alana', employeeId: 'F-57', department: 'Station 9' },
+  { name: 'Yimi Infante', employeeId: 'F-28', department: 'Area Manager' },
+  { name: 'Yoledidis Carrillo Bravo', employeeId: 'F-35', department: 'Station 4' },
+  { name: 'Yolima Carolina Estrada Suarez', employeeId: 'F-64', department: 'Station 11' },
+  { name: 'Yonny Rodriguez Acosta', employeeId: 'F-80', department: 'Station 14' },
+];
+
+function normalize(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export function searchEmployeeDirectory(query: string, limit = 8) {
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) return [];
+
+  const terms = normalizedQuery.split(/\s+/);
+
+  return employeeDirectory
+    .map((employee, index) => {
+      const normalizedName = normalize(employee.name);
+      const normalizedId = normalize(employee.employeeId);
+      const normalizedDepartment = normalize(employee.department);
+      const searchable = `${normalizedName} ${normalizedId} ${normalizedDepartment}`;
+
+      if (!terms.every((term) => searchable.includes(term))) return null;
+
+      let score = 4;
+      if (normalizedId === normalizedQuery) score = 0;
+      else if (normalizedName === normalizedQuery) score = 1;
+      else if (normalizedName.startsWith(normalizedQuery)) score = 2;
+      else if (terms.every((term) => normalizedName.split(' ').some((part) => part.startsWith(term)))) score = 3;
+
+      return { employee, index, score };
+    })
+    .filter((result): result is NonNullable<typeof result> => result !== null)
+    .sort((a, b) => a.score - b.score || a.index - b.index)
+    .slice(0, limit)
+    .map(({ employee }) => employee);
+}
