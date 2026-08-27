@@ -62,6 +62,8 @@ for (const route of routes) {
 
 const systemHealth = read('src/app/api/system-health/route.ts');
 assert.match(systemHealth, /listDemoKiosks/, 'System health should merge locally registered demo kiosks');
+assert.match(systemHealth, /listDemoWorkers\(\)[\s\S]*readyWorkerCount[\s\S]*ready_worker_count:\s*readyWorkerCount/, 'Demo health should derive recognition-ready counts from the local demo worker store');
+assert.match(systemHealth, /expected_worker_count:\s*readyWorkerCount/, 'Demo kiosk rows and aggregate sync readiness should use the same worker count');
 assert.match(systemHealth, /!isDemoWriteMode\(\)\s*&&\s*cached/, 'System health should avoid hiding demo kiosk writes behind the live cache');
 
 const clientPages = [

@@ -659,7 +659,13 @@
         supervisorUnlock.addEventListener("click", toggleSupervisorControls);
 
         document.addEventListener("keydown", (event) => {
-            if (event.key.toLowerCase() === "a") {
+            const target = event.target;
+            const isTypingTarget = target instanceof HTMLElement && (
+                target.matches("input, textarea, select") || target.isContentEditable
+            );
+            const hasModifier = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+            if (event.key.toLowerCase() === "a" && !isTypingTarget && !event.repeat && !hasModifier) {
+                event.preventDefault();
                 toggleSupervisorControls();
             }
             if (event.key === "Enter" && document.activeElement === manualName) {
