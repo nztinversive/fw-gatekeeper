@@ -16,10 +16,14 @@ import database
 from kiosk_ui_auth import (
     KIOSK_UI_KEY_HEADER,
     KIOSK_UI_SESSION_COOKIE,
+    KIOSK_SUPERVISOR_SESSION_COOKIE,
+    SUPERVISOR_SESSION_TTL_SECONDS,
     get_kiosk_ui_host,
     has_valid_kiosk_ui_credential,
+    has_valid_supervisor_credential,
     kiosk_ui_session_token,
     require_kiosk_ui_key,
+    supervisor_session_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,6 +129,18 @@ def kiosk_ui_auth_required(view):
     return wrapped
 
 
+def supervisor_auth_required(view):
+    """Require an explicitly unlocked, short-lived supervisor session."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not has_valid_supervisor_credential(
+            session_token=request.cookies.get(KIOSK_SUPERVISOR_SESSION_COOKIE),
+        ):
+            return jsonify({"error": "Supervisor authentication required"}), 401
+        return view(*args, **kwargs)
+    return wrapped
+
+
 @app.route("/")
 def index():
     response = make_response(
@@ -164,7 +180,10 @@ def health():
 @app.route("/status")
 @kiosk_ui_auth_required
 def status():
-    return jsonify(get_status_snapshot())
+    snapshot = get_status_snapshot()
+    if not has_valid_supervisor_credential(session_token=request.cookies.get(KIOSK_SUPERVISOR_SESSION_COOKIE)):
+        snapshot.pop("admin", None)
+    return jsonify(snapshot)
 
 
 @app.route("/log")
@@ -182,6 +201,7 @@ def today_log_alias():
 @app.route("/manual-clock", methods=["POST"])
 @app.route("/manual_clock", methods=["POST"])
 @kiosk_ui_auth_required
+@supervisor_auth_required
 def manual_clock():
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name", "")).strip()
@@ -215,6 +235,32 @@ def manual_clock():
         confidence=1.0,
     )
     return jsonify({"success": True, "log_id": log_id, "worker_name": worker["name"], "action": action})
+
+
+@app.route("/supervisor/unlock", methods=["POST"])
+@kiosk_ui_auth_required
+def supervisor_unlock():
+    payload = request.get_json(silent=True) or {}
+    if not has_valid_supervisor_credential(provided_pin=str(payload.get("pin", ""))):
+        return jsonify({"success": False, "error": "Invalid supervisor passcode"}), 401
+    response = jsonify({"success": True})
+    response.set_cookie(
+        KIOSK_SUPERVISOR_SESSION_COOKIE,
+        supervisor_session_token(),
+        max_age=SUPERVISOR_SESSION_TTL_SECONDS,
+        httponly=True,
+        samesite="Strict",
+        secure=False,
+    )
+    return response
+
+
+@app.route("/supervisor/lock", methods=["POST"])
+@kiosk_ui_auth_required
+def supervisor_lock():
+    response = jsonify({"success": True})
+    response.delete_cookie(KIOSK_SUPERVISOR_SESSION_COOKIE, samesite="Strict")
+    return response
 
 
 def start_server():

@@ -12,6 +12,7 @@ import {
 } from '@/lib/types';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
+import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 const LOW_MARGIN_THRESHOLD = 0.08;
 
@@ -143,6 +144,8 @@ export async function GET(req: NextRequest) {
   if (!(await hasValidPortalSession(req, ['admin', 'enrollment', 'viewer']))) {
     return unauthorizedApiResponse();
   }
+
+  if (isDemoWriteMode()) return NextResponse.json({ ...emptyResponse(), ...demoWriteMetadata() });
 
   try {
     const searchParams = req.nextUrl.searchParams;

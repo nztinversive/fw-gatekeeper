@@ -979,7 +979,7 @@ assert.deepEqual(
 
 const dashboardSource = read('src/app/page.tsx');
 const portalRoleRoute = read('src/app/api/portal-role/route.ts');
-const middlewareSource = read('src/middleware.ts');
+const middlewareSource = read('src/proxy.ts');
 assert.match(dashboardSource, /\/api\/portal-role/, 'Dashboard should resolve role through the lightweight portal role API.');
 assert.match(dashboardSource, /const dashboardRole = currentRole \|\| 'viewer'/, 'Dashboard should default unresolved portal roles to review-safe actionability until role lookup confirms operator access.');
 assert.match(dashboardSource, /currentRole:\s*dashboardRole/, 'Dashboard proactive actions should use the review-safe role fallback instead of raw unresolved role state.');
@@ -1078,7 +1078,7 @@ assert.match(middlewareSource, /pathname === '\/api\/stats' \|\| pathname === '\
 const workersRoute = read('src/app/api/workers/route.ts');
 const systemHealthRoute = read('src/app/api/system-health/route.ts');
 assert.match(workersRoute, /requireDashboardWorkerRead\s*\(/, 'Workers API should separate dashboard roster reads from admin-only worker management.');
-assert.match(workersRoute, /scope'\) === 'dashboard'[\s\S]*!includeEncodings[\s\S]*requireDashboardWorkerRead\(req\)/, 'Dashboard worker reads should allow safe roster fields without raw face encodings.');
+assert.match(workersRoute, /scope'\) === 'dashboard'[\s\S]*requireDashboardWorkerRead\(req\)[\s\S]*includeEncodings: false/, 'Dashboard worker reads should allow safe roster fields without raw face encodings.');
 assert.match(systemHealthRoute, /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/, 'System health read API should allow dashboard roles to see real readiness signals.');
 
 const backendUnavailableActions = buildProactiveActions({

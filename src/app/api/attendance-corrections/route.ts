@@ -38,6 +38,10 @@ export async function GET(req: NextRequest) {
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
+  if (isDemoWriteMode()) {
+    const workerId = req.nextUrl.searchParams.get('worker_id') || undefined;
+    return NextResponse.json({ date, corrections: listDemoAttendanceCorrections(date, workerId), ...demoWriteMetadata() });
+  }
 
   try {
     const workerId = req.nextUrl.searchParams.get('worker_id') || undefined;

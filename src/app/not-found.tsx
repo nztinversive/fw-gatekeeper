@@ -44,7 +44,7 @@ export default function NotFound() {
         </div>
 
         <p className="text-[10px] font-mono text-slate-600 mt-8 uppercase tracking-widest">
-          FW Gatekeeper &middot; Access Control System
+          FW Gateway &middot; Access Control System
         </p>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { unauthorizedApiResponse } from '@/lib/auth';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
+import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 function getDate(req: NextRequest) {
   const date = resolveRequestDate(req.nextUrl.searchParams);
@@ -90,6 +91,7 @@ export async function GET(req: NextRequest) {
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
+  if (isDemoWriteMode()) return NextResponse.json({ ...emptyResponse(date), backend_unavailable: false, ...demoWriteMetadata() });
 
   try {
     const payload = await convex.query((api as any).shiftBriefing.summary, { date });

@@ -5,8 +5,8 @@ export function isPublicDemoWriteMode() {
 }
 
 export function getPublicConvexUrl() {
+  if (isPublicDemoWriteMode()) return LOCAL_DEMO_CONVEX_URL;
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (convexUrl) return convexUrl;
-  if (isPublicDemoWriteMode()) return LOCAL_DEMO_CONVEX_URL;
   throw new Error('NEXT_PUBLIC_CONVEX_URL is required');
 }

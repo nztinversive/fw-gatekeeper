@@ -4,6 +4,7 @@ import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { ingestAttendanceEvent } from '@/lib/convex-ingest';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
+import { isDemoWriteMode } from '@/lib/demo-write-mode';
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,6 +14,7 @@ export async function GET(req: NextRequest) {
     }
     const workerId = req.nextUrl.searchParams.get('worker_id');
     const includeCorrections = req.nextUrl.searchParams.get('raw') === 'true' ? false : undefined;
+    if (isDemoWriteMode()) return NextResponse.json([]);
     const rows = await convex.query(api.attendance.list, {
       date,
       workerId: workerId || undefined,

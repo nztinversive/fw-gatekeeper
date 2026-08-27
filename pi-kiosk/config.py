@@ -12,6 +12,7 @@ KIOSK_ID = "kiosk-entry-1"
 KIOSK_TYPE = "entry"  # entry | exit | auto
 KIOSK_NAME = "Main Entry"
 KIOSK_API_KEY = os.environ.get("KIOSK_API_KEY", "")
+KIOSK_SUPERVISOR_PIN = os.environ.get("KIOSK_SUPERVISOR_PIN", "")
 
 # Camera
 CAMERA_INDEX = 0

@@ -6,6 +6,7 @@ import { unauthorizedApiResponse } from '@/lib/auth';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
+import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 const VALID_STATUSES = new Set(['open', 'reviewed', 'ignored', 'resolved']);
 
@@ -102,6 +103,7 @@ export async function GET(req: NextRequest) {
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
+  if (isDemoWriteMode()) return NextResponse.json(emptyResponse(date, demoWriteMetadata()));
 
   try {
     const payload = await convex.query((api as any).shiftExceptions.summary, { date });

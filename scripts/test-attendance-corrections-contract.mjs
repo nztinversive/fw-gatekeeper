@@ -18,7 +18,7 @@ const exceptionsPage = read('src/app/exceptions/page.tsx');
 const logPage = read('src/app/log/page.tsx');
 const attendanceTable = read('src/components/AttendanceTable.tsx');
 const closeoutPage = read('src/app/closeout/page.tsx');
-const middleware = read('src/middleware.ts');
+const middleware = read('src/proxy.ts');
 const types = read('src/lib/types.ts');
 const packageJson = read('package.json');
 

@@ -14,8 +14,9 @@ export async function GET(req: NextRequest) {
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;
 
+  if (isDemoWriteMode()) return NextResponse.json(listDemoKiosks());
   const kiosks = await convex.query(api.kiosks.list, {});
-  return NextResponse.json(isDemoWriteMode() ? [...kiosks, ...listDemoKiosks()] : kiosks);
+  return NextResponse.json(kiosks);
 }
 
 export async function POST(req: NextRequest) {

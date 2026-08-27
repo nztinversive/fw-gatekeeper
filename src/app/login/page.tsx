@@ -6,7 +6,7 @@ import { useAuthActions } from '@convex-dev/auth/react';
 import { normalizeConvexAuthError } from '@/lib/convex-auth-errors';
 
 export default function LoginPage() {
-  const localDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1' && !process.env.NEXT_PUBLIC_CONVEX_URL;
+  const localDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
   if (localDemoMode) {
     return <LocalDemoLogin />;
   }
@@ -28,7 +28,7 @@ function LocalDemoLogin() {
             </svg>
           </div>
           <h1 className="text-3xl font-display font-bold tracking-tight text-slate-100">
-            <span className="text-gold">FW</span> Gatekeeper
+            <span className="text-gold">FW</span> Gateway
           </h1>
           <p className="text-slate-500 text-sm font-mono mt-3 uppercase tracking-widest text-[11px]">Local demo mode</p>
         </div>
@@ -99,7 +99,7 @@ function AuthenticatedLogin() {
             </svg>
           </div>
           <h1 className="text-3xl font-display font-bold tracking-tight text-slate-100">
-            <span className="text-gold">FW</span> Gatekeeper
+            <span className="text-gold">FW</span> Gateway
           </h1>
           <p className="text-slate-500 text-sm font-mono mt-3 uppercase tracking-widest text-[11px]">Access Control System</p>
         </div>

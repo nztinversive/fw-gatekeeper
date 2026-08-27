@@ -7,7 +7,7 @@ import { getPortalMemberForToken } from '@/lib/portal-member';
 
 export async function GET() {
   if (isDemoWriteMode()) {
-    return NextResponse.json({ role: 'viewer', source: 'local-demo' });
+    return NextResponse.json({ role: 'admin', source: 'local-demo' });
   }
 
   const member = await getPortalMemberForToken(await convexAuthNextjsToken());

@@ -1,4 +1,4 @@
-import { AttendanceCorrection, Schedule } from '@/lib/types';
+import { AttendanceCorrection, Schedule, Worker } from '@/lib/types';
 
 type DemoKiosk = {
   id: string;
@@ -25,6 +25,7 @@ const DEMO_WARNING = 'Demo write mode: no production Convex data was changed.';
 const store = globalThis as typeof globalThis & {
   __fwDemoSchedules?: Schedule[];
   __fwDemoKiosks?: DemoKiosk[];
+  __fwDemoWorkers?: Worker[];
   __fwDemoCorrections?: AttendanceCorrection[];
   __fwDemoCloseouts?: DemoCloseout[];
 };
@@ -46,13 +47,40 @@ export function demoWriteMetadata() {
 }
 
 function schedules() {
-  store.__fwDemoSchedules ||= [];
+  store.__fwDemoSchedules ||= [{
+    id: 'demo_schedule_default',
+    name: 'Demo Day Shift',
+    days: '[1,2,3,4]',
+    start_time: '07:00',
+    end_time: '17:30',
+    department: null,
+    active: 1,
+    created_at: nowIso(),
+  }];
   return store.__fwDemoSchedules;
 }
 
 function kiosks() {
-  store.__fwDemoKiosks ||= [];
+  store.__fwDemoKiosks ||= [
+    { id: 'demo_kiosk_entry', name: 'Main Entry Demo', kiosk_id: 'demo-entry', type: 'entry', location: 'Demo', last_sync: nowIso(), active: 1 },
+    { id: 'demo_kiosk_exit', name: 'Main Exit Demo', kiosk_id: 'demo-exit', type: 'exit', location: 'Demo', last_sync: nowIso(), active: 1 },
+  ];
   return store.__fwDemoKiosks;
+}
+
+function workers() {
+  store.__fwDemoWorkers ||= [{
+    id: 'demo_worker_1',
+    name: 'Synthetic Demo',
+    employee_id: 'DEMO-ONLY',
+    department: 'Review Lab',
+    photo_url: null,
+    has_face_encoding: false,
+    encoding_status: 'missing',
+    enrolled_at: nowIso(),
+    active: 1,
+  }];
+  return store.__fwDemoWorkers;
 }
 
 function corrections() {
@@ -107,6 +135,29 @@ export function deleteDemoSchedule(id: string) {
 
 export function listDemoKiosks() {
   return [...kiosks()];
+}
+
+export function listDemoWorkers() {
+  return workers().filter((worker) => worker.active === 1).map((worker) => ({ ...worker }));
+}
+
+export function getDemoWorker(id: string) {
+  const worker = workers().find((candidate) => candidate.id === id && candidate.active === 1);
+  return worker ? { ...worker } : null;
+}
+
+export function updateDemoWorker(id: string, updates: Partial<Pick<Worker, 'name' | 'employee_id' | 'department'>>) {
+  const worker = workers().find((candidate) => candidate.id === id && candidate.active === 1);
+  if (!worker) return null;
+  Object.assign(worker, updates);
+  return { ...worker };
+}
+
+export function deactivateDemoWorker(id: string) {
+  const worker = workers().find((candidate) => candidate.id === id && candidate.active === 1);
+  if (!worker) return false;
+  worker.active = 0;
+  return true;
 }
 
 export function createDemoKiosk(input: {

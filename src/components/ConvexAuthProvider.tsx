@@ -9,7 +9,7 @@ export default function ConvexAuthProvider({ children }: { children: ReactNode }
   const convexUrl = getPublicConvexUrl();
   const convex = useMemo(() => new ConvexReactClient(convexUrl), [convexUrl]);
 
-  if (isPublicDemoWriteMode() && !process.env.NEXT_PUBLIC_CONVEX_URL) {
+  if (isPublicDemoWriteMode()) {
     return <ConvexProvider client={convex}>{children}</ConvexProvider>;
   }
 

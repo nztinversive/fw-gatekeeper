@@ -10,7 +10,7 @@ const apiRoute = read('src/app/api/shift-exceptions/route.ts');
 const page = read('src/app/exceptions/page.tsx');
 const sidebar = read('src/components/Sidebar.tsx');
 const dashboard = read('src/app/page.tsx');
-const middleware = read('src/middleware.ts');
+const middleware = read('src/proxy.ts');
 const types = read('src/lib/types.ts');
 const proactiveActions = read('src/lib/proactive-actions.ts');
 

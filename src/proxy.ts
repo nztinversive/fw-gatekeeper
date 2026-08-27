@@ -133,7 +133,7 @@ const authenticatedMiddleware = convexAuthNextjsMiddleware(async (req, { convexA
   apiRoute: '/api/convex-auth',
 });
 
-export function middleware(req: NextRequest, event: NextFetchEvent) {
+export function proxy(req: NextRequest, event: NextFetchEvent) {
   if (isLocalDemoWriteMode()) {
     return NextResponse.next();
   }

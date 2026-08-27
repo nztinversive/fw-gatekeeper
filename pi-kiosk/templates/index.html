@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FW Gatekeeper Kiosk</title>
+    <title>FW Gateway Kiosk</title>
     <style>
         :root {
             --bg-0: #0c0c0d;
@@ -413,7 +413,7 @@
 <body>
     <header class="header">
         <div class="title">
-            <h1>GATEKEEPER</h1>
+            <h1>FW GATEWAY</h1>
             <p id="kioskName">{{ kiosk_name }} ({{ kiosk_type }})</p>
         </div>
         <div class="clock-wrap">
@@ -441,6 +441,7 @@
         </section>
 
         <aside class="side">
+            <button id="supervisorUnlock" class="admin-toggle">Supervisor controls (A)</button>
             <div id="adminControls" class="admin-controls">
                 <h2>Manual Clock</h2>
                 <div class="manual">
@@ -449,7 +450,6 @@
                 </div>
                 <div id="manualResult" class="manual-result"></div>
 
-                <button id="adminToggle" class="admin-toggle">Admin Mode (A)</button>
                 <div id="adminPanel" class="admin-panel"></div>
             </div>
 
@@ -476,7 +476,7 @@
         const manualName = document.getElementById("manualName");
         const manualResult = document.getElementById("manualResult");
         const adminControls = document.getElementById("adminControls");
-        const adminToggle = document.getElementById("adminToggle");
+        const supervisorUnlock = document.getElementById("supervisorUnlock");
         const adminPanel = document.getElementById("adminPanel");
         const lastUpdated = document.getElementById("lastUpdated");
         let adminVisible = false;
@@ -530,6 +530,28 @@
             adminVisible = visible;
             adminControls.classList.toggle("active", adminVisible);
             adminPanel.classList.toggle("active", adminVisible);
+            supervisorUnlock.textContent = adminVisible ? "Lock supervisor controls" : "Supervisor controls (A)";
+        }
+
+        async function toggleSupervisorControls() {
+            if (adminVisible) {
+                await fetch("/supervisor/lock", { method: "POST" });
+                setAdminVisible(false);
+                return;
+            }
+            const pin = window.prompt("Enter supervisor passcode");
+            if (pin === null) return;
+            const response = await fetch("/supervisor/unlock", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pin })
+            });
+            if (!response.ok) {
+                window.alert("Supervisor authentication failed.");
+                return;
+            }
+            setAdminVisible(true);
+            fetchStatus();
         }
 
         async function fetchStatus() {
@@ -634,13 +656,11 @@
             }
         }
 
-        adminToggle.addEventListener("click", () => {
-            setAdminVisible(!adminVisible);
-        });
+        supervisorUnlock.addEventListener("click", toggleSupervisorControls);
 
         document.addEventListener("keydown", (event) => {
             if (event.key.toLowerCase() === "a") {
-                setAdminVisible(!adminVisible);
+                toggleSupervisorControls();
             }
             if (event.key === "Enter" && document.activeElement === manualName) {
                 submitManualClock();
