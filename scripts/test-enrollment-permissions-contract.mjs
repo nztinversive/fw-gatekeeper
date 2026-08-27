@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const root = new URL('../', import.meta.url);
 const read = (path) => fs.readFileSync(new URL(path, root), 'utf8');
 
-const middleware = read('src/middleware.ts');
+const middleware = read('src/proxy.ts');
 assert.match(
   middleware,
   /getApiAllowedRoles\s*\(/,
@@ -47,10 +47,10 @@ assert.match(
   /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment'\]\)/,
   'Specific worker lookup should allow admin and enrollment roles for re-enrollment',
 );
-assert.match(
+assert.doesNotMatch(
   workersRoute,
-  /include_encodings[\s\S]*requireAdmin\(req\)/,
-  'Full worker listing and include_encodings access should remain admin-only',
+  /face_encoding:\s*worker\.face_encoding/,
+  'Portal worker responses must never serialize biometric vectors',
 );
 assert.match(
   workersRoute,

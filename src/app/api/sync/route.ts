@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { hasValidKioskKey, unauthorizedApiResponse } from '@/lib/auth';
 import { fetchWorkersForSync, updateKioskLastSync } from '@/lib/convex-ingest';
 import { hasValidPortalSession } from '@/lib/portal-auth';
+import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 export async function GET(req: NextRequest) {
   const isAuthorized = (await hasValidPortalSession(req, ['admin'])) || hasValidKioskKey(req);
@@ -14,6 +15,9 @@ export async function GET(req: NextRequest) {
   if (!kioskId) return NextResponse.json({ error: 'kiosk_id required' }, { status: 400 });
 
   const lastSync = new Date().toISOString();
+  if (isDemoWriteMode()) {
+    return NextResponse.json({ workers: [], synced_at: lastSync, ...demoWriteMetadata() });
+  }
   try {
     const result = await updateKioskLastSync(kioskId, lastSync);
     if (!result.updated) {

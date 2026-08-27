@@ -62,6 +62,8 @@ for (const route of routes) {
 
 const systemHealth = read('src/app/api/system-health/route.ts');
 assert.match(systemHealth, /listDemoKiosks/, 'System health should merge locally registered demo kiosks');
+assert.match(systemHealth, /listDemoWorkers\(\)[\s\S]*readyWorkerCount[\s\S]*ready_worker_count:\s*readyWorkerCount/, 'Demo health should derive recognition-ready counts from the local demo worker store');
+assert.match(systemHealth, /expected_worker_count:\s*readyWorkerCount/, 'Demo kiosk rows and aggregate sync readiness should use the same worker count');
 assert.match(systemHealth, /!isDemoWriteMode\(\)\s*&&\s*cached/, 'System health should avoid hiding demo kiosk writes behind the live cache');
 
 const clientPages = [
@@ -85,12 +87,15 @@ const login = read('src/app/login/page.tsx');
 assert.match(login, /LocalDemoLogin/, 'Login page should render a local demo surface when Convex Auth is intentionally unavailable');
 assert.match(login, /Continue to local demo/, 'Local demo login surface should give operators a clear way into demo flows');
 
-const middleware = read('src/middleware.ts');
+const middleware = read('src/proxy.ts');
 assert.match(middleware, /isLocalDemoWriteMode/, 'Middleware should have an explicit local demo bypass');
 assert.match(middleware, /NextResponse\.next\(\)/, 'Local demo middleware should allow protected write-flow pages to render without a real auth session');
 const portalAuth = read('src/lib/portal-auth.ts');
 assert.match(portalAuth, /isDemoWriteMode\(\)[\s\S]*return true/, 'Route-level portal auth should allow local demo routes without a real auth session');
 const portalRole = read('src/app/api/portal-role/route.ts');
-assert.match(portalRole, /isDemoWriteMode\(\)[\s\S]*role:\s*['"]viewer['"][\s\S]*source:\s*['"]local-demo['"]/, 'Portal role API should resolve a safe review role in local demo mode without a real auth session');
+assert.match(portalRole, /isDemoWriteMode\(\)[\s\S]*role:\s*['"]admin['"][\s\S]*source:\s*['"]local-demo['"]/, 'Portal role API should resolve an isolated local admin role so protected demo workflows can be reviewed without a real auth session');
+assert.match(read('src/components/Sidebar.tsx'), /demoWriteMode \? 'skip' : \{\}/, 'Sidebar must not open a live Convex membership subscription in demo mode');
+const accountsPage = read('src/app/accounts/page.tsx');
+assert.match(accountsPage, /isAdmin && !demoWriteMode && members === undefined/, 'Demo account management must not remain stuck waiting for a skipped member query');
 
 console.log('Dashboard partial-data and demo write mode contract passed');

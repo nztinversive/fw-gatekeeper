@@ -20,7 +20,7 @@ assert.doesNotMatch(kiosksPage, /process\.env\.KIOSK_API_KEY/, 'Kiosks page must
 const sidebar = read('src/components/Sidebar.tsx');
 assert.match(sidebar, /href:\s*['"]\/kiosks['"][\s\S]*label:\s*['"]Kiosks['"][\s\S]*adminOnly:\s*true/, 'Kiosks navigation should be admin-only because it exposes device readiness/ops details');
 
-const middleware = read('src/middleware.ts');
+const middleware = read('src/proxy.ts');
 assert.match(middleware, /isAdminOnlyPage\s*\(/, 'middleware should enforce admin-only pages server-side, not only hide nav links');
 assert.match(middleware, /pathname\s*===\s*['"]\/kiosks['"]/, 'middleware should treat /kiosks as an admin-only page');
 assert.match(middleware, /isAdminOnlyPage\(pathname\)[\s\S]*!hasConvexPortalAdmin[\s\S]*NextResponse\.redirect\(new URL\('\/', req\.url\)\)/, 'non-admin portal members who browse directly to /kiosks should be redirected away');

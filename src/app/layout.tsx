@@ -6,14 +6,13 @@ import ConvexAuthProvider from '@/components/ConvexAuthProvider';
 import { ToastProvider } from '@/components/Toast';
 
 export const metadata: Metadata = {
-  title: 'FW Gatekeeper',
-  description: 'Fading West Factory Gatekeeper System',
+  title: 'FW Gateway',
+  description: 'Fading West Factory Access System',
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const useConvexAuthServerProvider = Boolean(
-    process.env.NEXT_PUBLIC_CONVEX_URL ||
-      process.env.NODE_ENV === 'production' ||
+    process.env.NODE_ENV === 'production' ||
       process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE !== '1',
   );
   const app = (

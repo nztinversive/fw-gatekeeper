@@ -12,6 +12,7 @@ import {
 } from '@/lib/demo-write-mode';
 
 export async function GET() {
+  if (isDemoWriteMode()) return NextResponse.json(listDemoSchedules());
   try {
     const schedules = await convex.query(api.schedules.list, {});
     return NextResponse.json(isDemoWriteMode() ? [...schedules, ...listDemoSchedules()] : schedules);

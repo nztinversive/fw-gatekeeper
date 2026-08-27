@@ -7,12 +7,6 @@ import { Worker } from '@/lib/types';
 
 function getEncodingStatus(worker: Worker) {
   if (worker.encoding_status) return worker.encoding_status;
-  if (Array.isArray(worker.face_encoding)) {
-    if (worker.face_encoding.length === 128 || worker.face_encoding.length === 512) {
-      return worker.face_encoding.every((value) => Number.isFinite(value)) ? 'valid' : 'invalid';
-    }
-    return worker.face_encoding.length > 0 ? 'invalid' : 'missing';
-  }
   return worker.has_face_encoding ? 'valid' : 'missing';
 }
 
@@ -34,7 +28,7 @@ export default function WorkersPage() {
 
   const fetchWorkers = useCallback(async () => {
     try {
-      const res = await fetch('/api/workers?include_encodings=true');
+      const res = await fetch('/api/workers');
       if (!res.ok) throw new Error('Failed to fetch workers');
       setWorkers(await res.json());
     } catch (err) {

@@ -5,6 +5,15 @@ import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
+import {
+  createDemoWorker,
+  deactivateDemoWorker,
+  demoWriteMetadata,
+  getDemoWorker,
+  isDemoWriteMode,
+  listDemoWorkers,
+  updateDemoWorker,
+} from '@/lib/demo-write-mode';
 
 async function requireAdmin(req: NextRequest) {
   return (await hasValidPortalSession(req, ['admin'])) ? null : unauthorizedApiResponse();
@@ -24,19 +33,27 @@ export async function GET(req: NextRequest) {
     const unauthorized = await requireWorkerRead(req);
     if (unauthorized) return unauthorized;
 
-    const worker = await convex.query(api.workers.get, { id: id as any });
+    const worker = isDemoWriteMode() ? getDemoWorker(id) : await convex.query(api.workers.get, { id: id as any });
     if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
-    const { face_encoding: _faceEncoding, ...safeWorker } = worker;
-    return NextResponse.json(safeWorker);
+    return NextResponse.json({
+      id: worker.id,
+      name: worker.name,
+      employee_id: worker.employee_id,
+      department: worker.department,
+      photo_url: worker.photo_url,
+      has_face_encoding: worker.has_face_encoding,
+      encoding_status: worker.encoding_status,
+      enrolled_at: worker.enrolled_at,
+      active: worker.active,
+    });
   }
 
   const dashboardScope = req.nextUrl.searchParams.get('scope') === 'dashboard';
-  const includeEncodings = req.nextUrl.searchParams.get('include_encodings') === 'true';
-  if (dashboardScope && !includeEncodings) {
+  if (dashboardScope) {
     const unauthorized = await requireDashboardWorkerRead(req);
     if (unauthorized) return unauthorized;
 
-    const workers = await convex.query(api.workers.list, { includeEncodings: false });
+    const workers = isDemoWriteMode() ? listDemoWorkers() : await convex.query(api.workers.list, { includeEncodings: false });
     return NextResponse.json(workers.map((worker: any) => ({
       id: worker.id,
       name: worker.name,
@@ -53,7 +70,7 @@ export async function GET(req: NextRequest) {
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;
 
-  const workers = await convex.query(api.workers.list, { includeEncodings });
+  const workers = isDemoWriteMode() ? listDemoWorkers() : await convex.query(api.workers.list, { includeEncodings: false });
   return NextResponse.json(workers.map((worker: any) => ({
     id: worker.id,
     name: worker.name,
@@ -62,7 +79,6 @@ export async function GET(req: NextRequest) {
     photo_url: worker.photo_url,
     has_face_encoding: worker.has_face_encoding,
     encoding_status: worker.encoding_status,
-    ...(includeEncodings ? { face_encoding: worker.face_encoding } : {}),
     enrolled_at: worker.enrolled_at,
     active: worker.active,
   })));
@@ -76,6 +92,10 @@ export async function POST(req: NextRequest) {
   const { name, employee_id, department, face_encoding } = body;
 
   if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 });
+  if (isDemoWriteMode()) {
+    const result = createDemoWorker({ name, employee_id, department, enrolled: false });
+    return NextResponse.json({ ...result, ...demoWriteMetadata() }, { status: 201 });
+  }
   if (!isSupportedEncoding(face_encoding)) {
     return NextResponse.json(
       { error: `Face enrollment required. Use /api/enroll so photos are encoded first. ${getEncodingValidationMessage('face_encoding')}` },
@@ -105,6 +125,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: getEncodingValidationMessage('face_encoding') }, { status: 400 });
   }
 
+  if (isDemoWriteMode()) {
+    const result = updateDemoWorker(id, {
+      ...(name !== undefined ? { name } : {}),
+      ...(employee_id !== undefined ? { employee_id } : {}),
+      ...(department !== undefined ? { department } : {}),
+    });
+    return result ? NextResponse.json({ ok: true, worker: result }) : NextResponse.json({ error: 'Worker not found' }, { status: 404 });
+  }
+
   const updates: Record<string, unknown> = { id };
   if (name !== undefined) updates.name = name;
   if (employee_id !== undefined) updates.employeeId = employee_id;
@@ -121,6 +150,12 @@ export async function DELETE(req: NextRequest) {
 
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+  if (isDemoWriteMode()) {
+    return deactivateDemoWorker(id)
+      ? NextResponse.json({ ok: true })
+      : NextResponse.json({ error: 'Worker not found' }, { status: 404 });
+  }
 
   await convex.mutation(api.workers.remove, { id: id as any });
   return NextResponse.json({ ok: true });

@@ -4,7 +4,7 @@ import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
-import { isDemoWriteMode, listDemoKiosks } from '@/lib/demo-write-mode';
+import { isDemoWriteMode, listDemoKiosks, listDemoWorkers } from '@/lib/demo-write-mode';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 
 const FACE_SERVICE_FALLBACK = 'https://fw-face-service.onrender.com';
@@ -109,6 +109,32 @@ export async function GET(req: NextRequest) {
   const date = getDate(req, checkedAt);
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
+  }
+
+  if (isDemoWriteMode()) {
+    const demoKiosks = listDemoKiosks();
+    const readyWorkerCount = listDemoWorkers().filter(
+      (worker) => worker.has_face_encoding && worker.encoding_status === 'valid',
+    ).length;
+    return NextResponse.json({
+      checked_at: now,
+      portal: { status: 'online', checked_at: now },
+      face_service: { status: 'online', http_status: 200, latency_ms: 0, version: 'synthetic-demo', model_ready: true },
+      kiosks: {
+        total: demoKiosks.length,
+        counts: { online: demoKiosks.length, stale: 0, offline: 0, never_synced: 0 },
+        stale_threshold_minutes: ONLINE_THRESHOLD_MS / 60000,
+        offline_threshold_minutes: STALE_THRESHOLD_MS / 60000,
+        rows: demoKiosks.map((kiosk) => ({
+          ...kiosk,
+          status: 'online',
+          expected_worker_count: readyWorkerCount,
+          last_attendance_upload: null,
+        })),
+      },
+      sync: { ready_worker_count: readyWorkerCount, last_attendance_upload: null },
+      warnings: [],
+    });
   }
 
   const cached = cache.get(date);

@@ -50,7 +50,7 @@ function checklistExportLine(item: ShiftCloseoutChecklistItem) {
 
 function exportText(payload: ShiftCloseoutResponse, supervisorName: string, notes: string) {
   const lines = [
-    `FW Gatekeeper shift closeout - ${payload.date}`,
+    `FW Gateway shift closeout - ${payload.date}`,
     `Status: ${payload.closeout?.status || 'open'}`,
     `Supervisor: ${supervisorName || payload.closeout?.supervisor_name || 'Not set'}`,
     `Completed: ${formatDateTime(payload.closeout?.completed_at)}`,

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FW Gatekeeper Kiosk</title>
+    <title>FW Gateway Kiosk</title>
     <style>
         :root {
             --bg-0: #0c0c0d;
@@ -333,6 +333,67 @@
             text-overflow: ellipsis;
         }
 
+        .supervisor-dialog {
+            border: 1px solid #6d5520;
+            border-radius: 12px;
+            background: var(--bg-2);
+            color: var(--ink);
+            padding: 18px;
+            width: min(360px, calc(100vw - 32px));
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+
+        .supervisor-dialog::backdrop {
+            background: rgba(0, 0, 0, 0.72);
+        }
+
+        .supervisor-dialog h2 {
+            color: var(--gold);
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .supervisor-dialog label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.78rem;
+            margin-bottom: 6px;
+        }
+
+        .supervisor-dialog input {
+            width: 100%;
+            background: #0f1114;
+            border: 1px solid var(--line);
+            color: var(--ink);
+            border-radius: 7px;
+            padding: 10px;
+            font-size: 1rem;
+        }
+
+        .supervisor-dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .supervisor-dialog button {
+            border: 1px solid #6d5520;
+            background: rgba(184, 134, 11, 0.14);
+            color: #f0d18b;
+            border-radius: 7px;
+            padding: 8px 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .supervisor-error {
+            min-height: 18px;
+            margin-top: 6px;
+            color: #ff9e8f;
+            font-size: 0.78rem;
+        }
+
         .footer {
             border-top: 1px solid var(--line);
             color: var(--muted);
@@ -413,7 +474,7 @@
 <body>
     <header class="header">
         <div class="title">
-            <h1>GATEKEEPER</h1>
+            <h1>FW GATEWAY</h1>
             <p id="kioskName">{{ kiosk_name }} ({{ kiosk_type }})</p>
         </div>
         <div class="clock-wrap">
@@ -441,6 +502,7 @@
         </section>
 
         <aside class="side">
+            <button id="supervisorUnlock" class="admin-toggle">Supervisor controls (A)</button>
             <div id="adminControls" class="admin-controls">
                 <h2>Manual Clock</h2>
                 <div class="manual">
@@ -449,7 +511,6 @@
                 </div>
                 <div id="manualResult" class="manual-result"></div>
 
-                <button id="adminToggle" class="admin-toggle">Admin Mode (A)</button>
                 <div id="adminPanel" class="admin-panel"></div>
             </div>
 
@@ -457,6 +518,19 @@
             <div id="logList" class="log-list"></div>
         </aside>
     </main>
+
+    <dialog id="supervisorDialog" class="supervisor-dialog" aria-labelledby="supervisorDialogTitle">
+        <form id="supervisorForm" method="dialog">
+            <h2 id="supervisorDialogTitle">Supervisor controls</h2>
+            <label for="supervisorPin">Enter supervisor passcode</label>
+            <input id="supervisorPin" name="pin" type="password" inputmode="numeric" autocomplete="off" required>
+            <div id="supervisorError" class="supervisor-error" role="alert" aria-live="polite"></div>
+            <div class="supervisor-dialog-actions">
+                <button id="supervisorCancel" type="button">Cancel</button>
+                <button type="submit">Unlock</button>
+            </div>
+        </form>
+    </dialog>
 
     <footer class="footer">
         <span>Blink verification required before recognition</span>
@@ -476,7 +550,12 @@
         const manualName = document.getElementById("manualName");
         const manualResult = document.getElementById("manualResult");
         const adminControls = document.getElementById("adminControls");
-        const adminToggle = document.getElementById("adminToggle");
+        const supervisorUnlock = document.getElementById("supervisorUnlock");
+        const supervisorDialog = document.getElementById("supervisorDialog");
+        const supervisorForm = document.getElementById("supervisorForm");
+        const supervisorPin = document.getElementById("supervisorPin");
+        const supervisorError = document.getElementById("supervisorError");
+        const supervisorCancel = document.getElementById("supervisorCancel");
         const adminPanel = document.getElementById("adminPanel");
         const lastUpdated = document.getElementById("lastUpdated");
         let adminVisible = false;
@@ -530,6 +609,36 @@
             adminVisible = visible;
             adminControls.classList.toggle("active", adminVisible);
             adminPanel.classList.toggle("active", adminVisible);
+            supervisorUnlock.textContent = adminVisible ? "Lock supervisor controls" : "Supervisor controls (A)";
+        }
+
+        async function toggleSupervisorControls() {
+            if (adminVisible) {
+                await fetch("/supervisor/lock", { method: "POST" });
+                setAdminVisible(false);
+                return;
+            }
+            supervisorError.textContent = "";
+            supervisorPin.value = "";
+            supervisorDialog.showModal();
+            supervisorPin.focus();
+        }
+
+        async function unlockSupervisorControls() {
+            const pin = supervisorPin.value;
+            const response = await fetch("/supervisor/unlock", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pin })
+            });
+            if (!response.ok) {
+                supervisorError.textContent = "Supervisor authentication failed.";
+                supervisorPin.select();
+                return;
+            }
+            supervisorDialog.close();
+            setAdminVisible(true);
+            fetchStatus();
         }
 
         async function fetchStatus() {
@@ -634,13 +743,23 @@
             }
         }
 
-        adminToggle.addEventListener("click", () => {
-            setAdminVisible(!adminVisible);
+        supervisorUnlock.addEventListener("click", toggleSupervisorControls);
+        supervisorForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            unlockSupervisorControls();
         });
+        supervisorCancel.addEventListener("click", () => supervisorDialog.close());
+        supervisorDialog.addEventListener("close", () => supervisorUnlock.focus());
 
         document.addEventListener("keydown", (event) => {
-            if (event.key.toLowerCase() === "a") {
-                setAdminVisible(!adminVisible);
+            const target = event.target;
+            const isTypingTarget = target instanceof HTMLElement && (
+                target.matches("input, textarea, select") || target.isContentEditable
+            );
+            const hasModifier = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+            if (event.key.toLowerCase() === "a" && !isTypingTarget && !event.repeat && !hasModifier) {
+                event.preventDefault();
+                toggleSupervisorControls();
             }
             if (event.key === "Enter" && document.activeElement === manualName) {
                 submitManualClock();

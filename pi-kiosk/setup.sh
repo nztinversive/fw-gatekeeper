@@ -13,6 +13,7 @@
 #    SERVER_URL   Gatekeeper server (default: https://fw-gatekeeper.onrender.com)
 #    KIOSK_API_KEY Shared secret for kiosk API access (required in production)
 #    KIOSK_UI_KEY  Local secret for protected kiosk web routes (required)
+#    KIOSK_SUPERVISOR_PIN  Supervisor-only passcode for manual attendance (required)
 # ═══════════════════════════════════════════════════════════════
 
 set -eo pipefail
@@ -23,6 +24,7 @@ KIOSK_TYPE="${KIOSK_TYPE:-entry}"
 SERVER_URL="${SERVER_URL:-https://fw-gatekeeper.onrender.com}"
 KIOSK_API_KEY="${KIOSK_API_KEY:-}"
 KIOSK_UI_KEY="${KIOSK_UI_KEY:-}"
+KIOSK_SUPERVISOR_PIN="${KIOSK_SUPERVISOR_PIN:-}"
 KIOSK_USER="${KIOSK_USER:-$(logname 2>/dev/null || echo pi)}"
 INSTALL_DIR="/opt/fw-gatekeeper"
 
@@ -50,6 +52,10 @@ fi
 
 if [ -z "$KIOSK_UI_KEY" ]; then
   echo "❌ KIOSK_UI_KEY is required. Generate a separate local secret (for example: openssl rand -hex 24), then rerun setup."
+  exit 1
+fi
+if [ -z "$KIOSK_SUPERVISOR_PIN" ]; then
+  echo "❌ KIOSK_SUPERVISOR_PIN is required for manual attendance controls."
   exit 1
 fi
 
@@ -117,6 +123,7 @@ KIOSK_TYPE = "$KIOSK_TYPE"
 KIOSK_NAME = "$KIOSK_NAME"
 KIOSK_API_KEY = "$KIOSK_API_KEY"
 KIOSK_UI_KEY = "$KIOSK_UI_KEY"
+KIOSK_SUPERVISOR_PIN = "$KIOSK_SUPERVISOR_PIN"
 CONFEOF
 
 # Patch config.py to load local overrides. Keep this out of the tracked source

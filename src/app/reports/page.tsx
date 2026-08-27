@@ -99,7 +99,7 @@ export default function ReportsPage() {
     <div className="animate-fade-in">
       <div className="mb-8">
         <h1 className="page-title text-slate-100">
-          Gatekeeper <span className="text-gold">Reports</span>
+          Gateway <span className="text-gold">Reports</span>
         </h1>
         <p className="text-sm text-slate-500 mt-1 font-mono">Attendance analytics and insights</p>
       </div>

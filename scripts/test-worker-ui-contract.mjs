@@ -13,11 +13,7 @@ const convexWorkers = read('convex/workers.ts');
 const types = read('src/lib/types.ts');
 const proactiveActions = read('src/lib/proactive-actions.ts');
 
-assert.match(
-  workersPage,
-  /include_encodings=true/,
-  'Workers page may request encoding metadata for recognition readiness, but must not expose raw vectors outside admin worker management.'
-);
+assert.doesNotMatch(workersPage, /include_encodings=true/, 'Portal worker management must never download raw biometric vectors.');
 assert.match(workersPage, /Face enrolled/, 'Workers page must show a Face enrolled badge.');
 assert.match(workersPage, /Missing face/, 'Workers page must show a Missing face badge.');
 assert.match(workersPage, /Invalid face data/, 'Workers page must distinguish invalid/corrupt face data from missing data.');
@@ -72,9 +68,10 @@ assert.match(appShell, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\]|pb-32
 
 assert.match(convexWorkers, /encoding_status/, 'Convex worker list must expose encoding_status readiness metadata.');
 assert.match(convexWorkers, /has_face_encoding/, 'Convex worker list must expose has_face_encoding readiness metadata.');
-assert.match(workersRoute, /includeEncodings \? \{ face_encoding: worker\.face_encoding \}/, 'Workers API should only include raw face_encoding when explicitly requested.');
+assert.doesNotMatch(workersRoute, /face_encoding:\s*worker\.face_encoding/, 'Workers API must never serialize raw face encodings to portal clients.');
+assert.match(workersRoute, /api\.workers\.list, \{ includeEncodings: false \}/, 'Workers API must request only readiness metadata from Convex.');
 assert.match(workersRoute, /employee_id: worker\.employee_id/, 'Workers API list must expose employee ID number metadata.');
-assert.match(workersRoute, /const \{ face_encoding: _faceEncoding, \.\.\.safeWorker \} = worker/, 'Workers API id prefill should strip raw face_encoding before returning worker data.');
+assert.doesNotMatch(workersRoute, /\.\.\.safeWorker|\.\.\.worker/, 'Workers API id prefill should use an explicit biometric-free response allowlist.');
 assert.match(convexWorkers, /employee_id: w\.employeeId \|\| ""/, 'Convex worker queries must expose employee ID number metadata.');
 assert.match(types, /employee_id\?:\s*string/, 'Worker type should model employee ID number metadata.');
 assert.match(types, /encoding_status\?:\s*'valid'\s*\|\s*'missing'\s*\|\s*'invalid'/, 'Worker type should model encoding_status readiness metadata.');

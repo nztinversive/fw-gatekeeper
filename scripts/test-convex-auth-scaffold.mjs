@@ -9,7 +9,7 @@ const at = (path) => new URL(path, root);
 const packageJson = JSON.parse(read(at('package.json')));
 assert.equal(
   packageJson.dependencies?.['@convex-dev/auth'],
-  '^0.0.92',
+  '^0.0.95',
   'package.json should include @convex-dev/auth so portal users can move from shared PIN to Convex Auth',
 );
 
@@ -50,7 +50,7 @@ assert.match(layout, /ConvexAuthNextjsServerProvider/, 'Root layout should initi
 assert.match(layout, /apiRoute="\/api\/convex-auth"/, 'Root layout should use a non-conflicting Convex Auth API route');
 assert.match(layout, /ConvexAuthProvider/, 'Root layout should wrap the portal in ConvexAuthProvider');
 
-const middleware = read(at('src/middleware.ts'));
+const middleware = read(at('src/proxy.ts'));
 assert.match(middleware, /convexAuthNextjsMiddleware/, 'middleware should proxy Convex Auth requests before applying legacy PIN protections');
 assert.match(middleware, /\/api\/convex-auth/, 'middleware should expose the Convex Auth proxy route without colliding with PIN auth');
 assert.match(middleware, /hasConvexPortalMember/, 'middleware should accept only active Convex portal members alongside legacy PIN sessions');

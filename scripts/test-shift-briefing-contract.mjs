@@ -9,7 +9,7 @@ const exceptions = read('convex/shiftExceptions.ts');
 const apiRoute = read('src/app/api/shift-briefing/route.ts');
 const page = read('src/app/briefing/page.tsx');
 const sidebar = read('src/components/Sidebar.tsx');
-const middleware = read('src/middleware.ts');
+const middleware = read('src/proxy.ts');
 const types = read('src/lib/types.ts');
 const packageJson = read('package.json');
 

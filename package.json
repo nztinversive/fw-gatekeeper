@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "lint": "next lint",
-    "test": "npm run test:convex-auth && npm run test:kiosk-sync-auth && npm run test:kiosk-ui-auth && npm run test:face-service-auth && npm run test:auth-scaffold && npm run test:login-error-copy && npm run test:worker-ui && npm run test:enrollment-permissions && npm run test:kiosk-readiness && npm run test:recognition-attempts && npm run test:secured-ingest && npm run test:dashboard-demo-mode && npm run test:shift-exceptions && npm run test:shift-briefing && npm run test:shift-closeout && npm run test:proactive-actions && npm run test:attendance-corrections && npm run test:date && npm run test:convex-local-date",
+    "lint": "eslint .",
+    "test": "npm run test:convex-auth && npm run test:kiosk-sync-auth && npm run test:kiosk-ui-auth && npm run test:face-service-auth && npm run test:auth-scaffold && npm run test:login-error-copy && npm run test:worker-ui && npm run test:enrollment-permissions && npm run test:kiosk-readiness && npm run test:recognition-attempts && npm run test:secured-ingest && npm run test:dashboard-demo-mode && npm run test:launch-readiness && npm run test:shift-exceptions && npm run test:shift-briefing && npm run test:shift-closeout && npm run test:proactive-actions && npm run test:attendance-corrections && npm run test:date && npm run test:convex-local-date",
     "start": "next start",
     "test:auth-scaffold": "node scripts/test-convex-auth-scaffold.mjs",
     "test:convex-auth": "vitest run convex/access.test.ts",
@@ -20,6 +20,7 @@
     "test:recognition-attempts": "node scripts/test-recognition-attempts-contract.mjs",
     "test:secured-ingest": "node scripts/test-secured-ingest-contract.mjs",
     "test:dashboard-demo-mode": "node scripts/test-dashboard-demo-mode-contract.mjs",
+    "test:launch-readiness": "node scripts/test-launch-readiness-contract.mjs",
     "test:shift-exceptions": "node scripts/test-shift-exceptions-contract.mjs",
     "test:shift-briefing": "node scripts/test-shift-briefing-contract.mjs",
     "test:shift-closeout": "node scripts/test-shift-closeout-contract.mjs",
@@ -29,9 +30,9 @@
     "test:convex-local-date": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-convex-local-date-contract.mjs"
   },
   "dependencies": {
-    "@convex-dev/auth": "^0.0.92",
+    "@convex-dev/auth": "^0.0.95",
     "convex": "^1.32.0",
-    "next": "14.2.35",
+    "next": "^16.3.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.15.0"
@@ -42,8 +43,8 @@
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
     "convex-test": "^0.0.50",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "14.2.35",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.0",

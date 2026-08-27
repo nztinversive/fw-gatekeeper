@@ -73,9 +73,10 @@ function generatePassword() {
 export default function AccountsPage() {
   const { toast } = useToast();
   const demoWriteMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
-  const currentMember = useQuery(api.portalMembers.current);
+  const currentMemberQuery = useQuery(api.portalMembers.current, demoWriteMode ? 'skip' : {});
+  const currentMember = demoWriteMode ? { role: 'admin' as const } : currentMemberQuery;
   const isAdmin = currentMember?.role === 'admin';
-  const members = useQuery(api.portalMembers.list, isAdmin ? {} : 'skip');
+  const members = useQuery(api.portalMembers.list, isAdmin && !demoWriteMode ? {} : 'skip');
   const createPortalAccount = useAction(api.portalMembers.createPortalAccount);
   const resetPortalAccountPassword = useAction(api.portalMembers.resetPortalAccountPassword);
 
@@ -155,12 +156,12 @@ export default function AccountsPage() {
 
   async function copyCredentials() {
     if (!createdAccount) return;
-    const text = `FW Gatekeeper login\nhttps://fw-gatekeeper.onrender.com/login\n\nEmail: ${createdAccount.email}\nInitial password: ${createdAccount.password}`;
+    const text = `FW Gateway login\nhttps://fw-gatekeeper.onrender.com/login\n\nEmail: ${createdAccount.email}\nInitial password: ${createdAccount.password}`;
     await navigator.clipboard.writeText(text);
     toast('Credentials copied');
   }
 
-  if (currentMember === undefined || (isAdmin && members === undefined)) {
+  if (currentMember === undefined || (isAdmin && !demoWriteMode && members === undefined)) {
     return (
       <div className="animate-fade-in">
         <h1 className="page-title text-slate-100">Account <span className="text-gold">Management</span></h1>

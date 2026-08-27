@@ -38,7 +38,7 @@ export default function OnboardingGuidePage() {
             Face Enrollment <span className="text-gold">Guide</span>
           </h1>
           <p className="text-slate-400 mt-3 leading-7">
-            Use this guide when onboarding employees into FW Gatekeeper facial recognition. The correct path is
+            Use this guide when onboarding employees into FW Gateway facial recognition. The correct path is
             <span className="text-gold font-semibold"> Enroll Face</span>: it captures 3 photos, creates a face
             encoding, saves it to the cloud, and syncs it to the kiosks for recognition.
           </p>
@@ -66,7 +66,7 @@ export default function OnboardingGuidePage() {
           <h2 className="font-display text-xl font-semibold text-slate-100 mb-5">Step-by-step enrollment</h2>
           <ol className="space-y-5">
             {[
-              ['Open the portal', 'Go to https://fw-gatekeeper.onrender.com and sign in with the admin PIN.'],
+              ['Open the portal', 'Go to https://fw-gatekeeper.onrender.com and sign in with your named administrator or enrollment account.'],
               ['Choose Enroll Face', 'Click Enroll Face in the sidebar. This is the only path that creates the face recognition encoding.'],
               ['Use the kiosk camera when possible', 'For best recognition, enroll the person at the kiosk station with the same camera, height, distance, and lighting they will use for daily clock-in scans.'],
               ['Enter person details', 'Type the employee’s full name and department. Use a consistent spelling so reports stay clean.'],
@@ -96,7 +96,7 @@ export default function OnboardingGuidePage() {
               Recognition is strongest when enrollment photos match the real scan setup. When possible, open the portal from
               the kiosk station or a device connected to the same camera used for clock-in scans. Keep the camera at the same
               height and distance employees will use every day, with normal workplace lighting. If using a shared kiosk,
-              only an authorized admin should sign in, keep the PIN and employee details private, and sign out when finished.
+              only an authorized administrator or enrollment operator should sign in, keep account credentials and employee details private, and sign out when finished.
             </p>
           </div>
 
@@ -140,7 +140,7 @@ export default function OnboardingGuidePage() {
         <div className="rounded-2xl border border-navy-600/50 bg-navy-950/60 p-4 text-sm text-slate-300 leading-7">
           <p>Hi team,</p>
           <p className="mt-3">
-            Please use the FW Gatekeeper Face Enrollment Guide when adding employees to facial recognition:
+            Please use the FW Gateway Face Enrollment Guide when adding employees to facial recognition:
           </p>
           <p className="mt-3 font-mono text-gold break-all">https://fw-gatekeeper.onrender.com/onboarding</p>
           <p className="mt-3">

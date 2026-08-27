@@ -42,6 +42,7 @@ curl -sSL https://raw.githubusercontent.com/nztinversive/fw-gatekeeper/master/pi
 sudo chmod +x setup.sh
 sudo KIOSK_API_KEY="replace-with-the-server-key" \
   KIOSK_UI_KEY="$(openssl rand -hex 24)" \
+  KIOSK_SUPERVISOR_PIN="<set-a-separate-supervisor-passcode>" \
   SERVER_URL=https://fw-gatekeeper.onrender.com \
   KIOSK_ID=kiosk-entry-1 \
   ./setup.sh
@@ -49,7 +50,7 @@ sudo KIOSK_API_KEY="replace-with-the-server-key" \
 
 `KIOSK_API_KEY` is required for worker, attendance, and recognition synchronization. Setup fails immediately if it is missing. If an existing installation starts without the key, the kiosk logs a critical error, disables server sync, and keeps local records queued until the key is configured and the service is restarted.
 
-`KIOSK_UI_KEY` is a separate, Pi-local secret for the camera feed, roster/status, attendance log, and manual clock routes. The kiosk browser receives a secret-derived HttpOnly session only from the loopback interface. The UI and auxiliary encoding/enrollment preview servers bind to `127.0.0.1`, so they are not reachable from the factory LAN. If the UI key is missing, scanning and local logging continue, but protected web routes fail closed until setup is rerun with the key.
+`KIOSK_UI_KEY` is a separate, Pi-local secret for the camera feed, roster/status, and attendance log routes. Manual attendance additionally requires `KIOSK_SUPERVISOR_PIN`; its HttpOnly supervisor session expires after five minutes. The UI and auxiliary encoding/enrollment preview servers bind to `127.0.0.1`, so they are not reachable from the factory LAN. Missing credentials fail closed.
 
 ### 4. Enroll Workers
 
@@ -85,6 +86,7 @@ The kiosk works **without internet** after the initial sync:
 | `KIOSK_ID` | `kiosk-1` | Unique kiosk identifier |
 | `KIOSK_API_KEY` | none | Required shared secret matching the Gatekeeper server |
 | `KIOSK_UI_KEY` | none | Required Pi-local secret protecting camera, PII, and manual-clock routes |
+| `KIOSK_SUPERVISOR_PIN` | none | Required separate passcode that unlocks manual attendance for five minutes |
 | `KIOSK_UI_HOST` | `127.0.0.1` | Kiosk web bind address; keep loopback-only unless an authenticated remote-admin design is added |
 
 ### Command Line

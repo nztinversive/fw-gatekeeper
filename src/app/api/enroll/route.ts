@@ -5,6 +5,15 @@ import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
+import {
+  createDemoWorker,
+  demoWriteMetadata,
+  getDemoWorker,
+  isDemoWriteMode,
+  listDemoWorkers,
+  markDemoWorkerEnrolled,
+  updateDemoWorker,
+} from '@/lib/demo-write-mode';
 
 export async function POST(req: NextRequest) {
   const isAdminSession = await hasValidPortalSession(req, ['admin']);
@@ -27,7 +36,9 @@ export async function POST(req: NextRequest) {
     let departmentForSave = department?.trim() || undefined;
 
     if (workerId && !isAdminSession) {
-      const existingForEnrollment = await convex.query(api.workers.get, { id: workerId as any });
+      const existingForEnrollment = isDemoWriteMode()
+        ? getDemoWorker(workerId)
+        : await convex.query(api.workers.get, { id: workerId as any });
       if (!existingForEnrollment) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
       normalizedName = existingForEnrollment.name;
       employeeIdForSave = existingForEnrollment.employee_id || undefined;
@@ -38,16 +49,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
-    const existingWorker = await convex.query(api.workers.findByName, { name: normalizedName });
-    if (existingWorker?.active && (!workerId || existingWorker.id !== workerId)) {
-      return NextResponse.json({ error: 'Worker name already exists' }, { status: 409 });
-    }
-
     if (!photos || photos.length < 3) {
       return NextResponse.json(
         { error: 'At least 3 photos required for enrollment' },
         { status: 400 }
       );
+    }
+
+    if (isDemoWriteMode()) {
+      const existingWorker = listDemoWorkers().find((worker) => worker.name === normalizedName);
+      if (existingWorker && (!workerId || existingWorker.id !== workerId)) {
+        return NextResponse.json({ error: 'Worker name already exists' }, { status: 409 });
+      }
+
+      const worker = workerId
+        ? updateDemoWorker(workerId, {
+            name: normalizedName,
+            employee_id: employeeIdForSave || '',
+            department: departmentForSave || '',
+          })
+        : createDemoWorker({
+            name: normalizedName,
+            employee_id: employeeIdForSave,
+            department: departmentForSave,
+            enrolled: true,
+          });
+      if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
+      const enrolledWorker = workerId ? markDemoWorkerEnrolled(workerId) : worker;
+
+      return NextResponse.json({
+        id: enrolledWorker?.id,
+        name: normalizedName,
+        photosCount: photos.length,
+        encoded: true,
+        ...demoWriteMetadata(),
+      }, { status: 201 });
+    }
+
+    const existingWorker = await convex.query(api.workers.findByName, { name: normalizedName });
+    if (existingWorker?.active && (!workerId || existingWorker.id !== workerId)) {
+      return NextResponse.json({ error: 'Worker name already exists' }, { status: 409 });
     }
 
     let faceEncoding: number[] | undefined;

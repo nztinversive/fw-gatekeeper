@@ -3,14 +3,71 @@
 import hashlib
 import hmac
 import os
-from typing import Optional
+import threading
+import time
+from typing import Callable, Optional
 
 import config
 
 
 KIOSK_UI_KEY_HEADER = "X-Kiosk-UI-Key"
 KIOSK_UI_SESSION_COOKIE = "fw-kiosk-ui"
+KIOSK_SUPERVISOR_SESSION_COOKIE = "fw-kiosk-supervisor"
 _SESSION_CONTEXT = b"fw-gatekeeper-kiosk-ui-session-v1"
+_SUPERVISOR_CONTEXT = b"fw-gateway-kiosk-supervisor-session-v1"
+SUPERVISOR_SESSION_TTL_SECONDS = 5 * 60
+SUPERVISOR_MAX_FAILED_ATTEMPTS = 5
+SUPERVISOR_FAILURE_WINDOW_SECONDS = 60
+SUPERVISOR_LOCKOUT_SECONDS = 5 * 60
+
+
+class SupervisorAttemptLimiter:
+    """Bound supervisor passcode attempts across the kiosk-local UI."""
+
+    def __init__(
+        self,
+        max_attempts: int = SUPERVISOR_MAX_FAILED_ATTEMPTS,
+        window_seconds: int = SUPERVISOR_FAILURE_WINDOW_SECONDS,
+        lockout_seconds: int = SUPERVISOR_LOCKOUT_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self.lockout_seconds = lockout_seconds
+        self.clock = clock
+        self._failed_at: list[float] = []
+        self._locked_until = 0.0
+        self._lock = threading.Lock()
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - self.window_seconds
+        self._failed_at = [failed_at for failed_at in self._failed_at if failed_at > cutoff]
+
+    def retry_after_seconds(self) -> int:
+        with self._lock:
+            return max(0, int(self._locked_until - self.clock() + 0.999))
+
+    def is_locked(self) -> bool:
+        with self._lock:
+            return self._locked_until > self.clock()
+
+    def record_failure(self) -> bool:
+        with self._lock:
+            now = self.clock()
+            if self._locked_until > now:
+                return True
+            self._prune(now)
+            self._failed_at.append(now)
+            if len(self._failed_at) >= self.max_attempts:
+                self._locked_until = now + self.lockout_seconds
+                self._failed_at.clear()
+                return True
+            return False
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._failed_at.clear()
+            self._locked_until = 0.0
 
 
 def _config_or_env(config_name: str, env_name: str, default: str = "") -> str:
@@ -28,6 +85,13 @@ def require_kiosk_ui_key() -> str:
             "Configure it locally and restart the kiosk service."
         )
     return key
+
+
+def require_supervisor_pin() -> str:
+    pin = _config_or_env("KIOSK_SUPERVISOR_PIN", "KIOSK_SUPERVISOR_PIN")
+    if not pin:
+        raise RuntimeError("KIOSK_SUPERVISOR_PIN is required for manual attendance controls.")
+    return pin
 
 
 def get_kiosk_ui_host() -> str:
@@ -49,6 +113,38 @@ def get_enroll_preview_host() -> str:
 def kiosk_ui_session_token(key: Optional[str] = None) -> str:
     configured_key = (key or require_kiosk_ui_key()).strip()
     return hmac.new(configured_key.encode("utf-8"), _SESSION_CONTEXT, hashlib.sha256).hexdigest()
+
+
+def supervisor_session_token(pin: Optional[str] = None, issued_at: Optional[int] = None) -> str:
+    configured_pin = (pin or require_supervisor_pin()).strip()
+    ui_key = require_kiosk_ui_key()
+    issued = int(time.time() if issued_at is None else issued_at)
+    signing_key = f"{ui_key}:{configured_pin}".encode("utf-8")
+    signature = hmac.new(signing_key, _SUPERVISOR_CONTEXT + str(issued).encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{issued}.{signature}"
+
+
+def has_valid_supervisor_credential(provided_pin: Optional[str] = None, session_token: Optional[str] = None) -> bool:
+    try:
+        configured_pin = require_supervisor_pin()
+    except RuntimeError:
+        return False
+    candidate_pin = (provided_pin or "").strip()
+    if candidate_pin and hmac.compare_digest(candidate_pin, configured_pin):
+        return True
+    candidate_session = (session_token or "").strip()
+    if not candidate_session:
+        return False
+    try:
+        issued_raw, provided_signature = candidate_session.split(".", 1)
+        issued_at = int(issued_raw)
+    except (TypeError, ValueError):
+        return False
+    age_seconds = int(time.time()) - issued_at
+    if age_seconds < -30 or age_seconds > SUPERVISOR_SESSION_TTL_SECONDS:
+        return False
+    expected_signature = supervisor_session_token(configured_pin, issued_at).split(".", 1)[1]
+    return hmac.compare_digest(provided_signature, expected_signature)
 
 
 def has_valid_kiosk_ui_credential(
