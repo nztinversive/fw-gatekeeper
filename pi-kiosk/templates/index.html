@@ -614,16 +614,20 @@
             supervisorUnlock.textContent = adminVisible ? "Lock supervisor controls" : "Supervisor controls (A)";
         }
 
+        function openSupervisorDialog(message = "") {
+            supervisorError.textContent = message;
+            supervisorPin.value = "";
+            supervisorDialog.showModal();
+            supervisorPin.focus();
+        }
+
         async function toggleSupervisorControls() {
             if (adminVisible) {
                 await fetch("/supervisor/lock", { method: "POST" });
                 setAdminVisible(false);
                 return;
             }
-            supervisorError.textContent = "";
-            supervisorPin.value = "";
-            supervisorDialog.showModal();
-            supervisorPin.focus();
+            openSupervisorDialog();
         }
 
         async function unlockSupervisorControls() {
@@ -738,9 +742,8 @@
                 const data = await response.json();
                 if (!response.ok || !data.success) {
                     if (response.status === 401) {
-                        manualResult.textContent = "Supervisor session expired. Unlock again to retry.";
-                        manualResult.style.color = "#ff9e8f";
                         setAdminVisible(false);
+                        openSupervisorDialog("Supervisor session expired. Unlock again to retry.");
                         return;
                     }
                     manualResult.textContent = data.error || "Manual clock failed.";
