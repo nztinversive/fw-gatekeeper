@@ -195,7 +195,10 @@ function buildShiftTrustBrief(input: {
   missingClockOuts: any[];
   recognitionReviews: any[];
   kioskCounts: Record<KioskStatus, number>;
+  // All kiosks reporting a scan-blocking fault (drives blockers/severity)…
   deviceFaultKiosks: number;
+  // …vs. only those not already counted as stale/offline warnings (count math).
+  deviceFaultWarningKiosks: number;
   attendanceCorrections: any[];
 }) {
   const invalidEnrollment = input.workers.filter((worker) => getEncodingStatus(worker.faceEncoding) === "invalid");
@@ -248,7 +251,7 @@ function buildShiftTrustBrief(input: {
       "kiosk",
       "critical",
       "Kiosk hardware faults block scanning",
-      `${plural(input.deviceFaultKiosks, "syncing kiosk")} report a camera, model, or roster fault that prevents face scans.`,
+      `${plural(input.deviceFaultKiosks, "kiosk")} report a camera, model, or roster fault that prevents face scans.`,
       input.deviceFaultKiosks,
       "/kiosks",
     ));
@@ -314,7 +317,7 @@ function buildShiftTrustBrief(input: {
       Boolean(firstRecognitionReview?.key),
     ));
   }
-  const totalKioskWarnings = staleKioskWarnings + offlineKioskWarnings + input.deviceFaultKiosks;
+  const totalKioskWarnings = staleKioskWarnings + offlineKioskWarnings + input.deviceFaultWarningKiosks;
   if (totalKioskWarnings > 0) {
     closeoutRisks.push(risk(
       "closeout:kiosk-warnings",
@@ -573,10 +576,12 @@ export async function buildShiftBriefing(ctx: any, date: string) {
       },
       { online: 0, stale: 0, offline: 0, never_synced: 0 } as Record<KioskStatus, number>,
     );
-    // Kiosks that sync fine but self-report a scan-blocking device fault.
-    // Offline/stale/never-synced rows already count as warnings above, so
-    // only otherwise-healthy rows add to the total (no double counting).
-    const deviceFaultKiosks = kioskRows.filter(
+    // Every reported scan-blocking fault drives blockers/severity — a stale
+    // kiosk whose last report says the camera is broken still cannot scan.
+    const deviceFaultKiosks = kioskRows.filter((kiosk) => kiosk.device_fault).length;
+    // But only otherwise-healthy rows add to the warning total: stale/offline/
+    // never-synced rows are already counted once (no double counting).
+    const deviceFaultWarningKiosks = kioskRows.filter(
       (kiosk) => kiosk.device_fault && kiosk.status === "online",
     ).length;
 
@@ -633,12 +638,12 @@ export async function buildShiftBriefing(ctx: any, date: string) {
           href: "/kiosks",
         })),
       ...kioskRows
-        .filter((kiosk) => kiosk.device_fault && kiosk.status === "online")
+        .filter((kiosk) => kiosk.device_fault)
         .map((kiosk) => ({
           id: `kiosk-device:${kiosk.id}`,
           priority: "critical" as ActionPriority,
           label: `${kiosk.name} reports a device fault`,
-          description: `${kiosk.location || "No location set"} is syncing but cannot scan faces until the reported camera, model, or roster fault is fixed.`,
+          description: `${kiosk.location || "No location set"} cannot scan faces until the reported camera, model, or roster fault is fixed.`,
           href: "/kiosks",
         })),
       ...(todaysSchedules.length === 0
@@ -662,7 +667,7 @@ export async function buildShiftBriefing(ctx: any, date: string) {
       open_exceptions: openExceptions.length,
       recognition_reviews: recognitionReviews.length,
       critical_actions: actionItems.filter((item) => item.priority === "critical").length,
-      kiosk_warnings: kioskCounts.stale + kioskCounts.offline + kioskCounts.never_synced + deviceFaultKiosks,
+      kiosk_warnings: kioskCounts.stale + kioskCounts.offline + kioskCounts.never_synced + deviceFaultWarningKiosks,
     };
     const shiftTrustBrief = buildShiftTrustBrief({
       date,
@@ -677,6 +682,7 @@ export async function buildShiftBriefing(ctx: any, date: string) {
       recognitionReviews,
       kioskCounts,
       deviceFaultKiosks,
+      deviceFaultWarningKiosks,
       attendanceCorrections,
     });
 

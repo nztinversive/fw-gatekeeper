@@ -46,7 +46,7 @@ sudo KIOSK_API_KEY="replace-with-the-server-key" \
   KIOSK_SUPERVISOR_PIN="<set-a-separate-supervisor-passcode>" \
   SERVER_URL=https://fw-gatekeeper.onrender.com \
   KIOSK_ID=kiosk-entry-1 \
-  ./setup.sh
+  bash setup.sh
 ```
 
 Setup fails immediately if `KIOSK_API_KEY`, `KIOSK_UI_KEY`, or

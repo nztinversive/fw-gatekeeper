@@ -4,7 +4,7 @@
 #  Target: Raspberry Pi 3B/4/5 with Raspberry Pi OS (64-bit)
 #
 #  Usage:
-#    sudo KIOSK_ID=kiosk-entry-1 KIOSK_NAME="Main Entry" ./setup.sh
+#    sudo KIOSK_ID=kiosk-entry-1 KIOSK_NAME="Main Entry" bash setup.sh
 #
 #  Environment variables:
 #    KIOSK_ID     Unique kiosk identifier (default: kiosk-1)
@@ -44,7 +44,7 @@ echo "╚═══════════════════════�
 echo ""
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "❌ Run with sudo: sudo KIOSK_ID=$KIOSK_ID ./setup.sh"
+  echo "❌ Run with sudo: sudo KIOSK_ID=$KIOSK_ID bash setup.sh"
   exit 1
 fi
 

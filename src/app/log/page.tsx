@@ -31,6 +31,12 @@ function LogPageContent() {
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Which date/worker selection the rows in `events` were fetched for. The
+  // fetch effect runs after paint, so `loading` alone leaves one render where
+  // a new selection still shows (and could export) the previous rows.
+  const [loadedSelection, setLoadedSelection] = useState('');
+  const selectionKey = `${date}|${queryWorkerId}`;
+  const exportsReady = !loading && !error && loadedSelection === selectionKey;
   const hasSourceContext = Boolean(queryWorkerId || queryAttendanceId);
   const fullDayHref = `/log?date=${encodeURIComponent(date)}`;
 
@@ -61,6 +67,7 @@ function LogPageContent() {
         if (cancelled) return;
         setEvents(Array.isArray(eventRows) ? eventRows : []);
         setCorrections(Array.isArray(correctionPayload.corrections) ? correctionPayload.corrections : []);
+        setLoadedSelection(`${date}|${queryWorkerId}`);
       } catch (err) {
         if (cancelled) return;
         setEvents([]);
@@ -234,14 +241,14 @@ function LogPageContent() {
           />
           <button
             onClick={exportHoursCSV}
-            disabled={loading || Boolean(error)}
+            disabled={!exportsReady}
             className="btn-secondary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Export hours CSV
           </button>
           <button
             onClick={exportCSV}
-            disabled={loading || Boolean(error)}
+            disabled={!exportsReady}
             className="btn-primary flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
