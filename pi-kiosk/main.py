@@ -254,7 +254,14 @@ def run(args):
         return snapshot
 
     def base_degraded_reason():
-        """The standing degradation, if any, once transient faults clear."""
+        """The standing degradation, if any, once transient faults clear.
+
+        Roster-aware so that clearing a transient fault (camera recovery,
+        model recovery, a successful scan) can never erase the fact that an
+        empty roster is still rejecting every worker.
+        """
+        if recognizer.known_count == 0:
+            return "no_workers_synced"
         if config.LIVENESS_REQUIRED and liveness is None:
             return "liveness_unavailable"
         return None
@@ -644,12 +651,13 @@ def run(args):
 
             # Roster degradation tracks sync state alone - it must not wait
             # for someone to scan, in either direction.
-            if roster_fault == "no_workers_synced" and recognizer.known_count > 0:
-                roster_fault = None
-                web_app.update_health(degraded_reason=base_degraded_reason())
-            elif roster_fault is None and recognizer.known_count == 0:
+            if recognizer.known_count > 0:
+                if roster_fault == "no_workers_synced":
+                    roster_fault = None
+                    web_app.update_health(degraded_reason=base_degraded_reason())
+            elif roster_fault != "no_workers_synced":
                 roster_fault = "no_workers_synced"
-                web_app.update_health(degraded_reason=roster_fault)
+                web_app.update_health(degraded_reason="no_workers_synced")
 
             if result is None:
                 if box_loc is not None:

@@ -96,6 +96,12 @@ function LogPageContent() {
     return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
   };
 
+  // Known limitation: kiosks record naive local timestamps, so the two
+  // occurrences of the repeated fall-back hour are indistinguishable in the
+  // stored data - an interval contained entirely within that one repeated
+  // hour per year cannot be ordered or measured exactly by ANY consumer
+  // until kiosks record absolute instants (tracked in REMEDIATION P2-5).
+  // Shifts merely spanning a transition are computed correctly.
   const instantMs = (timestamp: string) => {
     const match = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
     if (!match) return new Date(timestamp).getTime();
