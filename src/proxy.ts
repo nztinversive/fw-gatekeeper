@@ -21,6 +21,10 @@ function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
   const { pathname, searchParams } = req.nextUrl;
   const method = req.method.toUpperCase();
 
+  if (pathname === '/api/employee-directory' && method === 'GET') {
+    return ['admin', 'enrollment'];
+  }
+
   if (pathname === '/api/enroll') {
     return ['admin', 'enrollment'];
   }
