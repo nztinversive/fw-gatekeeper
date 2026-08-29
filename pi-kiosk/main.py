@@ -309,7 +309,7 @@ def run(args):
                 time.sleep(0.1)
                 continue
 
-            bgr_frame, rgb_frame = frames
+            bgr_frame, rgb_frame, frame_ts = frames
 
             try:
                 # Use dlib for face DETECTION (finding where the face is)
@@ -355,32 +355,42 @@ def run(args):
                 second_score = None
 
                 if known_encs:
-                    enc_dim = len(known_encs[0])
                     cand_dim = len(smoothed_embedding)
+                    # Validate every roster row, not just the first: legacy
+                    # 128-dim entries can coexist with 512-dim ones (server and
+                    # local stores both still accept them), and an unchecked
+                    # np.dot on a mixed roster would crash the scan.
+                    compatible = [
+                        (i, known) for i, known in enumerate(known_encs) if len(known) == cand_dim
+                    ]
+                    skipped = len(known_encs) - len(compatible)
+                    if skipped and detect_count[0] % 50 == 1:
+                        logger.warning(
+                            "Skipping %d roster encoding(s) with incompatible dimensions (expected %d)",
+                            skipped, cand_dim,
+                        )
 
-                    if enc_dim != cand_dim:
-                        # Server-side encodings don't match this kiosk's model:
-                        # every worker would be silently rejected. Surface it as
-                        # a kiosk fault, not a failed recognition.
-                        logger.warning("Dim mismatch: known=%d vs live=%d", enc_dim, cand_dim)
+                    if not compatible:
+                        # No usable encodings at all: every worker would be
+                        # silently rejected. Surface it as a kiosk fault, not a
+                        # failed recognition.
+                        logger.warning("Dim mismatch: no roster encodings match live dim=%d", cand_dim)
                         embedding_history.clear()
                         current_result[0] = _empty_recognition_result(face_loc, decision="rejected_dim_mismatch")
                         continue
 
-                    if enc_dim == cand_dim:
-                        # Both 512-dim - cosine similarity
-                        scores = []
-                        for i, known in enumerate(known_encs):
-                            sim = cosine_sim(np.array(known), smoothed_embedding)
-                            scores.append((sim, i))
-                        scores.sort(reverse=True, key=lambda item: item[0])
-                        best_sim, best_idx = scores[0]
-                        if len(scores) > 1:
-                            second_score = scores[1][0]
-                        conf = best_sim
-                        logger.info("Match: sim=%.3f name=%s window=%d", conf, known_names[best_idx], len(embedding_history))
-                        if conf >= config.RECOGNITION_MATCH_THRESHOLD:
-                            matched = known_names[best_idx]
+                    scores = []
+                    for i, known in compatible:
+                        sim = cosine_sim(np.array(known), smoothed_embedding)
+                        scores.append((sim, i))
+                    scores.sort(reverse=True, key=lambda item: item[0])
+                    best_sim, best_idx = scores[0]
+                    if len(scores) > 1:
+                        second_score = scores[1][0]
+                    conf = best_sim
+                    logger.info("Match: sim=%.3f name=%s window=%d", conf, known_names[best_idx], len(embedding_history))
+                    if conf >= config.RECOGNITION_MATCH_THRESHOLD:
+                        matched = known_names[best_idx]
 
                 margin = conf - second_score if second_score is not None else None
                 candidate_worker_id = known_ids[best_idx] if best_idx is not None else None
@@ -395,6 +405,7 @@ def run(args):
 
                 current_result[0] = {
                     "face_loc": face_loc,
+                    "frame_ts": frame_ts,
                     "name": matched,
                     "confidence": conf,
                     "candidate_worker_id": candidate_worker_id,
@@ -492,10 +503,11 @@ def run(args):
             # 1. Push BGR frame to MJPEG stream (always, never blocks)
             web_app.set_frame(draw_box(bgr_frame, box_loc, box_color, box_label))
 
-            # 2. Feed to detection thread
+            # 2. Feed to detection thread (stamped so results can be ordered
+            #    against events like blink confirmation)
             with detect_lock:
                 if pending_frame[0] is None:
-                    pending_frame[0] = (bgr_frame.copy(), rgb_frame.copy())
+                    pending_frame[0] = (bgr_frame.copy(), rgb_frame.copy(), now)
 
             # 3. Skip during display hold; drop results that land mid-hold so a
             #    lingering face can't re-trigger off stale data every cycle.
@@ -513,7 +525,6 @@ def run(args):
             if pending is not None:
                 fresh = current_result[0]
                 identity_changed = False
-                identity_reconfirmed = False
                 if fresh is not None:
                     current_result[0] = None
                     fresh_name = fresh.get("name")
@@ -525,7 +536,15 @@ def run(args):
                     if fresh_worker_id != pending["worker_id"]:
                         identity_changed = True
                     else:
-                        identity_reconfirmed = True
+                        # The post-blink confirmation must come from a frame
+                        # captured AFTER the blink completed - a result already
+                        # in flight when the blink landed proves nothing about
+                        # who blinked.
+                        if (
+                            pending["blink_confirmed"]
+                            and fresh.get("frame_ts", 0.0) > pending["blink_confirmed_at"]
+                        ):
+                            pending["post_blink_confirmed"] = True
                         if fresh.get("face_loc") is not None:
                             box_loc = fresh.get("face_loc")
 
@@ -543,13 +562,15 @@ def run(args):
 
                 if not pending["blink_confirmed"]:
                     if liveness.update(bgr_frame, box_loc) if box_loc is not None else False:
-                        # Blink seen - now require recognition to re-confirm
-                        # the same worker before recording. Give the slower
+                        # Blink seen - now require a recognition result from a
+                        # frame captured after this moment to re-confirm the
+                        # same worker before recording. Give the slower
                         # detection thread time to deliver that result.
                         pending["blink_confirmed"] = True
+                        pending["blink_confirmed_at"] = now
                         pending["deadline"] = max(pending["deadline"], now + config.LIVENESS_WAIT_SEC)
 
-                if pending["blink_confirmed"] and identity_reconfirmed:
+                if pending["post_blink_confirmed"]:
                     pending_clock[0] = None
                     recorded = record_clock(
                         pending["result"], pending["worker_id"], pending["display_name"],
@@ -717,6 +738,8 @@ def run(args):
                     "confidence": confidence,
                     "deadline": now + config.LIVENESS_WAIT_SEC,
                     "blink_confirmed": False,
+                    "blink_confirmed_at": 0.0,
+                    "post_blink_confirmed": False,
                 }
                 web_app.update_status(state="WAITING_FOR_BLINK",
                                       message=f"Blink to verify, {display_name}",
