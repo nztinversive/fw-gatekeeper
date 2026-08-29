@@ -3,10 +3,9 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import {
-  EmployeeDirectoryEntry,
-  searchEmployeeDirectory,
-} from '@/lib/employee-directory';
+// Type-only import: the directory data itself stays server-side (served via
+// /api/employee-directory) so the roster never ships in the client bundle.
+import type { EmployeeDirectoryEntry } from '@/lib/employee-directory';
 
 type Step = 'name' | 'camera' | 'capturing' | 'processing' | 'done' | 'error';
 
@@ -35,11 +34,35 @@ function EnrollPageContent() {
   const employeeIdRef = useRef(employeeId);
   const departmentRef = useRef(department);
   const workerIdRef = useRef(workerId);
-  const suggestions = workerId ? [] : searchEmployeeDirectory(name);
+  const [suggestions, setSuggestions] = useState<EmployeeDirectoryEntry[]>([]);
   nameRef.current = name;
   employeeIdRef.current = employeeId;
   departmentRef.current = department;
   workerIdRef.current = workerId;
+
+  useEffect(() => {
+    if (workerId || !name.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/employee-directory?q=${encodeURIComponent(name.trim())}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const body = await res.json();
+        setSuggestions(Array.isArray(body?.suggestions) ? body.suggestions : []);
+      } catch {
+        // Keep the previous suggestions on transient failures.
+      }
+    }, 200);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [name, workerId]);
 
   const selectEmployee = (employee: EmployeeDirectoryEntry) => {
     setName(employee.name);
