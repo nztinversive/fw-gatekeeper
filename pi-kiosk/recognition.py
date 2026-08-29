@@ -15,6 +15,7 @@ import numpy as np
 
 import config
 import database
+from embeddings import EXPECTED_EMBEDDING_DIM
 from liveness import LivenessChecker
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,15 @@ class FaceRecognizer:
     @property
     def known_count(self) -> int:
         return len(self._encodings)
+
+    @property
+    def usable_count(self) -> int:
+        """Roster rows whose encoding dimension matches the kiosk model.
+
+        Legacy 128-dim rows can still exist in deployed databases; they are
+        skipped at match time and must not count as recognition-ready."""
+        with self._lock:
+            return sum(1 for enc in self._encodings if len(enc) == EXPECTED_EMBEDDING_DIM)
 
     def load_faces(self):
         """Load all worker encodings from SQLite."""

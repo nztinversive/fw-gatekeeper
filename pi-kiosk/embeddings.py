@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 REC_MODEL_URL = "https://huggingface.co/immich-app/buffalo_s/resolve/main/recognition/model.onnx"
 REC_MODEL_PATH = Path("data/models/mobilefacenet.onnx")
+EXPECTED_EMBEDDING_DIM = 512
 
 _rec_session = None
 

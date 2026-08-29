@@ -233,11 +233,13 @@ def run(args):
             "verification and this kiosk will report itself degraded."
         )
 
+    # An empty or model-incompatible roster rejects every scan; the dashboard
+    # must see that from boot, not only after the first worker walks up.
     startup_degraded = None
     if recognizer.known_count == 0:
-        # An empty roster rejects every scan; the dashboard must see that from
-        # boot, not only after the first worker walks up.
         startup_degraded = "no_workers_synced"
+    elif recognizer.usable_count == 0:
+        startup_degraded = "encoding_mismatch"
     elif config.LIVENESS_REQUIRED and liveness is None:
         startup_degraded = "liveness_unavailable"
 
@@ -262,6 +264,10 @@ def run(args):
         """
         if recognizer.known_count == 0:
             return "no_workers_synced"
+        if recognizer.usable_count == 0:
+            # Rows exist but none match the kiosk model (legacy 128-dim data):
+            # every scan will be rejected until re-enrollment.
+            return "encoding_mismatch"
         if config.LIVENESS_REQUIRED and liveness is None:
             return "liveness_unavailable"
         return None
@@ -497,7 +503,7 @@ def run(args):
     camera_healthy = True
     model_healthy = model_ready
     # roster-derived degraded_reason currently reported
-    roster_fault = "no_workers_synced" if recognizer.known_count == 0 else None
+    roster_fault = startup_degraded if startup_degraded in ("no_workers_synced", "encoding_mismatch") else None
     try:
         while True:
             try:
@@ -651,13 +657,15 @@ def run(args):
 
             # Roster degradation tracks sync state alone - it must not wait
             # for someone to scan, in either direction.
-            if recognizer.known_count > 0:
-                if roster_fault == "no_workers_synced":
-                    roster_fault = None
-                    web_app.update_health(degraded_reason=base_degraded_reason())
-            elif roster_fault != "no_workers_synced":
-                roster_fault = "no_workers_synced"
-                web_app.update_health(degraded_reason="no_workers_synced")
+            if recognizer.known_count == 0:
+                expected_roster_fault = "no_workers_synced"
+            elif recognizer.usable_count == 0:
+                expected_roster_fault = "encoding_mismatch"
+            else:
+                expected_roster_fault = None
+            if expected_roster_fault != roster_fault:
+                roster_fault = expected_roster_fault
+                web_app.update_health(degraded_reason=expected_roster_fault or base_degraded_reason())
 
             if result is None:
                 if box_loc is not None:
