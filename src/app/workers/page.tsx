@@ -30,6 +30,9 @@ export default function WorkersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const canEdit = currentRole === 'admin';
+  // Re-enrollment is an enrollment-role workflow too: /api/enroll and the
+  // worker-by-id prefill both authorize it, and it preserves metadata.
+  const canEnroll = currentRole === 'admin' || currentRole === 'enrollment';
 
   const fetchWorkers = useCallback(async () => {
     if (currentRole === undefined) return;
@@ -247,19 +250,21 @@ export default function WorkersPage() {
                 </p>
               </div>
               <div className="flex gap-2 pt-1">
-                {canEdit ? (
-                  <>
-                    <button onClick={() => startEdit(w)} className="btn-secondary flex-1 text-xs">Edit</button>
-                    <Link href={`/enroll?worker_id=${encodeURIComponent(w.id)}`} className={`flex-1 text-center text-xs ${faceReady ? 'btn-ghost' : 'btn-primary'}`}>
-                      {faceReady ? 'Re-enroll' : faceInvalid ? 'Re-enroll' : 'Enroll now'}
-                    </Link>
-                    <button onClick={() => deactivate(w.id)} className="px-3 py-2 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
-                      Deactivate
-                    </button>
-                  </>
+                {canEdit && (
+                  <button onClick={() => startEdit(w)} className="btn-secondary flex-1 text-xs">Edit</button>
+                )}
+                {canEnroll ? (
+                  <Link href={`/enroll?worker_id=${encodeURIComponent(w.id)}`} className={`flex-1 text-center text-xs ${faceReady ? 'btn-ghost' : 'btn-primary'}`}>
+                    {faceReady ? 'Re-enroll' : faceInvalid ? 'Re-enroll' : 'Enroll now'}
+                  </Link>
                 ) : (
                   <button type="button" className="btn-secondary flex-1 text-xs" disabled>
                     Review-only
+                  </button>
+                )}
+                {canEdit && (
+                  <button onClick={() => deactivate(w.id)} className="px-3 py-2 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
+                    Deactivate
                   </button>
                 )}
               </div>

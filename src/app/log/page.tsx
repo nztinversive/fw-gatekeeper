@@ -120,7 +120,10 @@ function LogPageContent() {
       let openIn: string | null = null;
       for (const event of entry.events) {
         if (event.event_type === 'clock_in') {
-          openIn = event.timestamp;
+          // Keep the FIRST unmatched clock-in: entry kiosks can emit repeat
+          // clock_ins, and replacing the open interval's start would
+          // undercount the exported hours.
+          if (!openIn) openIn = event.timestamp;
           if (!firstIn) firstIn = event.timestamp;
         } else if (event.event_type === 'clock_out' && openIn) {
           totalMs += new Date(event.timestamp).getTime() - new Date(openIn).getTime();

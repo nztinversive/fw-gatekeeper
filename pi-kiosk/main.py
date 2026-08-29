@@ -562,13 +562,46 @@ def run(args):
 
                 if not pending["blink_confirmed"]:
                     if liveness.update(bgr_frame, box_loc) if box_loc is not None else False:
-                        # Blink seen - now require a recognition result from a
-                        # frame captured after this moment to re-confirm the
-                        # same worker before recording. Give the slower
-                        # detection thread time to deliver that result.
-                        pending["blink_confirmed"] = True
-                        pending["blink_confirmed_at"] = now
-                        pending["deadline"] = max(pending["deadline"], now + config.LIVENESS_WAIT_SEC)
+                        # Blink seen. Bind the blink to the pending worker by
+                        # embedding the face in THIS frame: a different face
+                        # supplying the blink (e.g. a real face swapped in
+                        # front of a photo between detection cycles) will not
+                        # match the pending worker's encoding.
+                        blink_sim = 0.0
+                        try:
+                            blink_embedding = embed_face(bgr_frame, box_loc)
+                        except Exception as e:
+                            logger.warning("Blink-frame embedding failed, retrying: %s", e)
+                            blink_embedding = None
+                        if (
+                            blink_embedding is not None
+                            and pending["encoding"] is not None
+                            and len(pending["encoding"]) == len(blink_embedding)
+                        ):
+                            blink_sim = cosine_sim(pending["encoding"], blink_embedding)
+
+                        if blink_embedding is None:
+                            pass  # transient failure - the latched blink retries next tick
+                        elif blink_sim < config.RECOGNITION_MATCH_THRESHOLD:
+                            # The face that blinked is not the matched worker.
+                            pending_clock[0] = None
+                            _log_recognition_attempt(pending["result"], "rejected_liveness_identity_change")
+                            liveness.reset()
+                            box_loc = None
+                            box_label = None
+                            box_color = GOLD
+                            web_app.update_status(state="IDLE", message="Hold steady...",
+                                                  worker_id=None, face_detected=True,
+                                                  known_workers=recognizer.known_count)
+                            continue
+                        else:
+                            # Blink is identity-bound - now require a fresh
+                            # recognition result from a frame captured after
+                            # this moment before recording. Give the slower
+                            # detection thread time to deliver it.
+                            pending["blink_confirmed"] = True
+                            pending["blink_confirmed_at"] = now
+                            pending["deadline"] = max(pending["deadline"], now + config.LIVENESS_WAIT_SEC)
 
                 if pending["post_blink_confirmed"]:
                     pending_clock[0] = None
@@ -691,11 +724,13 @@ def run(args):
             unknown_streak = 0
             box_color = GREEN
 
-            _, known_ids, known_names = recognizer.snapshot_known_faces()
+            known_encs, known_ids, known_names = recognizer.snapshot_known_faces()
             worker_id = None
+            worker_encoding = None
             if name in known_names:
                 idx = known_names.index(name)
                 worker_id = known_ids[idx]
+                worker_encoding = np.array(known_encs[idx])
 
             if worker_id is None:
                 continue
@@ -736,6 +771,7 @@ def run(args):
                     "display_name": display_name,
                     "display_id": display_id,
                     "confidence": confidence,
+                    "encoding": worker_encoding,
                     "deadline": now + config.LIVENESS_WAIT_SEC,
                     "blink_confirmed": False,
                     "blink_confirmed_at": 0.0,
