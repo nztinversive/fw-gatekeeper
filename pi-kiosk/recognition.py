@@ -10,10 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Optional
 
-import cv2
-import face_recognition
 import numpy as np
 
 import config
@@ -63,15 +60,3 @@ class FaceRecognizer:
         """Return a consistent (encodings, ids, names) copy for matching."""
         with self._lock:
             return list(self._encodings), list(self._ids), list(self._names)
-
-    @staticmethod
-    def encode_frame(frame: np.ndarray, face_location: Optional[tuple[int, int, int, int]] = None) -> Optional[np.ndarray]:
-        """Generate face encoding from a BGR frame (used by the enrollment CLI)."""
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        if face_location is None:
-            encodings = face_recognition.face_encodings(rgb)
-        else:
-            encodings = face_recognition.face_encodings(rgb, [face_location])
-        if not encodings:
-            return None
-        return encodings[0]
