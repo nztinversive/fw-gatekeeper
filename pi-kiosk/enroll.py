@@ -24,7 +24,7 @@ from flask import Flask, Response, jsonify
 
 import config
 import database
-from embeddings import embed_face, ensure_rec_model, normalize_embedding
+from embeddings import embed_face, model_ready, normalize_embedding
 from liveness import LivenessChecker
 from kiosk_ui_auth import get_enroll_preview_host
 
@@ -168,8 +168,8 @@ def add_worker(name: str):
 
     # Local enrollments must use the same 512-dim MobileFaceNet model the
     # scan loop matches with; a dlib encoding would be rejected at the door.
-    if not ensure_rec_model():
-        print("Recognition model unavailable (download failed). Connect to the network once and retry.")
+    if not model_ready():
+        print("Recognition model unavailable (download failed or corrupt). Connect to the network once and retry.")
         return 1
 
     cap = cv2.VideoCapture(config.CAMERA_INDEX)

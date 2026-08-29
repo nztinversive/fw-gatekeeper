@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AttendanceTable, { attendanceRowId } from '@/components/AttendanceTable';
+import { useToast } from '@/components/Toast';
 import { AttendanceCorrection, AttendanceCorrectionsResponse, AttendanceWithWorker } from '@/lib/types';
 import { DEFAULT_FACTORY_TIME_ZONE, getLocalDateString } from '@/lib/date';
 
@@ -20,6 +21,7 @@ function validDateParam(value: string | null) {
 }
 
 function LogPageContent() {
+  const { toast } = useToast();
   const searchParams = useSearchParams();
   const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
   const queryWorkerId = searchParams.get('worker_id') || '';
@@ -115,6 +117,13 @@ function LogPageContent() {
     return guess;
   };
 
+  // Quote/escape a value for CSV so names or departments containing commas,
+  // quotes, or newlines cannot shift columns in the exported file.
+  const csvField = (value: unknown) => {
+    const text = String(value ?? '');
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
   const downloadCSV = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -128,7 +137,7 @@ function LogPageContent() {
   const exportCSV = () => {
     const header = 'Time,Worker,Department,Event,Kiosk,Source,Correction Reason\n';
     const rows = events.map((e) =>
-      `${e.timestamp},${e.worker_name},${e.worker_department},${e.event_type},${e.kiosk_name || ''},${e.source || 'kiosk'},${e.correction_reason || ''}`
+      [e.timestamp, e.worker_name, e.worker_department, e.event_type, e.kiosk_name || '', e.source || 'kiosk', e.correction_reason || ''].map(csvField).join(',')
     ).join('\n');
     downloadCSV(header + rows, `gatekeeper-${date}.csv`);
   };
@@ -139,6 +148,8 @@ function LogPageContent() {
     // day's events are fetched too and intervals are attributed to the day
     // the clock-in happened. A truly open interval (still clocked in) is
     // reported with an empty Out and 0 hours rather than a guess.
+    // Without the boundary day, overnight shifts would silently export as
+    // still-clocked-in with zero hours - refuse to produce bad payroll data.
     let boundaryEvents: AttendanceWithWorker[] = [];
     try {
       const next = new Date(`${date}T00:00:00Z`);
@@ -147,12 +158,13 @@ function LogPageContent() {
       const params = new URLSearchParams({ date: nextDate });
       if (queryWorkerId) params.set('worker_id', queryWorkerId);
       const res = await fetch(`/api/attendance?${params.toString()}`);
-      if (res.ok) {
-        const rows = await res.json();
-        if (Array.isArray(rows)) boundaryEvents = rows;
-      }
+      if (!res.ok) throw new Error(`next-day fetch failed (${res.status})`);
+      const rows = await res.json();
+      if (!Array.isArray(rows)) throw new Error('next-day fetch returned an unexpected payload');
+      boundaryEvents = rows;
     } catch {
-      // Without the boundary day, overnight shifts export as still clocked in.
+      toast('Could not load the next day\u2019s events, so overnight hours would be wrong. Export cancelled - try again.', 'error');
+      return;
     }
 
     const startsOnSelectedDate = (timestamp: string) => timestamp.startsWith(date);
@@ -194,7 +206,7 @@ function LogPageContent() {
       // clock_out counted on the previous day's export) are omitted.
       if (!firstIn && !openIn && totalMs === 0) continue;
       const hours = totalMs > 0 ? (totalMs / 3_600_000).toFixed(2) : '0.00';
-      rows.push(`${entry.name},${entry.department},${firstIn || ''},${lastOut || ''},${hours},${openIn ? 'still clocked in' : ''}`);
+      rows.push([entry.name, entry.department, firstIn || '', lastOut || '', hours, openIn ? 'still clocked in' : ''].map(csvField).join(','));
     }
 
     const header = 'Worker,Department,First In,Last Out,Hours,Note\n';

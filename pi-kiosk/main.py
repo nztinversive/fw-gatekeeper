@@ -20,7 +20,7 @@ import face_recognition as fr
 
 import config
 import database
-from embeddings import embed_face, ensure_rec_model, normalize_embedding
+from embeddings import embed_face, model_ready as recognition_model_ready, normalize_embedding
 from recognition import FaceRecognizer
 from sync import SyncWorker
 from sync_auth import require_kiosk_api_key
@@ -211,8 +211,9 @@ def run(args):
     os.makedirs(config.MODEL_DIR, exist_ok=True)
     database.init_db()
 
-    # Pre-download MobileFaceNet model, but continue booting if offline.
-    model_ready = ensure_rec_model()
+    # Download and load the MobileFaceNet model, but continue booting if it
+    # is unavailable (offline or corrupt) - health reports it truthfully.
+    model_ready = recognition_model_ready()
     if not model_ready:
         logger.warning("Recognition model unavailable at startup; kiosk will keep retrying in the background.")
 

@@ -38,6 +38,20 @@ def ensure_rec_model() -> bool:
     return True
 
 
+def model_ready() -> bool:
+    """Ensure the model file exists AND loads in the installed runtime.
+
+    A present-but-corrupt/truncated file must not report a working scanner;
+    this also warms the session so the first scan doesn't pay the load cost.
+    """
+    try:
+        get_rec_session()
+        return True
+    except Exception as exc:
+        logger.error("Recognition model not ready: %s", exc)
+        return False
+
+
 def get_rec_session():
     global _rec_session
     if _rec_session is None:
