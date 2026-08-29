@@ -233,11 +233,19 @@ def run(args):
             "verification and this kiosk will report itself degraded."
         )
 
+    startup_degraded = None
+    if recognizer.known_count == 0:
+        # An empty roster rejects every scan; the dashboard must see that from
+        # boot, not only after the first worker walks up.
+        startup_degraded = "no_workers_synced"
+    elif config.LIVENESS_REQUIRED and liveness is None:
+        startup_degraded = "liveness_unavailable"
+
     web_app.update_health(
         model_ok=model_ready,
         liveness_available=liveness is not None,
         known_workers=recognizer.known_count,
-        degraded_reason="liveness_unavailable" if config.LIVENESS_REQUIRED and liveness is None else None,
+        degraded_reason=startup_degraded,
     )
 
     def kiosk_health():
@@ -481,7 +489,8 @@ def run(args):
 
     camera_healthy = True
     model_healthy = model_ready
-    roster_fault = None  # roster-derived degraded_reason currently reported
+    # roster-derived degraded_reason currently reported
+    roster_fault = "no_workers_synced" if recognizer.known_count == 0 else None
     try:
         while True:
             try:
@@ -633,11 +642,14 @@ def run(args):
             if result is not None:
                 current_result[0] = None
 
-            # An empty roster clears via sync alone - don't keep reporting
-            # "no workers synced" until someone happens to scan.
+            # Roster degradation tracks sync state alone - it must not wait
+            # for someone to scan, in either direction.
             if roster_fault == "no_workers_synced" and recognizer.known_count > 0:
                 roster_fault = None
                 web_app.update_health(degraded_reason=base_degraded_reason())
+            elif roster_fault is None and recognizer.known_count == 0:
+                roster_fault = "no_workers_synced"
+                web_app.update_health(degraded_reason=roster_fault)
 
             if result is None:
                 if box_loc is not None:

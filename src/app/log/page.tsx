@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AttendanceTable, { attendanceRowId } from '@/components/AttendanceTable';
 import { AttendanceCorrection, AttendanceCorrectionsResponse, AttendanceWithWorker } from '@/lib/types';
-import { getLocalDateString } from '@/lib/date';
+import { DEFAULT_FACTORY_TIME_ZONE, getLocalDateString } from '@/lib/date';
 
 function correctionLabel(action: string) {
   return action.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -79,15 +79,34 @@ function LogPageContent() {
     document.getElementById(attendanceRowId(queryAttendanceId))?.scrollIntoView({ block: 'center' });
   }, [events, queryAttendanceId]);
 
-  // Kiosk timestamps are factory-local wall-clock strings without an offset;
-  // new Date(...) would interpret them in the viewing browser's timezone, so
-  // durations could shift across the browser's DST transitions. Parse
-  // offset-less strings as UTC wall-clock so duration math is deterministic
-  // regardless of where the portal is opened.
-  const wallClockMs = (timestamp: string) => {
+  // Kiosk timestamps are factory-local wall-clock strings without an offset.
+  // Duration math must resolve them to real instants IN THE FACTORY TIMEZONE:
+  // browser-local parsing would shift with the viewer's DST, and plain
+  // wall-clock subtraction drops the extra/missing hour of a shift spanning a
+  // factory DST transition. Timestamps carrying an explicit offset parse
+  // absolutely.
+  const factoryWallClockAt = (epochMs: number) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: DEFAULT_FACTORY_TIME_ZONE,
+      hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(new Date(epochMs));
+    const get = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+    return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
+  };
+
+  const instantMs = (timestamp: string) => {
     const match = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
     if (!match) return new Date(timestamp).getTime();
-    return Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +(match[6] || 0));
+    const wallMs = Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +(match[6] || 0));
+    // Two-pass inversion: find the epoch whose factory wall-clock equals the
+    // target, converging across DST offset changes.
+    let guess = wallMs;
+    for (let i = 0; i < 2; i += 1) {
+      guess = wallMs - (factoryWallClockAt(guess) - guess);
+    }
+    return guess;
   };
 
   const downloadCSV = (content: string, filename: string) => {
@@ -160,7 +179,7 @@ function LogPageContent() {
           }
         } else if (event.event_type === 'clock_out' && openIn) {
           // A clock_out closes the open interval even after midnight.
-          totalMs += wallClockMs(event.timestamp) - wallClockMs(openIn);
+          totalMs += instantMs(event.timestamp) - instantMs(openIn);
           lastOut = event.timestamp;
           openIn = null;
         }
