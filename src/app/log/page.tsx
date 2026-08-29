@@ -79,6 +79,17 @@ function LogPageContent() {
     document.getElementById(attendanceRowId(queryAttendanceId))?.scrollIntoView({ block: 'center' });
   }, [events, queryAttendanceId]);
 
+  // Kiosk timestamps are factory-local wall-clock strings without an offset;
+  // new Date(...) would interpret them in the viewing browser's timezone, so
+  // durations could shift across the browser's DST transitions. Parse
+  // offset-less strings as UTC wall-clock so duration math is deterministic
+  // regardless of where the portal is opened.
+  const wallClockMs = (timestamp: string) => {
+    const match = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
+    if (!match) return new Date(timestamp).getTime();
+    return Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +(match[6] || 0));
+  };
+
   const downloadCSV = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -149,7 +160,7 @@ function LogPageContent() {
           }
         } else if (event.event_type === 'clock_out' && openIn) {
           // A clock_out closes the open interval even after midnight.
-          totalMs += new Date(event.timestamp).getTime() - new Date(openIn).getTime();
+          totalMs += wallClockMs(event.timestamp) - wallClockMs(openIn);
           lastOut = event.timestamp;
           openIn = null;
         }
