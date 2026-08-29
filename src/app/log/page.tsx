@@ -97,12 +97,31 @@ function LogPageContent() {
     downloadCSV(header + rows, `gatekeeper-${date}.csv`);
   };
 
-  const exportHoursCSV = () => {
-    // Pair clock_in/clock_out events per worker in timestamp order; an open
-    // interval (still clocked in) is reported with an empty Out and 0 hours
-    // rather than a guess.
+  const exportHoursCSV = async () => {
+    // Pair clock_in/clock_out events per worker in timestamp order. Shifts
+    // that start on the selected date may end after midnight, so the next
+    // day's events are fetched too and intervals are attributed to the day
+    // the clock-in happened. A truly open interval (still clocked in) is
+    // reported with an empty Out and 0 hours rather than a guess.
+    let boundaryEvents: AttendanceWithWorker[] = [];
+    try {
+      const next = new Date(`${date}T00:00:00Z`);
+      next.setUTCDate(next.getUTCDate() + 1);
+      const nextDate = next.toISOString().slice(0, 10);
+      const params = new URLSearchParams({ date: nextDate });
+      if (queryWorkerId) params.set('worker_id', queryWorkerId);
+      const res = await fetch(`/api/attendance?${params.toString()}`);
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows)) boundaryEvents = rows;
+      }
+    } catch {
+      // Without the boundary day, overnight shifts export as still clocked in.
+    }
+
+    const startsOnSelectedDate = (timestamp: string) => timestamp.startsWith(date);
     const byWorker = new Map<string, { name: string; department: string; events: AttendanceWithWorker[] }>();
-    for (const event of [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp))) {
+    for (const event of [...events, ...boundaryEvents].sort((a, b) => a.timestamp.localeCompare(b.timestamp))) {
       const entry = byWorker.get(event.worker_id) || {
         name: event.worker_name || event.worker_id,
         department: event.worker_department || '',
@@ -120,17 +139,24 @@ function LogPageContent() {
       let openIn: string | null = null;
       for (const event of entry.events) {
         if (event.event_type === 'clock_in') {
-          // Keep the FIRST unmatched clock-in: entry kiosks can emit repeat
-          // clock_ins, and replacing the open interval's start would
-          // undercount the exported hours.
-          if (!openIn) openIn = event.timestamp;
-          if (!firstIn) firstIn = event.timestamp;
+          // Only shifts STARTING on the selected date belong to this export
+          // (next-day clock-ins are that day's shifts), and keep the FIRST
+          // unmatched clock-in: entry kiosks can emit repeat clock_ins, and
+          // replacing the open interval's start would undercount hours.
+          if (!openIn && startsOnSelectedDate(event.timestamp)) {
+            openIn = event.timestamp;
+            if (!firstIn) firstIn = event.timestamp;
+          }
         } else if (event.event_type === 'clock_out' && openIn) {
+          // A clock_out closes the open interval even after midnight.
           totalMs += new Date(event.timestamp).getTime() - new Date(openIn).getTime();
           lastOut = event.timestamp;
           openIn = null;
         }
       }
+      // Workers with no shift starting on this date (e.g. only an overnight
+      // clock_out counted on the previous day's export) are omitted.
+      if (!firstIn && !openIn && totalMs === 0) continue;
       const hours = totalMs > 0 ? (totalMs / 3_600_000).toFixed(2) : '0.00';
       rows.push(`${entry.name},${entry.department},${firstIn || ''},${lastOut || ''},${hours},${openIn ? 'still clocked in' : ''}`);
     }

@@ -1,4 +1,6 @@
-export const SUPPORTED_ENCODING_LENGTHS = new Set([128, 512]);
+// The kiosk matches exclusively 512-dim MobileFaceNet embeddings; legacy
+// 128-dim dlib encodings are invalid and require re-enrollment.
+export const SUPPORTED_ENCODING_LENGTHS = new Set([512]);
 
 export function isSupportedEncoding(encoding: unknown): encoding is number[] {
   return (
@@ -9,5 +11,5 @@ export function isSupportedEncoding(encoding: unknown): encoding is number[] {
 }
 
 export function getEncodingValidationMessage(fieldName = 'Encoding'): string {
-  return `${fieldName} must be an array of 128 or 512 finite numbers`;
+  return `${fieldName} must be an array of 512 finite numbers`;
 }

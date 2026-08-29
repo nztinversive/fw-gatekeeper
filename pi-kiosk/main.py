@@ -561,47 +561,39 @@ def run(args):
                     continue
 
                 if not pending["blink_confirmed"]:
-                    if liveness.update(bgr_frame, box_loc) if box_loc is not None else False:
-                        # Blink seen. Bind the blink to the pending worker by
-                        # embedding the face in THIS frame: a different face
-                        # supplying the blink (e.g. a real face swapped in
-                        # front of a photo between detection cycles) will not
-                        # match the pending worker's encoding.
-                        blink_sim = 0.0
+                    def _frame_matches_pending(check_frame, check_loc):
+                        # Every frame that advances blink state (closed-eye
+                        # frames and the completing open-eye frame) must embed
+                        # to the pending worker; otherwise LivenessChecker
+                        # resets the attempt, so no frame from a different
+                        # face can contribute to the blink.
                         try:
-                            blink_embedding = embed_face(bgr_frame, box_loc)
+                            emb = embed_face(check_frame, check_loc)
                         except Exception as e:
-                            logger.warning("Blink-frame embedding failed, retrying: %s", e)
-                            blink_embedding = None
+                            logger.warning("Blink-frame embedding failed: %s", e)
+                            return False
                         if (
-                            blink_embedding is not None
-                            and pending["encoding"] is not None
-                            and len(pending["encoding"]) == len(blink_embedding)
+                            emb is None
+                            or pending["encoding"] is None
+                            or len(pending["encoding"]) != len(emb)
                         ):
-                            blink_sim = cosine_sim(pending["encoding"], blink_embedding)
+                            return False
+                        return cosine_sim(pending["encoding"], emb) >= config.RECOGNITION_MATCH_THRESHOLD
 
-                        if blink_embedding is None:
-                            pass  # transient failure - the latched blink retries next tick
-                        elif blink_sim < config.RECOGNITION_MATCH_THRESHOLD:
-                            # The face that blinked is not the matched worker.
-                            pending_clock[0] = None
-                            _log_recognition_attempt(pending["result"], "rejected_liveness_identity_change")
-                            liveness.reset()
-                            box_loc = None
-                            box_label = None
-                            box_color = GOLD
-                            web_app.update_status(state="IDLE", message="Hold steady...",
-                                                  worker_id=None, face_detected=True,
-                                                  known_workers=recognizer.known_count)
-                            continue
-                        else:
-                            # Blink is identity-bound - now require a fresh
-                            # recognition result from a frame captured after
-                            # this moment before recording. Give the slower
-                            # detection thread time to deliver it.
-                            pending["blink_confirmed"] = True
-                            pending["blink_confirmed_at"] = now
-                            pending["deadline"] = max(pending["deadline"], now + config.LIVENESS_WAIT_SEC)
+                    blink_ok = (
+                        liveness.update(bgr_frame, box_loc, frame_check=_frame_matches_pending)
+                        if box_loc is not None
+                        else False
+                    )
+                    if blink_ok:
+                        # Identity-bound blink complete - now require a fresh
+                        # recognition result from a frame captured after this
+                        # moment to re-confirm the same worker before
+                        # recording. Give the slower detection thread time to
+                        # deliver it.
+                        pending["blink_confirmed"] = True
+                        pending["blink_confirmed_at"] = now
+                        pending["deadline"] = max(pending["deadline"], now + config.LIVENESS_WAIT_SEC)
 
                 if pending["post_blink_confirmed"]:
                     pending_clock[0] = None

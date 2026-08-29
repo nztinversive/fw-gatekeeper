@@ -24,7 +24,8 @@ type ShiftTrustRisk = {
 
 const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
 const STALE_THRESHOLD_MS = 60 * 60 * 1000;
-const SUPPORTED_ENCODING_LENGTHS = new Set([128, 512]);
+// Kiosks match exclusively 512-dim MobileFaceNet embeddings.
+const SUPPORTED_ENCODING_LENGTHS = new Set([512]);
 
 function getDayOfWeek(dateKey: string): number {
   const [year, month, day] = dateKey.split("-").map(Number);

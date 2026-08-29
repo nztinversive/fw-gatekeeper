@@ -2,7 +2,9 @@ import { internalQuery, query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { assertPortalRole } from "./access";
 
-const SUPPORTED_ENCODING_LENGTHS = new Set([128, 512]);
+// The kiosk matches exclusively 512-dim MobileFaceNet embeddings; legacy
+// 128-dim dlib encodings are invalid and require re-enrollment.
+const SUPPORTED_ENCODING_LENGTHS = new Set([512]);
 
 function isSupportedFaceEncoding(encoding?: number[]) {
   return (
@@ -102,7 +104,7 @@ export const create = mutation({
       throw new Error("Worker name is required");
     }
     if (!isSupportedFaceEncoding(args.faceEncoding)) {
-      throw new Error("faceEncoding must contain 128 or 512 finite values");
+      throw new Error("faceEncoding must contain 512 finite values");
     }
     const now = new Date().toISOString();
     const employeeId = normalizeEmployeeId(args.employeeId);
@@ -172,7 +174,7 @@ export const update = mutation({
     const { id, ...fields } = args;
     const updates: Record<string, unknown> = {};
     if (!isSupportedFaceEncoding(fields.faceEncoding)) {
-      throw new Error("faceEncoding must contain 128 or 512 finite values");
+      throw new Error("faceEncoding must contain 512 finite values");
     }
     if (fields.name !== undefined) {
       const trimmedName = normalizeName(fields.name);
