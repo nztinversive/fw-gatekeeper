@@ -6,6 +6,7 @@ import Link from 'next/link';
 // Type-only import: the directory data itself stays server-side (served via
 // /api/employee-directory) so the roster never ships in the client bundle.
 import type { EmployeeDirectoryEntry } from '@/lib/employee-directory';
+import { usePortalRole } from '@/hooks/usePortalRole';
 
 type Step = 'name' | 'camera' | 'capturing' | 'processing' | 'done' | 'error';
 
@@ -13,6 +14,7 @@ const CAPTURES_REQUIRED = 3;
 const CAPTURE_INTERVAL_MS = 1500;
 
 function EnrollPageContent() {
+  const currentRole = usePortalRole();
   const searchParams = useSearchParams();
   const workerId = searchParams.get('worker_id') || '';
   const [step, setStep] = useState<Step>('name');
@@ -232,6 +234,30 @@ function EnrollPageContent() {
 
     captureTimerRef.current = setTimeout(doCapture, 500);
   }, [captureFrame]);
+
+  // Viewers cannot submit enrollments (the API rejects them), so stop them
+  // here instead of letting them capture photos that will 401 on save.
+  if (currentRole !== undefined && currentRole !== 'admin' && currentRole !== 'enrollment') {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center p-4 animate-fade-in">
+        <div className="glass-card w-full max-w-md px-6 py-8 text-center">
+          <h1 className="page-title text-slate-100">
+            Face <span className="text-gold">Enrollment</span>
+          </h1>
+          <p className="mt-3 flex items-center justify-center gap-2">
+            <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review-only</span>
+          </p>
+          <p className="mt-3 text-sm text-slate-400">
+            Enrolling or updating face data requires an admin or enrollment account. Ask an
+            administrator to enroll this worker, or to upgrade your account role.
+          </p>
+          <Link href="/workers" className="btn-secondary mt-6 inline-flex items-center gap-2">
+            Back to Workers
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Step: Enter Name
   if (step === 'name') {

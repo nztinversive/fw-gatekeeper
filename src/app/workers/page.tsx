@@ -126,14 +126,16 @@ export default function WorkersPage() {
             </p>
           )}
         </div>
-        <div className="flex gap-3 flex-wrap">
-          <Link href="/enroll" className="btn-primary flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Enroll Face
-          </Link>
-        </div>
+        {canEnroll && (
+          <div className="flex gap-3 flex-wrap">
+            <Link href="/enroll" className="btn-primary flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Enroll Face
+            </Link>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
