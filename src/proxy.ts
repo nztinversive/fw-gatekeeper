@@ -57,6 +57,10 @@ function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
     return ['admin', 'enrollment'];
   }
 
+  if (pathname === '/api/schedules' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
+  }
+
   if (pathname === '/api/shift-briefing' && method === 'GET') {
     return ['admin', 'enrollment', 'viewer'];
   }

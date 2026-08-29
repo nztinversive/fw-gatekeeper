@@ -539,6 +539,7 @@ def run(args):
         return True
 
     camera_healthy = True
+    model_healthy = model_ready
     try:
         while True:
             try:
@@ -576,10 +577,35 @@ def run(args):
             pending = pending_clock[0]
             if pending is not None:
                 fresh = current_result[0]
+                identity_changed = False
                 if fresh is not None:
                     current_result[0] = None
-                    if fresh.get("face_loc") is not None:
+                    # Revalidate identity on every fresh recognition: if the
+                    # face in frame is now unknown or a different worker, abort
+                    # the pending clock so someone else's blink can never
+                    # complete the original worker's attendance.
+                    fresh_name = fresh.get("name")
+                    fresh_worker_id = None
+                    if fresh_name is not None:
+                        _, fresh_ids, fresh_names = recognizer.snapshot_known_faces()
+                        if fresh_name in fresh_names:
+                            fresh_worker_id = fresh_ids[fresh_names.index(fresh_name)]
+                    if fresh_worker_id != pending["worker_id"]:
+                        identity_changed = True
+                    elif fresh.get("face_loc") is not None:
                         box_loc = fresh.get("face_loc")
+
+                if identity_changed:
+                    pending_clock[0] = None
+                    _log_recognition_attempt(pending["result"], "rejected_liveness_identity_change")
+                    liveness.reset()
+                    box_loc = None
+                    box_label = None
+                    box_color = GOLD
+                    web_app.update_status(state="IDLE", message="Hold steady...",
+                                          worker_id=None, face_detected=True,
+                                          known_workers=recognizer.known_count)
+                    continue
 
                 confirmed = liveness.update(bgr_frame, box_loc) if box_loc is not None else False
                 if confirmed:
@@ -636,11 +662,18 @@ def run(args):
             degraded_fault = None
             if decision == "rejected_model_error":
                 degraded_fault = "model_error"
+                model_healthy = False
                 web_app.update_health(model_ok=False, degraded_reason=degraded_fault)
-            elif decision == "rejected_dim_mismatch":
+            elif not model_healthy:
+                # Any non-model-error result means an embedding was computed,
+                # so a transient ONNX failure has recovered - stop reporting it.
+                model_healthy = True
+                web_app.update_health(model_ok=True, degraded_reason=base_degraded_reason())
+
+            if degraded_fault is None and decision == "rejected_dim_mismatch":
                 degraded_fault = "encoding_mismatch"
                 web_app.update_health(degraded_reason=degraded_fault)
-            elif recognizer.known_count == 0:
+            elif degraded_fault is None and recognizer.known_count == 0:
                 degraded_fault = "no_workers_synced"
                 web_app.update_health(degraded_reason=degraded_fault)
 

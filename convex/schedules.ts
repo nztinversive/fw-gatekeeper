@@ -13,11 +13,13 @@ const scheduleResult = v.object({
   created_at: v.string(),
 });
 
+// Reads are open to every portal role (the Schedules page offers a
+// review-only view); writes below stay admin-only.
 export const list = query({
   args: {},
   returns: v.array(scheduleResult),
   handler: async (ctx) => {
-    await assertPortalRole(ctx, ["admin"]);
+    await assertPortalRole(ctx, ["admin", "enrollment", "viewer"]);
 
     const schedules = await ctx.db
       .query("schedules")

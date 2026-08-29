@@ -32,10 +32,14 @@ export default function WorkersPage() {
   const canEdit = currentRole === 'admin';
 
   const fetchWorkers = useCallback(async () => {
+    if (currentRole === undefined) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/workers');
+      // Non-admin roles are only authorized for the read-scoped roster
+      // (readiness metadata, no admin management payload).
+      const endpoint = currentRole === 'admin' ? '/api/workers' : '/api/workers?scope=dashboard';
+      const res = await fetch(endpoint);
       if (!res.ok) {
         throw new Error(res.status === 401 ? 'Your account does not have access to the worker list.' : 'Failed to load workers');
       }
@@ -46,7 +50,7 @@ export default function WorkersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentRole]);
 
   useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
 
