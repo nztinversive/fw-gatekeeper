@@ -2,7 +2,9 @@ import { internalQuery, query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { assertPortalRole } from "./access";
 
-const SUPPORTED_ENCODING_LENGTHS = new Set([128, 512]);
+// The kiosk matches exclusively 512-dim MobileFaceNet embeddings; legacy
+// 128-dim dlib encodings are invalid and require re-enrollment.
+const SUPPORTED_ENCODING_LENGTHS = new Set([512]);
 
 function isSupportedFaceEncoding(encoding?: number[]) {
   return (
@@ -102,7 +104,7 @@ export const create = mutation({
       throw new Error("Worker name is required");
     }
     if (!isSupportedFaceEncoding(args.faceEncoding)) {
-      throw new Error("faceEncoding must contain 128 or 512 finite values");
+      throw new Error("faceEncoding must contain 512 finite values");
     }
     const now = new Date().toISOString();
     const employeeId = normalizeEmployeeId(args.employeeId);
@@ -172,7 +174,7 @@ export const update = mutation({
     const { id, ...fields } = args;
     const updates: Record<string, unknown> = {};
     if (!isSupportedFaceEncoding(fields.faceEncoding)) {
-      throw new Error("faceEncoding must contain 128 or 512 finite values");
+      throw new Error("faceEncoding must contain 512 finite values");
     }
     if (fields.name !== undefined) {
       const trimmedName = normalizeName(fields.name);
@@ -259,22 +261,5 @@ export const generateUploadUrl = mutation({
   handler: async (ctx) => {
     await assertPortalRole(ctx, ["admin", "enrollment"]);
     return await ctx.storage.generateUploadUrl();
-  },
-});
-
-export const getPhotoUrls = query({
-  args: { id: v.id("workers") },
-  handler: async (ctx, args) => {
-    await assertPortalRole(ctx, ["admin", "enrollment"]);
-    const w = await ctx.db.get(args.id);
-    if (!w || !w.active) return null;
-    const photos: string[] = [];
-    if (w.photoStorageIds) {
-      for (const sid of w.photoStorageIds) {
-        const url = await ctx.storage.getUrl(sid);
-        if (url) photos.push(url);
-      }
-    }
-    return { worker_id: w._id, name: w.name, photos, count: photos.length };
   },
 });

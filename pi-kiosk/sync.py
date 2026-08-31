@@ -197,7 +197,24 @@ def sync_recognition_attempts() -> bool:
         return False
 
 
-def sync_workers() -> bool:
+def _health_params(health: Optional[dict]) -> dict:
+    """Flatten kiosk health into sync query params the server stores per kiosk."""
+    if not health:
+        return {}
+    params = {}
+    for key in ("camera_ok", "model_ok", "liveness_available"):
+        if health.get(key) is not None:
+            params[key] = "1" if health[key] else "0"
+    for key in ("known_workers", "queued_logs", "queued_attempts"):
+        if health.get(key) is not None:
+            params[key] = str(int(health[key]))
+    for key in ("degraded_reason", "last_scan_at"):
+        if health.get(key):
+            params[key] = str(health[key])
+    return params
+
+
+def sync_workers(health: Optional[dict] = None) -> bool:
     """Download new/updated workers from server. Returns True on success."""
     if database.has_workers_missing_employee_id():
         # Existing kiosk databases created before employee_id support need one full
@@ -209,7 +226,7 @@ def sync_workers() -> bool:
     try:
         r = requests.get(
             f"{config.SERVER_URL}/api/sync",
-            params={"kiosk_id": config.KIOSK_ID, "since": last_sync},
+            params={"kiosk_id": config.KIOSK_ID, "since": last_sync, **_health_params(health)},
             headers=_auth_headers(),
             timeout=15,
         )
@@ -286,10 +303,15 @@ def _download_photo(name: str, url: str) -> Optional[str]:
 class SyncWorker:
     """Background thread that periodically syncs with the server."""
 
-    def __init__(self, recognizer=None):
+    def __init__(self, recognizer=None, health_provider=None, health_reporter=None):
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._recognizer = recognizer
+        # health_provider() returns the kiosk's current health dict to send to
+        # the server; health_reporter(**fields) pushes sync/queue state back to
+        # the kiosk UI. Both are optional so this module stays UI-agnostic.
+        self._health_provider = health_provider
+        self._health_reporter = health_reporter
         self.server_online = False
 
     def start(self):
@@ -306,18 +328,45 @@ class SyncWorker:
             self._thread.join(timeout=5)
         logger.info("Sync worker stopped")
 
+    def _report(self, **fields):
+        if self._health_reporter:
+            try:
+                self._health_reporter(**fields)
+            except Exception as e:
+                logger.debug("Health reporter failed: %s", e)
+
     def _run(self):
         """Main sync loop."""
         while self._running:
             try:
+                queued_logs = database.count_unsynced_logs()
+                queued_attempts = database.count_unsynced_recognition_attempts()
+                self._report(queued_logs=queued_logs, queued_attempts=queued_attempts)
+
                 self.server_online = check_server()
+                self._report(sync_online=self.server_online)
                 if self.server_online:
-                    workers_synced = sync_workers()
+                    health = None
+                    if self._health_provider:
+                        try:
+                            health = {
+                                **self._health_provider(),
+                                "queued_logs": queued_logs,
+                                "queued_attempts": queued_attempts,
+                            }
+                        except Exception as e:
+                            logger.debug("Health provider failed: %s", e)
+                    workers_synced = sync_workers(health=health)
                     if workers_synced:
                         if self._recognizer:
                             self._recognizer.reload_faces()
+                        self._report(last_sync_at=datetime.now().isoformat(timespec="seconds"))
                     sync_attendance()
                     sync_recognition_attempts()
+                    self._report(
+                        queued_logs=database.count_unsynced_logs(),
+                        queued_attempts=database.count_unsynced_recognition_attempts(),
+                    )
                 else:
                     logger.debug("Server offline, skipping sync")
             except Exception as e:

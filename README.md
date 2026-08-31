@@ -12,10 +12,10 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 │  Pi Kiosk (x4)          │         │  Render (Cloud)          │
 │                         │         │                          │
 │  Camera → Face Detect   │◄──WiFi──┤  FW Gatekeeper (Next.js) │
-│  → Liveness (blink)     │  sync   │  ├── Dashboard           │
-│  → Local Match          │  5min   │  ├── Enrollment          │
-│  → HDMI Display         │────────►│  ├── Reports             │
-│    (Chromium fullscreen) │         │  └── API                 │
+│  → Blink (optional)     │  sync   │  ├── Dashboard           │
+│  → Local Match          │  30s    │  ├── Enrollment          │
+│  → HDMI Display         │────────►│  ├── Shift workflows     │
+│    (Firefox fullscreen)  │         │  └── API                 │
 │                         │         │                          │
 │  Flask Web UI (:5555)   │         │  Face Service (FastAPI)  │
 │  SQLite (offline log)   │         │  └── ArcFace ONNX encode │
@@ -33,7 +33,7 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 | Database | Convex (cloud) |
 | Face Encoding | ArcFace ONNX (512-dim embeddings) |
 | Face Detection (Pi) | dlib HOG + Haar cascade |
-| Liveness | dlib 68-point landmarks (blink detection) |
+| Liveness | dlib 68-point landmarks (blink detection) — optional, off by default |
 | Pi Kiosk | Python 3.11 + OpenCV + face_recognition |
 | Hosting | Render (free tier) |
 
@@ -110,7 +110,7 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 ## Step 1: Flash Raspberry Pi OS
 
 1. Download [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
-2. Choose **Raspberry Pi OS with Desktop (64-bit)** — NOT Lite (we need X server + Chromium for the monitor display)
+2. Choose **Raspberry Pi OS with Desktop (64-bit)** — NOT Lite (we need a desktop session + browser for the monitor display)
 3. Click the ⚙️ gear icon and configure:
    - **Hostname:** `fw-kiosk-1` (increment for each Pi: `fw-kiosk-2`, etc.)
    - **Enable SSH:** Yes, use password authentication
@@ -121,7 +121,7 @@ Factory access control system for Fading West. Face recognition at entry/exit po
 4. Flash to microSD card
 5. Insert card into Pi, connect camera + HDMI monitor, power on
 
-> ⚠️ **Why Desktop and not Lite?** The kiosk displays a fullscreen Chromium browser on the HDMI monitor showing live camera feed + welcome messages. This requires X server and GPU drivers, which come pre-installed with the Desktop version. Lite would need ~15 min of extra package installs and is more prone to driver issues.
+> ⚠️ **Why Desktop and not Lite?** The kiosk displays a fullscreen Firefox browser on the HDMI monitor showing live camera feed + welcome messages. This requires a graphical session and GPU drivers, which come pre-installed with the Desktop version. Lite would need ~15 min of extra package installs and is more prone to driver issues.
 
 ## Step 2: Open a Terminal
 
@@ -271,8 +271,10 @@ Flash → SSH → Connect hardware → Run setup script (with unique KIOSK_ID) �
 
 ### For Workers
 1. Walk up to the kiosk (monitor shows "Step toward camera" with live camera feed)
-2. Look at the camera for 2-3 seconds (monitor shows "Blink to verify")
-3. Blink naturally (liveness check prevents photos/videos being used)
+2. Look at the camera for a few seconds while it matches your face
+3. If the kiosk has blink verification enabled (`LIVENESS_REQUIRED = True` in
+   `config_local.py`; off by default), the monitor shows "Blink to verify" —
+   blink naturally to confirm
 4. Monitor shows **✅ Welcome, [Name]!** with department and time → proceed through door
 5. If not recognized: **❌ Face not recognized — Please see a manager**
 
@@ -288,7 +290,7 @@ Flash → SSH → Connect hardware → Run setup script (with unique KIOSK_ID) �
 Each kiosk runs a local web UI (Flask on port 5555) displayed fullscreen via Firefox ESR in kiosk mode. The display shows:
 
 - **Live camera feed** — workers see themselves on screen
-- **Status messages** — "Step toward camera", "Blink to verify", "✅ Welcome!", "❌ Not recognized"
+- **Status messages** — "Step toward camera", "✅ Welcome!", "❌ Not recognized" (plus "Blink to verify" when liveness is enabled)
 - **Real-time clock** and date
 - **Today's scan log** — recent clock-in/out events (6 max, compact layout)
 - **Manual clock** option — type a name if camera has issues
@@ -304,7 +306,7 @@ The display auto-starts on boot via XDG autostart:
 - Kiosks work **without internet** after initial sync
 - Face encodings are cached locally in SQLite
 - Attendance events log to local storage
-- When WiFi reconnects, pending records sync automatically (every 5 min)
+- When WiFi reconnects, pending records sync automatically (every 30 seconds)
 
 ---
 
@@ -341,11 +343,14 @@ ls /dev/video*               # should show /dev/video0
 ### Face not recognized (false rejections)
 - Re-enroll with better lighting
 - Check camera angle (should be at face height)
-- Lower threshold: edit `/etc/systemd/system/fw-gatekeeper-kiosk.service`, change `--threshold 0.5` to `0.4`
-- Then: `sudo systemctl daemon-reload && sudo systemctl restart fw-gatekeeper-kiosk`
+- Lower the match threshold slightly: add `RECOGNITION_MATCH_THRESHOLD = 0.40` to
+  `pi-kiosk/config_local.py` on the kiosk (cosine similarity — **higher = stricter**;
+  default `0.45`; stay within 0.40–0.55 and use the Recognition Lab to pick a value)
+- Then: `sudo systemctl restart fw-gatekeeper-kiosk`
 
 ### Face matching wrong person (false positives)
-- Raise threshold to `0.55` or `0.6`
+- Raise the match threshold: set `RECOGNITION_MATCH_THRESHOLD = 0.50` (or `0.55`) in
+  `pi-kiosk/config_local.py`, then restart the service
 - Re-enroll both workers with clearer photos
 
 ### Kiosk shows stale data
@@ -375,7 +380,7 @@ If Firefox doesn't open after reboot:
 If monitor doesn't wake up:
 - Check HDMI cable connection
 - Try a different HDMI port on the Pi (Pi 4 has two)
-- Add `hdmi_force_hotplug=1` to `/boot/config.txt` and reboot
+- Add `hdmi_force_hotplug=1` to `/boot/firmware/config.txt` (older Pi OS: `/boot/config.txt`) and reboot
 
 ### Power loss recovery
 - Kiosks auto-restart on boot (systemd + watchdog timer)
@@ -408,7 +413,7 @@ done
 
 ### Add a new worker
 1. Dashboard → Enroll Face → capture photos
-2. Kiosks pick up new encodings on next sync cycle (≤5 min)
+2. Kiosks pick up new encodings on next sync cycle (≤30 seconds)
 3. Or force immediate sync: restart kiosk service
 
 ### Deactivate a worker
@@ -451,15 +456,17 @@ Set the `ADMIN_PIN` environment variable on Render:
 ### Kiosk CLI Options
 
 ```bash
-python kiosk.py --server URL --kiosk-id ID --camera [auto|pi|usb] --threshold 0.5
+python main.py --server URL --kiosk-id ID --camera [auto|pi|usb]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--server` | Render URL | Gatekeeper server |
-| `--kiosk-id` | `kiosk-1` | Kiosk identifier |
+| `--kiosk-id` | `kiosk-entry-1` | Kiosk identifier |
 | `--camera` | `auto` | `pi` for Pi Camera, `usb` for USB webcam |
-| `--threshold` | `0.5` | Match threshold (lower = stricter) |
+
+The match threshold is not a CLI flag: set `RECOGNITION_MATCH_THRESHOLD` in
+`pi-kiosk/config_local.py` (cosine similarity, higher = stricter, default `0.45`).
 
 ### Performance
 
@@ -486,7 +493,7 @@ python kiosk.py --server URL --kiosk-id ID --camera [auto|pi|usb] --threshold 0.
 | USB 2.0 extension cable 3ft | 4 | $5 each | Amazon |
 | **Total (4 kiosks)** | | **~$580-660** | |
 
-> 💡 **Budget option:** Skip the HDMI displays ($160-240 savings) and run headless with terminal UI. Workers just hear a beep / see a small LED. Less polished but functional.
+> 💡 **Budget option:** Skip the HDMI displays ($160-240 savings) and run headless — the scanner and sync still run without a monitor, workers just get no on-screen feedback. Less polished but functional.
 
 > 💡 **Premium option:** Use Pi 5 ($60 each) + Logitech C920 ($70 each) for faster recognition and sharper camera image.
 

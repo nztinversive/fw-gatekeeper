@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '@/components/Toast';
-import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 
 type KioskReadinessStatus = 'online' | 'stale' | 'offline' | 'never_synced';
 
@@ -16,6 +15,7 @@ type KioskHealthRow = {
   status: KioskReadinessStatus;
   expected_worker_count: number;
   last_attendance_upload: string | null;
+  device_issues?: string[];
 };
 
 type SystemHealthPayload = {
@@ -87,13 +87,19 @@ export default function KiosksPage() {
   }, [fetchReadiness]);
 
   const counts = health?.kiosks.counts;
+  const deviceIssueCount = useMemo(
+    () => (health?.kiosks.rows || []).reduce((total, row) => total + (row.device_issues?.length || 0), 0),
+    [health],
+  );
   const readinessLabel = useMemo(() => {
     if (!health) return 'Checking readiness';
     if (health.kiosks.total === 0) return 'No kiosks registered';
     if ((counts?.offline || 0) + (counts?.never_synced || 0) > 0) return 'Kiosks need attention';
+    // A kiosk can be syncing (online) while its camera or model is broken.
+    if (deviceIssueCount > 0) return 'Kiosks report device issues';
     if ((counts?.stale || 0) > 0) return 'Some kiosks are stale';
     return 'All kiosks online';
-  }, [counts, health]);
+  }, [counts, deviceIssueCount, health]);
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -115,7 +121,7 @@ export default function KiosksPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || 'Failed to register kiosk');
-      toast(body?.demo_write ? `Demo kiosk "${trimmedName}" registered locally` : `Kiosk "${trimmedName}" registered`);
+      toast(`Kiosk "${trimmedName}" registered`);
       setName('');
       setKioskId('');
       setLocation('');
@@ -149,8 +155,6 @@ export default function KiosksPage() {
           </button>
         </div>
       </div>
-
-      <DemoWriteModeBanner />
 
       <section className="glass-card p-5">
         <div className="flex items-start justify-between flex-wrap gap-4">
@@ -256,6 +260,16 @@ export default function KiosksPage() {
                       <p className="text-slate-200 mt-1">{formatTimestamp(kiosk.last_attendance_upload)}</p>
                     </div>
                   </div>
+                  {(kiosk.device_issues?.length || 0) > 0 && (
+                    <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
+                      <p className="text-xs text-amber-200 font-semibold">Device issues reported by the kiosk</p>
+                      <ul className="mt-1 space-y-1">
+                        {kiosk.device_issues!.map((issue) => (
+                          <li key={issue} className="text-xs text-amber-300">{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </article>
               ))}
             </div>

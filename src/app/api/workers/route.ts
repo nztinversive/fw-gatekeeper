@@ -5,15 +5,6 @@ import { api } from '../../../../convex/_generated/api';
 import { getEncodingValidationMessage, isSupportedEncoding } from '@/lib/encoding';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { unauthorizedApiResponse } from '@/lib/auth';
-import {
-  createDemoWorker,
-  deactivateDemoWorker,
-  demoWriteMetadata,
-  getDemoWorker,
-  isDemoWriteMode,
-  listDemoWorkers,
-  updateDemoWorker,
-} from '@/lib/demo-write-mode';
 
 async function requireAdmin(req: NextRequest) {
   return (await hasValidPortalSession(req, ['admin'])) ? null : unauthorizedApiResponse();
@@ -33,7 +24,7 @@ export async function GET(req: NextRequest) {
     const unauthorized = await requireWorkerRead(req);
     if (unauthorized) return unauthorized;
 
-    const worker = isDemoWriteMode() ? getDemoWorker(id) : await convex.query(api.workers.get, { id: id as any });
+    const worker = await convex.query(api.workers.get, { id: id as any });
     if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 });
     return NextResponse.json({
       id: worker.id,
@@ -53,7 +44,7 @@ export async function GET(req: NextRequest) {
     const unauthorized = await requireDashboardWorkerRead(req);
     if (unauthorized) return unauthorized;
 
-    const workers = isDemoWriteMode() ? listDemoWorkers() : await convex.query(api.workers.list, { includeEncodings: false });
+    const workers = await convex.query(api.workers.list, { includeEncodings: false });
     return NextResponse.json(workers.map((worker: any) => ({
       id: worker.id,
       name: worker.name,
@@ -70,7 +61,7 @@ export async function GET(req: NextRequest) {
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;
 
-  const workers = isDemoWriteMode() ? listDemoWorkers() : await convex.query(api.workers.list, { includeEncodings: false });
+  const workers = await convex.query(api.workers.list, { includeEncodings: false });
   return NextResponse.json(workers.map((worker: any) => ({
     id: worker.id,
     name: worker.name,
@@ -84,35 +75,6 @@ export async function GET(req: NextRequest) {
   })));
 }
 
-export async function POST(req: NextRequest) {
-  const unauthorized = await requireAdmin(req);
-  if (unauthorized) return unauthorized;
-
-  const body = await req.json();
-  const { name, employee_id, department, face_encoding } = body;
-
-  if (!name) return NextResponse.json({ error: 'Name required' }, { status: 400 });
-  if (isDemoWriteMode()) {
-    const result = createDemoWorker({ name, employee_id, department, enrolled: false });
-    return NextResponse.json({ ...result, ...demoWriteMetadata() }, { status: 201 });
-  }
-  if (!isSupportedEncoding(face_encoding)) {
-    return NextResponse.json(
-      { error: `Face enrollment required. Use /api/enroll so photos are encoded first. ${getEncodingValidationMessage('face_encoding')}` },
-      { status: 400 }
-    );
-  }
-
-  const result = await convex.mutation(api.workers.create, {
-    name,
-    employeeId: employee_id || undefined,
-    department: department || undefined,
-    faceEncoding: face_encoding,
-  });
-
-  return NextResponse.json(result, { status: 201 });
-}
-
 export async function PATCH(req: NextRequest) {
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;
@@ -123,15 +85,6 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
   if (face_encoding !== undefined && !isSupportedEncoding(face_encoding)) {
     return NextResponse.json({ error: getEncodingValidationMessage('face_encoding') }, { status: 400 });
-  }
-
-  if (isDemoWriteMode()) {
-    const result = updateDemoWorker(id, {
-      ...(name !== undefined ? { name } : {}),
-      ...(employee_id !== undefined ? { employee_id } : {}),
-      ...(department !== undefined ? { department } : {}),
-    });
-    return result ? NextResponse.json({ ok: true, worker: result }) : NextResponse.json({ error: 'Worker not found' }, { status: 404 });
   }
 
   const updates: Record<string, unknown> = { id };
@@ -150,12 +103,6 @@ export async function DELETE(req: NextRequest) {
 
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
-
-  if (isDemoWriteMode()) {
-    return deactivateDemoWorker(id)
-      ? NextResponse.json({ ok: true })
-      : NextResponse.json({ error: 'Worker not found' }, { status: 404 });
-  }
 
   await convex.mutation(api.workers.remove, { id: id as any });
   return NextResponse.json({ ok: true });

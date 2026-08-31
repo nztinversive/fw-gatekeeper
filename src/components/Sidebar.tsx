@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthActions } from '@convex-dev/auth/react';
@@ -10,6 +10,7 @@ import { api } from '../../convex/_generated/api';
 const links = [
   {
     href: '/',
+    group: 'Shift',
     label: 'Dashboard',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -19,6 +20,7 @@ const links = [
   },
   {
     href: '/briefing',
+    group: 'Shift',
     label: 'Briefing',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -29,6 +31,7 @@ const links = [
   },
   {
     href: '/log',
+    group: 'Evidence',
     label: 'Activity Log',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -38,6 +41,7 @@ const links = [
   },
   {
     href: '/exceptions',
+    group: 'Shift',
     label: 'Exceptions',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -47,6 +51,7 @@ const links = [
   },
   {
     href: '/closeout',
+    group: 'Shift',
     label: 'Closeout',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -58,6 +63,7 @@ const links = [
   },
   {
     href: '/workers',
+    group: 'Setup',
     label: 'Workers',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -67,7 +73,10 @@ const links = [
   },
   {
     href: '/enroll',
+    group: 'Setup',
     label: 'Enroll Face',
+    // Viewers cannot submit enrollments, so don't advertise the page to them.
+    roles: ['admin', 'enrollment'],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
@@ -77,6 +86,7 @@ const links = [
   },
   {
     href: '/calibration/recognition',
+    group: 'Evidence',
     label: 'Recognition Lab',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -86,16 +96,8 @@ const links = [
     ),
   },
   {
-    href: '/onboarding',
-    label: 'Onboarding Guide',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H8.25m0 12.75h7.5m-7.5 3h4.5m-6-15h3.375c.621 0 1.216.247 1.655.686l4.034 4.034c.439.439.686 1.034.686 1.655V19.5A2.25 2.25 0 0114.25 21.75h-6A2.25 2.25 0 016 19.5v-15A2.25 2.25 0 018.25 2.25z" />
-      </svg>
-    ),
-  },
-  {
     href: '/accounts',
+    group: 'Setup',
     label: 'Accounts',
     adminOnly: true,
     icon: (
@@ -106,6 +108,7 @@ const links = [
   },
   {
     href: '/kiosks',
+    group: 'Setup',
     label: 'Kiosks',
     adminOnly: true,
     icon: (
@@ -116,6 +119,7 @@ const links = [
   },
   {
     href: '/schedules',
+    group: 'Setup',
     label: 'Schedules',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -123,51 +127,64 @@ const links = [
       </svg>
     ),
   },
-  {
-    href: '/reports',
-    label: 'Reports',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-      </svg>
-    ),
-  },
 ];
 
-const primaryMobileLinks = ['/', '/workers', '/enroll'];
+// The mobile tab bar carries the supervisor loop, not admin setup tasks.
+const primaryMobileLinks = ['/', '/exceptions', '/closeout'];
+const navGroups = ['Shift', 'Evidence', 'Setup'];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const authActions = useAuthActions();
-  const demoWriteMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
-  const queriedMember = useQuery(api.portalMembers.current, demoWriteMode ? 'skip' : {});
-  const currentMember = demoWriteMode ? { role: 'admin' as const } : queriedMember;
-  const visibleLinks = links.filter((link) => !link.adminOnly || currentMember?.role === 'admin');
+  const currentMember = useQuery(api.portalMembers.current, {});
+  const visibleLinks = links.filter((link) => {
+    if (link.adminOnly && currentMember?.role !== 'admin') return false;
+    if (link.roles && !link.roles.includes(currentMember?.role ?? '')) return false;
+    return true;
+  });
   const mobilePrimaryLinks = visibleLinks.filter((link) => primaryMobileLinks.includes(link.href));
   const mobileSecondaryLinks = visibleLinks.filter((link) => !primaryMobileLinks.includes(link.href));
   const currentLink = visibleLinks.find((link) => link.href === pathname);
   const moreIsActive = mobileSecondaryLinks.some((link) => link.href === pathname);
   const [logoutError, setLogoutError] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openExceptions, setOpenExceptions] = useState(0);
+
+  // Badge the Exceptions link so supervisors see the open count without
+  // visiting the page. Refreshes each minute; failures just hide the badge.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOpenCount() {
+      try {
+        const res = await fetch('/api/shift-exceptions', { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (!cancelled) setOpenExceptions(Number(body?.summary?.open) || 0);
+      } catch {
+        // Leave the last known count in place.
+      }
+    }
+    loadOpenCount();
+    const interval = setInterval(loadOpenCount, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [pathname]);
+
+  function badgeFor(href: string) {
+    return href === '/exceptions' && openExceptions > 0 ? openExceptions : null;
+  }
 
   async function handleLogout() {
     setLogoutError('');
 
-    let legacyLogoutOk = false;
     try {
-      const legacyLogout = await fetch('/api/auth/logout', { method: 'POST' });
-      legacyLogoutOk = legacyLogout.ok;
       if (authActions?.signOut) {
         await authActions.signOut();
       }
     } catch {
-      setLogoutError('Sign out failed. Please try again.');
-      router.refresh();
-      return;
-    }
-
-    if (!legacyLogoutOk) {
       setLogoutError('Sign out failed. Please try again.');
       router.refresh();
       return;
@@ -191,47 +208,51 @@ export default function Sidebar() {
             </div>
             <div>
               <h1 className="text-base font-display font-bold text-slate-100 tracking-tight">
-                <span className="text-gold">FW</span> Gateway
+                <span className="text-gold">FW</span> Gatekeeper
               </h1>
               <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Command Center</p>
             </div>
           </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          <p className="section-label px-3 mb-2">Navigation</p>
-          {visibleLinks.map((l) => {
-            const isActive = pathname === l.href;
+        {/* Navigation, grouped by the shift-trust loop */}
+        <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+          {navGroups.map((group) => {
+            const groupLinks = visibleLinks.filter((l) => l.group === group);
+            if (groupLinks.length === 0) return null;
             return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
-                  isActive
-                    ? 'bg-gold/10 text-gold border border-gold/15 shadow-sm shadow-gold/5'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-navy-700/50 border border-transparent'
-                }`}
-              >
-                <span className={`transition-colors ${isActive ? 'text-gold' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                  {l.icon}
-                </span>
-                {l.label}
-                {isActive && (
-                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-gold animate-pulse-slow" />
-                )}
-              </Link>
+              <div key={group} className="space-y-0.5">
+                <p className="section-label px-3 mb-2">{group}</p>
+                {groupLinks.map((l) => {
+                  const isActive = pathname === l.href;
+                  const badge = badgeFor(l.href);
+                  return (
+                    <Link
+                      key={l.href}
+                      href={l.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group ${
+                        isActive
+                          ? 'bg-gold/10 text-gold border border-gold/15 shadow-sm shadow-gold/5'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-navy-700/50 border border-transparent'
+                      }`}
+                    >
+                      <span className={`transition-colors ${isActive ? 'text-gold' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                        {l.icon}
+                      </span>
+                      {l.label}
+                      {badge !== null && (
+                        <span className="ml-auto min-w-[1.4rem] rounded-full bg-red-400/15 px-1.5 py-0.5 text-center text-[11px] font-semibold text-red-300">
+                          {badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>
-
-        {/* Status indicator */}
-        <div className="px-4 py-3 mx-3 mb-3 glass-card rounded-xl">
-          <div className="flex items-center gap-2">
-            <span className="status-dot-pulse bg-emerald-400" />
-            <span className="text-xs font-mono text-slate-400">System Online</span>
-          </div>
-        </div>
 
         {/* Logout */}
         <div className="p-3 border-t border-navy-600/40">
@@ -262,7 +283,7 @@ export default function Sidebar() {
               </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">FW Gateway</p>
+              <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">FW Gatekeeper</p>
               <h1 className="text-base font-display font-semibold text-slate-100 truncate">
                 {currentLink?.label ?? 'Command Center'}
               </h1>
@@ -297,14 +318,11 @@ export default function Sidebar() {
           />
           <div
             id="mobile-more-menu"
-            className="absolute left-3 right-3 bottom-24 rounded-3xl border border-navy-600/60 bg-navy-900/95 p-3 shadow-2xl shadow-black/40"
+            className="absolute left-3 right-3 bottom-24 max-h-[65vh] overflow-y-auto rounded-3xl border border-navy-600/60 bg-navy-900/95 p-3 shadow-2xl shadow-black/40"
           >
-            <div className="flex items-center justify-between px-2 pb-2">
-              <div>
-                <p className="section-label">More pages</p>
-                <p className="text-xs text-slate-500">Secondary tools stay here instead of crowding the bottom bar.</p>
-              </div>
-              <span className="status-dot-pulse bg-emerald-400" />
+            <div className="px-2 pb-2">
+              <p className="section-label">More pages</p>
+              <p className="text-xs text-slate-500">Secondary tools stay here instead of crowding the bottom bar.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {mobileSecondaryLinks.map((l) => {
@@ -314,6 +332,7 @@ export default function Sidebar() {
                     key={l.href}
                     href={l.href}
                     onClick={() => setMobileMenuOpen(false)}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-sm font-medium transition-colors ${
                       isActive
                         ? 'border-gold/25 bg-gold/10 text-gold'
@@ -354,11 +373,19 @@ export default function Sidebar() {
             <Link
               key={l.href}
               href={l.href}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-medium transition-colors ${
                 isActive ? 'text-gold' : 'text-slate-500'
               }`}
             >
-              <span className={isActive ? 'text-gold' : 'text-slate-500'}>{l.icon}</span>
+              <span className="relative">
+                <span className={isActive ? 'text-gold' : 'text-slate-500'}>{l.icon}</span>
+                {badgeFor(l.href) !== null && (
+                  <span className="absolute -right-2.5 -top-1.5 min-w-[1.1rem] rounded-full bg-red-400/90 px-1 text-center text-[10px] font-bold leading-4 text-navy-950">
+                    {badgeFor(l.href)}
+                  </span>
+                )}
+              </span>
               <span className="max-w-full truncate">{l.label.replace(' Face', '')}</span>
             </Link>
           );

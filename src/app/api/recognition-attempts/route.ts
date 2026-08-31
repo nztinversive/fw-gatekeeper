@@ -12,7 +12,6 @@ import {
 } from '@/lib/types';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
-import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 const LOW_MARGIN_THRESHOLD = 0.08;
 
@@ -145,8 +144,6 @@ export async function GET(req: NextRequest) {
     return unauthorizedApiResponse();
   }
 
-  if (isDemoWriteMode()) return NextResponse.json({ ...emptyResponse(), ...demoWriteMetadata() });
-
   try {
     const searchParams = req.nextUrl.searchParams;
     const reviewStatus = optionalString(searchParams.get('review_status'));
@@ -223,9 +220,6 @@ export async function PATCH(req: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
     const reviewStatus = optionalString(body.review_status) || optionalString(body.reviewStatus) || 'confirmed';
-    if (isDemoWriteMode()) {
-      return NextResponse.json({ ok: true, id, review_status: reviewStatus, ...demoWriteMetadata() });
-    }
     const result = await convex.mutation((api as any).recognitionAttempts.updateReview, {
       id: id as any,
       reviewed: reviewStatus !== 'unreviewed',

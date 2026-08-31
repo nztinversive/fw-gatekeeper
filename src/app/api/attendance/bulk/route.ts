@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ingestAttendanceBatch } from '@/lib/convex-ingest';
-import { isDemoWriteMode } from '@/lib/demo-write-mode';
 
 export async function POST(req: NextRequest) {
   try {
-    if (isDemoWriteMode()) {
-      return NextResponse.json(
-        { error: 'Attendance sync is disabled in local demo mode.' },
-        { status: 409 },
-      );
-    }
     const body = await req.json();
     const events = body.events || body.logs;
     const bulkKioskId = body.kiosk_id;

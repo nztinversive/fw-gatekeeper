@@ -4,7 +4,7 @@
 #  Target: Raspberry Pi 3B/4/5 with Raspberry Pi OS (64-bit)
 #
 #  Usage:
-#    sudo KIOSK_ID=kiosk-entry-1 KIOSK_NAME="Main Entry" ./setup.sh
+#    sudo KIOSK_ID=kiosk-entry-1 KIOSK_NAME="Main Entry" bash setup.sh
 #
 #  Environment variables:
 #    KIOSK_ID     Unique kiosk identifier (default: kiosk-1)
@@ -14,6 +14,9 @@
 #    KIOSK_API_KEY Shared secret for kiosk API access (required in production)
 #    KIOSK_UI_KEY  Local secret for protected kiosk web routes (required)
 #    KIOSK_SUPERVISOR_PIN  Supervisor-only passcode for manual attendance (required)
+#    ENABLE_LIVENESS  Set to 1 to download the 97MB dlib shape predictor used
+#                     for blink verification (default: skip; liveness is off
+#                     by default via config.LIVENESS_REQUIRED = False)
 # ═══════════════════════════════════════════════════════════════
 
 set -eo pipefail
@@ -41,7 +44,7 @@ echo "╚═══════════════════════�
 echo ""
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "❌ Run with sudo: sudo KIOSK_ID=$KIOSK_ID ./setup.sh"
+  echo "❌ Run with sudo: sudo KIOSK_ID=$KIOSK_ID bash setup.sh"
   exit 1
 fi
 
@@ -85,7 +88,11 @@ mkdir -p "$INSTALL_DIR"
 
 # Clone or update repo
 if [ -d "$INSTALL_DIR/.git" ]; then
-  cd "$INSTALL_DIR" && git pull origin master
+  cd "$INSTALL_DIR"
+  # Older setup.sh versions appended a config_local import to the tracked
+  # config.py; restore it so the pull doesn't fail on a dirty tree.
+  git checkout -- pi-kiosk/config.py 2>/dev/null || true
+  git pull origin master
 else
   git clone https://github.com/nztinversive/fw-gatekeeper.git "$INSTALL_DIR"
 fi
@@ -101,14 +108,24 @@ python3 -m venv venv --system-site-packages
 echo "[4/8] Downloading face models..."
 mkdir -p data/models
 
-# dlib shape predictor (for liveness blink detection)
-if [ ! -f "data/models/shape_predictor_68_face_landmarks.dat" ]; then
-  echo "  Downloading shape predictor (97MB)..."
-  wget -q "https://github.com/italojs/facial-landmarks-recognition/raw/master/shape_predictor_68_face_landmarks.dat" \
-    -O data/models/shape_predictor_68_face_landmarks.dat
-  echo "  ✅ Shape predictor downloaded"
+# dlib shape predictor (only needed for blink liveness, which is off by
+# default — config.LIVENESS_REQUIRED defaults to False). Skip the 97MB
+# download unless the installer opts in.
+ENABLE_LIVENESS="${ENABLE_LIVENESS:-0}"
+if [ "$ENABLE_LIVENESS" = "1" ]; then
+  if [ ! -f "data/models/shape_predictor_68_face_landmarks.dat" ]; then
+    echo "  Downloading shape predictor (97MB)..."
+    wget -q "https://github.com/italojs/facial-landmarks-recognition/raw/master/shape_predictor_68_face_landmarks.dat" \
+      -O data/models/shape_predictor_68_face_landmarks.dat
+    echo "  ✅ Shape predictor downloaded"
+  else
+    echo "  ✅ Shape predictor already exists"
+  fi
 else
-  echo "  ✅ Shape predictor already exists"
+  echo "  ⏭  Skipping 97MB dlib shape predictor (blink liveness is off by default)."
+  echo "     To enable liveness later: rerun setup with ENABLE_LIVENESS=1 (or wget the"
+  echo "     model to data/models/shape_predictor_68_face_landmarks.dat), then set"
+  echo "     LIVENESS_REQUIRED = True in config_local.py and restart the kiosk service."
 fi
 
 mkdir -p data/faces
@@ -125,19 +142,9 @@ KIOSK_API_KEY = "$KIOSK_API_KEY"
 KIOSK_UI_KEY = "$KIOSK_UI_KEY"
 KIOSK_SUPERVISOR_PIN = "$KIOSK_SUPERVISOR_PIN"
 CONFEOF
-
-# Patch config.py to load local overrides. Keep this out of the tracked source
-# file so existing installed repos with the generated block can still pull.
-if ! grep -q "config_local" config.py; then
-  cat >> config.py << 'PATCHEOF'
-
-# Load local overrides if present
-try:
-    from config_local import *  # noqa: F401, F403
-except ImportError:
-    pass
-PATCHEOF
-fi
+chmod 600 config_local.py
+# Note: config.py imports config_local itself — never mutate tracked files
+# here, or `git pull` upgrades fail on a dirty tree.
 
 # ─── 6. Systemd Services ───────────────────────────────────────
 echo "[6/8] Installing systemd services..."
@@ -148,6 +155,8 @@ cat > /etc/systemd/system/fw-gatekeeper-kiosk.service << EOF
 Description=FW Gatekeeper Kiosk ($KIOSK_NAME)
 After=network-online.target
 Wants=network-online.target
+# Restart forever: never rate-limit restarts of the door scanner.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -159,7 +168,6 @@ ExecStart=$INSTALL_DIR/pi-kiosk/venv/bin/python main.py \\
   --camera auto
 Restart=always
 RestartSec=5
-StartLimitBurst=0
 Environment=PYTHONUNBUFFERED=1
 StandardOutput=journal
 StandardError=journal
@@ -242,20 +250,37 @@ ExecStart=
 ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
 EOF
 
-# GPU memory split — give enough for Chromium rendering
-CONFIG="/boot/config.txt"
-if [ -f "$CONFIG" ] && ! grep -q "gpu_mem=" "$CONFIG"; then
-  echo "gpu_mem=128" >> "$CONFIG"
+# Boot files live in /boot/firmware/ on Raspberry Pi OS Bookworm and later;
+# older releases keep them in /boot/. Resolve the real location so the edits
+# below don't silently no-op on Bookworm.
+BOOT_DIR="/boot/firmware"
+if [ ! -f "$BOOT_DIR/config.txt" ]; then
+  BOOT_DIR="/boot"
+fi
+
+# GPU memory split — give enough for browser rendering
+CONFIG="$BOOT_DIR/config.txt"
+if [ -f "$CONFIG" ]; then
+  if ! grep -q "gpu_mem=" "$CONFIG"; then
+    echo "gpu_mem=128" >> "$CONFIG"
+  fi
+else
+  echo "⚠️  Could not find config.txt in /boot/firmware or /boot; skipping gpu_mem setting."
 fi
 
 # ─── 8. Permissions & Cleanup ──────────────────────────────────
 echo "[8/8] Setting permissions..."
 chown -R "$KIOSK_USER:$KIOSK_USER" "$INSTALL_DIR"
 
-# Disable screen blanking
-CMDLINE="/boot/cmdline.txt"
-if [ -f "$CMDLINE" ] && ! grep -q "consoleblank=0" "$CMDLINE"; then
-  sed -i 's/$/ consoleblank=0/' "$CMDLINE"
+# Disable console screen blanking so the kiosk display never goes dark
+CMDLINE="$BOOT_DIR/cmdline.txt"
+if [ -f "$CMDLINE" ]; then
+  if ! grep -q "consoleblank=0" "$CMDLINE"; then
+    sed -i 's/$/ consoleblank=0/' "$CMDLINE"
+  fi
+else
+  echo "⚠️  Could not find cmdline.txt in /boot/firmware or /boot; screen blanking was NOT disabled."
+  echo "    Add 'consoleblank=0' to the kernel command line manually."
 fi
 
 echo ""

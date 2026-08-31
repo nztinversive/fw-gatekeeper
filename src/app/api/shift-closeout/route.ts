@@ -6,7 +6,6 @@ import { unauthorizedApiResponse } from '@/lib/auth';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
-import { demoWriteMetadata, getDemoCloseout, isDemoWriteMode, saveDemoCloseout } from '@/lib/demo-write-mode';
 
 const VALID_ACTIONS = new Set(['save', 'complete', 'reopen']);
 
@@ -73,17 +72,6 @@ function emptyResponse(date: string) {
   };
 }
 
-function withDemoCloseout(payload: any, date: string) {
-  if (!isDemoWriteMode()) return payload;
-  const demoCloseout = getDemoCloseout(date);
-  if (!demoCloseout) return payload;
-  return {
-    ...payload,
-    closeout: demoCloseout,
-    ...demoWriteMetadata(),
-  };
-}
-
 export async function GET(req: NextRequest) {
   if (!(await hasValidPortalSession(req, ['admin', 'enrollment', 'viewer']))) {
     return unauthorizedApiResponse();
@@ -93,21 +81,12 @@ export async function GET(req: NextRequest) {
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
-  if (isDemoWriteMode()) {
-    return NextResponse.json(withDemoCloseout({
-      ...emptyResponse(date),
-      can_complete: true,
-      backend_unavailable: false,
-      ...demoWriteMetadata(),
-    }, date));
-  }
-
   try {
     const payload = await convex.query((api as any).shiftCloseouts.get, { date });
-    return NextResponse.json(withDemoCloseout(payload, date));
+    return NextResponse.json(payload);
   } catch (error) {
     if (isMissingConvexFunction(error)) {
-      return NextResponse.json(withDemoCloseout(emptyResponse(date), date));
+      return NextResponse.json(emptyResponse(date));
     }
     console.error('Shift closeout GET error:', error);
     return NextResponse.json({ error: 'Failed to fetch shift closeout' }, { status: 500 });
@@ -132,17 +111,6 @@ export async function PATCH(req: NextRequest) {
     }
     if (!VALID_ACTIONS.has(action)) {
       return NextResponse.json({ error: 'action must be save, complete, or reopen' }, { status: 400 });
-    }
-
-    if (isDemoWriteMode()) {
-      const result = saveDemoCloseout({
-        date,
-        action: action as 'save' | 'complete' | 'reopen',
-        supervisorName: optionalString(body.supervisor_name) || optionalString(body.supervisorName),
-        notes: optionalString(body.notes),
-        acknowledgedBlockers: Boolean(body.acknowledged_blockers ?? body.acknowledgedBlockers),
-      });
-      return NextResponse.json({ ok: true, closeout: result, ...demoWriteMetadata() });
     }
 
     const result = await convex.mutation((api as any).shiftCloseouts.save, {

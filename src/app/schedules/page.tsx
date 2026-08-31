@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Schedule } from '@/lib/types';
 import { useToast } from '@/components/Toast';
-import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
+import { usePortalRole } from '@/hooks/usePortalRole';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -18,22 +18,47 @@ export default function SchedulesPage() {
   const [endTime, setEndTime] = useState('14:30');
   const [department, setDepartment] = useState('');
   const [departments, setDepartments] = useState<string[]>([]);
+  const currentRole = usePortalRole();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const canEdit = currentRole === 'admin';
 
   const fetchSchedules = useCallback(async () => {
-    const res = await fetch('/api/schedules');
-    const body = await res.json().catch(() => []);
-    setSchedules(Array.isArray(body) ? body : []);
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/schedules');
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? 'Your account does not have access to schedules.' : 'Failed to load schedules');
+      }
+      const body = await res.json().catch(() => []);
+      setSchedules(Array.isArray(body) ? body : []);
+    } catch (err) {
+      setSchedules([]);
+      setError(err instanceof Error ? err.message : 'Failed to load schedules');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const fetchDepartments = useCallback(async () => {
-    const res = await fetch('/api/workers');
-    const body = await res.json().catch(() => []);
-    const workers = Array.isArray(body) ? body : [];
-    const depts = [...new Set(workers.map((w: { department: string }) => w.department))] as string[];
-    setDepartments(depts.filter(Boolean).sort());
+    try {
+      const res = await fetch('/api/workers');
+      if (!res.ok) return;
+      const body = await res.json().catch(() => []);
+      const workers = Array.isArray(body) ? body : [];
+      const depts = [...new Set(workers.map((w: { department: string }) => w.department))] as string[];
+      setDepartments(depts.filter(Boolean).sort());
+    } catch {
+      // Department dropdown stays empty; the form still works without it.
+    }
   }, []);
 
-  useEffect(() => { fetchSchedules(); fetchDepartments(); }, [fetchSchedules, fetchDepartments]);
+  useEffect(() => { fetchSchedules(); }, [fetchSchedules]);
+
+  useEffect(() => {
+    if (canEdit) fetchDepartments();
+  }, [canEdit, fetchDepartments]);
 
   const toggleDay = (d: number) => {
     setDays((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort());
@@ -72,12 +97,12 @@ export default function SchedulesPage() {
         const res = await fetch('/api/schedules', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const responseBody = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(responseBody?.error || 'Failed to update schedule');
-        toast(responseBody?.demo_write ? `Demo schedule "${name}" updated locally` : `Schedule "${name}" updated`);
+        toast(`Schedule "${name}" updated`);
       } else {
         const res = await fetch('/api/schedules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const responseBody = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(responseBody?.error || 'Failed to create schedule');
-        toast(responseBody?.demo_write ? `Demo schedule "${name}" created locally` : `Schedule "${name}" created`);
+        toast(`Schedule "${name}" created`);
       }
 
       resetForm();
@@ -93,7 +118,7 @@ export default function SchedulesPage() {
       const res = await fetch(`/api/schedules?id=${id}`, { method: 'DELETE' });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || 'Failed to delete schedule');
-      toast(body?.demo_write ? 'Demo schedule removed locally' : 'Schedule deleted');
+      toast('Schedule deleted');
       fetchSchedules();
     } catch {
       toast('Failed to delete schedule', 'error');
@@ -116,27 +141,31 @@ export default function SchedulesPage() {
             Work <span className="text-gold">Schedules</span>
           </h1>
           <p className="text-sm text-slate-500 mt-1 font-mono">{schedules.length} active schedules</p>
-        </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(!showForm); }}
-          className={showForm ? 'btn-secondary' : 'btn-primary flex items-center gap-2'}
-        >
-          {showForm ? 'Cancel' : (
-            <>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              New Schedule
-            </>
+          {!canEdit && (
+            <p className="mt-2 flex items-center gap-2">
+              <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review-only</span>
+              <span className="text-xs text-slate-500">Managing schedules requires an admin account.</span>
+            </p>
           )}
-        </button>
+        </div>
+        {canEdit && (
+          <button
+            onClick={() => { resetForm(); setShowForm(!showForm); }}
+            className={showForm ? 'btn-secondary' : 'btn-primary flex items-center gap-2'}
+          >
+            {showForm ? 'Cancel' : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New Schedule
+              </>
+            )}
+          </button>
+        )}
       </div>
 
-      <div className="mb-6">
-        <DemoWriteModeBanner />
-      </div>
-
-      {showForm && (
+      {canEdit && showForm && (
         <div className="glass-card p-6 mb-8 space-y-5 animate-slide-up">
           <h2 className="font-display font-semibold text-gold flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -219,7 +248,15 @@ export default function SchedulesPage() {
         </div>
       )}
 
-      {schedules.length === 0 ? (
+      {error && (
+        <div role="alert" className="mb-6 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="glass-card p-6 text-sm text-slate-400">Loading schedules...</div>
+      ) : error ? null : schedules.length === 0 ? (
         <div className="glass-card p-12 text-center">
           <svg className="w-12 h-12 text-slate-600 mx-auto mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
@@ -253,14 +290,22 @@ export default function SchedulesPage() {
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
-                <button onClick={() => handleEdit(s)} className="btn-ghost text-xs">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                  </svg>
-                </button>
-                <button onClick={() => handleDelete(s.id)} className="px-3 py-1.5 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
-                  Delete
-                </button>
+                {canEdit ? (
+                  <>
+                    <button onClick={() => handleEdit(s)} className="btn-ghost text-xs">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                      </svg>
+                    </button>
+                    <button onClick={() => handleDelete(s.id)} className="px-3 py-1.5 text-xs rounded-xl bg-red-400/5 border border-red-400/10 text-red-400 hover:bg-red-400/10 transition-all">
+                      Delete
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="btn-secondary text-xs" disabled>
+                    Review-only
+                  </button>
+                )}
               </div>
             </div>
           ))}

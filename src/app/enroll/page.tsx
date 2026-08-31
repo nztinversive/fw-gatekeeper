@@ -3,10 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import {
-  EmployeeDirectoryEntry,
-  searchEmployeeDirectory,
-} from '@/lib/employee-directory';
+// Type-only import: the directory data itself stays server-side (served via
+// /api/employee-directory) so the roster never ships in the client bundle.
+import type { EmployeeDirectoryEntry } from '@/lib/employee-directory';
+import { usePortalRole } from '@/hooks/usePortalRole';
 
 type Step = 'name' | 'camera' | 'capturing' | 'processing' | 'done' | 'error';
 
@@ -14,6 +14,7 @@ const CAPTURES_REQUIRED = 3;
 const CAPTURE_INTERVAL_MS = 1500;
 
 function EnrollPageContent() {
+  const currentRole = usePortalRole();
   const searchParams = useSearchParams();
   const workerId = searchParams.get('worker_id') || '';
   const [step, setStep] = useState<Step>('name');
@@ -35,11 +36,35 @@ function EnrollPageContent() {
   const employeeIdRef = useRef(employeeId);
   const departmentRef = useRef(department);
   const workerIdRef = useRef(workerId);
-  const suggestions = workerId ? [] : searchEmployeeDirectory(name);
+  const [suggestions, setSuggestions] = useState<EmployeeDirectoryEntry[]>([]);
   nameRef.current = name;
   employeeIdRef.current = employeeId;
   departmentRef.current = department;
   workerIdRef.current = workerId;
+
+  useEffect(() => {
+    if (workerId || !name.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/employee-directory?q=${encodeURIComponent(name.trim())}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const body = await res.json();
+        setSuggestions(Array.isArray(body?.suggestions) ? body.suggestions : []);
+      } catch {
+        // Keep the previous suggestions on transient failures.
+      }
+    }, 200);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [name, workerId]);
 
   const selectEmployee = (employee: EmployeeDirectoryEntry) => {
     setName(employee.name);
@@ -210,6 +235,30 @@ function EnrollPageContent() {
     captureTimerRef.current = setTimeout(doCapture, 500);
   }, [captureFrame]);
 
+  // Viewers cannot submit enrollments (the API rejects them), so stop them
+  // here instead of letting them capture photos that will 401 on save.
+  if (currentRole !== undefined && currentRole !== 'admin' && currentRole !== 'enrollment') {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center p-4 animate-fade-in">
+        <div className="glass-card w-full max-w-md px-6 py-8 text-center">
+          <h1 className="page-title text-slate-100">
+            Face <span className="text-gold">Enrollment</span>
+          </h1>
+          <p className="mt-3 flex items-center justify-center gap-2">
+            <span className="badge border border-slate-400/15 bg-slate-400/5 text-[10px] text-slate-300">Review-only</span>
+          </p>
+          <p className="mt-3 text-sm text-slate-400">
+            Enrolling or updating face data requires an admin or enrollment account. Ask an
+            administrator to enroll this worker, or to upgrade your account role.
+          </p>
+          <Link href="/workers" className="btn-secondary mt-6 inline-flex items-center gap-2">
+            Back to Workers
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // Step: Enter Name
   if (step === 'name') {
     return (
@@ -227,6 +276,37 @@ function EnrollPageContent() {
             </h1>
             <p className="text-slate-400 mt-2 text-sm">{workerId ? 'Update face data for an existing team member' : 'Add a new team member to the gatekeeper system'}</p>
           </div>
+
+          <details className="glass-card mb-4 px-5 py-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-300">
+              Enrollment tips &amp; troubleshooting
+            </summary>
+            <div className="mt-3 space-y-3 text-sm text-slate-400">
+              <div>
+                <p className="font-semibold text-slate-300">Good photos make good recognition</p>
+                <ul className="mt-1 list-disc pl-5 space-y-1">
+                  <li>Face the camera straight on, in even lighting — no hats, sunglasses, or masks.</li>
+                  <li>Fill the frame with the face; avoid strong backlight from windows.</li>
+                  <li>Capture 2–3 photos with slightly different expressions.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-300">After enrolling</p>
+                <ul className="mt-1 list-disc pl-5 space-y-1">
+                  <li>Kiosks pull new workers on their next sync cycle (about 30 seconds).</li>
+                  <li>Check the Workers page — the worker should show “Face enrolled”.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-300">If the kiosk doesn’t recognize someone</p>
+                <ul className="mt-1 list-disc pl-5 space-y-1">
+                  <li>Re-enroll from the Workers page with better lighting.</li>
+                  <li>Review low-confidence scans in the Recognition Lab.</li>
+                  <li>Confirm the kiosk shows online on the Kiosks page.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
 
           <div className="glass-card p-6 space-y-5">
             <div className="relative">

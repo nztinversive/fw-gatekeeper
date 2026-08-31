@@ -34,8 +34,6 @@ assert.match(schema, /\.index\("by_kiosk_reviewed_timestamp",\s*\["kioskId",\s*"
 assert.doesNotMatch(attempts, /export const bulkIngest\s*=\s*mutation/, 'Recognition bulk ingest must not remain publicly callable.');
 assert.match(attempts, /export const listByDate\s*=\s*query/, 'Recognition attempts must expose listByDate query.');
 assert.match(attempts, /export const getById\s*=\s*query/, 'Recognition attempts must expose exact attempt lookup for source handoffs.');
-assert.match(attempts, /export const listRange\s*=\s*internalQuery/, 'Recognition range lookup must be internal-only.');
-assert.match(attempts, /export const listForReview\s*=\s*internalQuery/, 'Recognition review backlog lookup must be internal-only.');
 assert.match(attempts, /export const updateReview\s*=\s*mutation/, 'Recognition attempts must expose updateReview mutation.');
 assert.match(attempts, /const reviewed = attempt\.reviewed \?\? false/, 'Bulk ingest should default attempts to unreviewed.');
 assert.match(attempts, /bestScore[\s\S]*secondBestScore[\s\S]*bestScore - attempt\.secondBestScore/, 'Bulk ingest should derive scoreMargin from best and second-best scores.');
@@ -60,7 +58,7 @@ assert.match(apiRoute, /const attemptMatches = !attemptId \|\| attempt\.id === a
 assert.match(apiRoute, /const decisionMatches =\s*attemptId \|\|/, 'Exact attempt links should not be hidden by decision filters.');
 assert.match(apiRoute, /const confidenceMatches =\s*attemptId \|\|/, 'Exact attempt links should not be hidden by confidence filters.');
 assert.match(page, /RecognitionCalibrationLab/, 'Recognition calibration page must render the lab component.');
-assert.match(lab, /\/api\/portal-role/, 'Recognition Lab should resolve portal role before exposing review write controls.');
+assert.match(lab, /usePortalRole|portalMembers\.current/, 'Recognition Lab should resolve portal role before exposing review write controls.');
 assert.match(lab, /function canOperateRecognition/, 'Recognition Lab should centralize write-role checks.');
 assert.match(lab, /return role === 'admin' \|\| role === 'enrollment'/, 'Recognition Lab writes should remain limited to admin and enrollment roles.');
 assert.match(lab, /if \(!canOperate\)[\s\S]*Only admin or enrollment roles can update recognition reviews/, 'Recognition review mutations should be guarded client-side for read-only roles.');

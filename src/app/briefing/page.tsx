@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { getLocalDateString } from '@/lib/date';
+import { usePortalRole } from '@/hooks/usePortalRole';
 import {
   DepartmentCoverageStatus,
   ShiftBriefingActionItem,
@@ -210,7 +211,7 @@ function ShiftBriefingPageContent() {
   const queryDate = validDateParam(searchParams.get('date')) || getLocalDateString();
   const queryDepartment = searchParams.get('department') || 'all';
   const queryStatus = validWorkerStatusParam(searchParams.get('status'));
-  const [currentRole, setCurrentRole] = useState<PortalRole | undefined>();
+  const currentRole = usePortalRole();
   const [date, setDate] = useState(queryDate);
   const [payload, setPayload] = useState<ShiftBriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,23 +224,6 @@ function ShiftBriefingPageContent() {
     setDepartment(queryDepartment);
     setStatus(queryStatus);
   }, [queryDate, queryDepartment, queryStatus]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/portal-role', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        if (!cancelled && typeof payload?.role === 'string') {
-          setCurrentRole(payload.role);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCurrentRole(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const fetchBriefing = useCallback(async () => {
     setLoading(true);

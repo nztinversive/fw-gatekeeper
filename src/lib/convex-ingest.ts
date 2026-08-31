@@ -1,13 +1,6 @@
 const INGEST_TIMEOUT_MS = 10_000;
 
-function assertProductionIngestAllowed() {
-  if (process.env.NODE_ENV !== 'production' && process.env.FW_DEMO_WRITE_MODE === '1') {
-    throw new Error('Secured Convex ingest is disabled in local demo mode.');
-  }
-}
-
 function getConvexIngestBaseUrl() {
-  assertProductionIngestAllowed();
   const configuredUrl = process.env.CONVEX_INGEST_URL?.trim();
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 
@@ -72,10 +65,22 @@ export function ingestRecognitionAttemptBatch(attempts: unknown[]) {
   );
 }
 
-export function updateKioskLastSync(kioskId: string, lastSync: string) {
+export type KioskHealthReport = {
+  cameraOk?: boolean;
+  modelOk?: boolean;
+  livenessAvailable?: boolean;
+  knownWorkers?: number;
+  queuedLogs?: number;
+  queuedAttempts?: number;
+  degradedReason?: string;
+  lastScanAt?: string;
+};
+
+export function updateKioskLastSync(kioskId: string, lastSync: string, health?: KioskHealthReport) {
   return postSecuredIngest<{ updated: boolean }>('/api/ingest/kiosks/last-sync', {
     kioskId,
     lastSync,
+    ...(health ? { health } : {}),
   });
 }
 

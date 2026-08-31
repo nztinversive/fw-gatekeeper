@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FW Gateway Kiosk</title>
+    <title>FW Gatekeeper Kiosk</title>
     <style>
         :root {
             --bg-0: #0c0c0d;
@@ -137,36 +137,52 @@
             display: block;
         }
 
+        /* Worker-facing result banner: large, wrapping, readable from a few
+           feet away. Engineering metadata lives behind supervisor mode. */
         .status-card {
             background: var(--bg-2);
             border: 1px solid var(--line);
-            border-left: 4px solid var(--gold);
+            border-left: 6px solid var(--gold);
             border-radius: 10px;
-            padding: 10px 12px;
+            padding: 14px 18px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
             overflow: hidden;
         }
 
-        .status-label {
-            color: var(--muted);
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06rem;
-            white-space: nowrap;
+        .status-glyph {
+            font-size: clamp(2rem, 6vw, 4rem);
+            font-weight: 700;
+            line-height: 1;
             flex-shrink: 0;
+            min-width: 1em;
+            text-align: center;
+        }
+
+        .status-glyph:empty {
+            display: none;
         }
 
         .status-text {
-            font-size: clamp(0.95rem, 1.8vw, 1.2rem);
+            font-size: clamp(1.5rem, 4.5vw, 3.2rem);
             font-weight: 700;
-            line-height: 1.1;
+            line-height: 1.15;
             flex: 1;
             min-width: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow-wrap: break-word;
+            text-wrap: balance;
+        }
+
+        /* Debug strip is supervisor-only: workers should never read EAR or
+           roster counts off the door screen. */
+        .status-meta {
+            display: none;
+        }
+
+        body.supervisor-mode .status-meta {
+            display: flex;
         }
 
         .admin-controls {
@@ -182,7 +198,6 @@
         .status-meta {
             color: var(--muted);
             font-size: 0.76rem;
-            display: flex;
             gap: 8px;
             flex-wrap: nowrap;
             min-width: 0;
@@ -474,7 +489,7 @@
 <body>
     <header class="header">
         <div class="title">
-            <h1>FW GATEWAY</h1>
+            <h1>FW GATEKEEPER</h1>
             <p id="kioskName">{{ kiosk_name }} ({{ kiosk_type }})</p>
         </div>
         <div class="clock-wrap">
@@ -489,7 +504,7 @@
                 <img src="/feed" alt="Live camera feed">
             </div>
             <div class="status-card">
-                <div class="status-label">Live Status</div>
+                <div id="statusGlyph" class="status-glyph" aria-hidden="true"></div>
                 <div id="statusText" class="status-text">Step toward camera</div>
                 <div class="status-meta">
                     <span id="stateValue">State: IDLE</span>
@@ -533,12 +548,14 @@
     </dialog>
 
     <footer class="footer">
-        <span>Blink verification required before recognition</span>
+        <span id="livenessNote"></span>
+        <span id="syncChip"></span>
         <span id="lastUpdated">Last update: --</span>
     </footer>
 
     <script>
         const statusText = document.getElementById("statusText");
+        const statusGlyph = document.getElementById("statusGlyph");
         const statusCard = document.querySelector(".status-card");
         const stateValue = document.getElementById("stateValue");
         const workerIdValue = document.getElementById("workerIdValue");
@@ -558,6 +575,8 @@
         const supervisorCancel = document.getElementById("supervisorCancel");
         const adminPanel = document.getElementById("adminPanel");
         const lastUpdated = document.getElementById("lastUpdated");
+        const livenessNote = document.getElementById("livenessNote");
+        const syncChip = document.getElementById("syncChip");
         let adminVisible = false;
         let supervisorStateVersion = 0;
 
@@ -579,6 +598,7 @@
         function statusMessageFromState(state, message, name, action) {
             if (message) return message;
             if (state === "WAITING_FOR_BLINK") return "Blink to verify";
+            if (state === "SERVICE_DEGRADED") return "Scanner unavailable - please use the sign-in sheet";
             if (state === "FACE_DETECTED") return "Face detected";
             if (state === "MATCHED") return name ? `Welcome, ${name}!` : "Face matched";
             if (state === "CLOCKED_IN") {
@@ -593,17 +613,25 @@
             const normalizedState = state || "IDLE";
             let borderColor = "#b8860b";
             let textColor = "";
+            // Glyph gives a color-independent success/failure signal.
+            let glyph = "";
 
             if (normalizedState === "CLOCKED_IN" || normalizedState === "ALREADY_CLOCKED") {
                 borderColor = "#2fa36b";
                 textColor = "#2fa36b";
-            } else if (normalizedState === "NOT_RECOGNIZED") {
+                glyph = "✓";
+            } else if (normalizedState === "NOT_RECOGNIZED" || normalizedState === "SERVICE_DEGRADED" || normalizedState === "ERROR") {
                 borderColor = "#bf4934";
                 textColor = "#bf4934";
+                glyph = "✗";
+            } else if (normalizedState === "WAITING_FOR_BLINK") {
+                glyph = "👁";
             }
 
             statusCard.style.borderLeftColor = borderColor;
             statusText.style.color = textColor;
+            statusGlyph.textContent = glyph;
+            statusGlyph.style.color = textColor || borderColor;
         }
 
         function setAdminVisible(visible) {
@@ -611,6 +639,7 @@
             adminVisible = visible;
             adminControls.classList.toggle("active", adminVisible);
             adminPanel.classList.toggle("active", adminVisible);
+            document.body.classList.toggle("supervisor-mode", adminVisible);
             supervisorUnlock.textContent = adminVisible ? "Lock supervisor controls" : "Supervisor controls (A)";
         }
 
@@ -666,6 +695,34 @@
                 knownValue.textContent = `Workers: ${data.known_workers || 0}`;
                 liveValue.textContent = `Liveness: ${data.liveness_confirmed ? "Yes" : "No"}`;
                 lastUpdated.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+
+                // Footer claims must match what the kiosk actually enforces.
+                const health = data.health || {};
+                if (data.liveness_required && health.liveness_available) {
+                    livenessNote.textContent = "Blink verification required before recognition";
+                    livenessNote.style.color = "";
+                } else if (data.liveness_required) {
+                    livenessNote.textContent = "Blink verification unavailable - scans recorded unverified";
+                    livenessNote.style.color = "#e0a343";
+                } else {
+                    livenessNote.textContent = "";
+                }
+
+                const queued = (health.queued_logs || 0) + (health.queued_attempts || 0);
+                if (health.sync_online === true) {
+                    syncChip.textContent = queued > 0
+                        ? `Syncing - ${queued} record${queued === 1 ? "" : "s"} queued`
+                        : (health.last_sync_at
+                            ? `Synced ${new Date(health.last_sync_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`
+                            : "Connected");
+                    syncChip.style.color = queued > 0 ? "#e0a343" : "#87dfb3";
+                } else if (health.sync_online === false) {
+                    syncChip.textContent = `Offline - ${queued} scan${queued === 1 ? "" : "s"} queued`;
+                    syncChip.style.color = "#e0a343";
+                } else {
+                    syncChip.textContent = "Sync disabled";
+                    syncChip.style.color = "#ff9e8f";
+                }
 
                 if (requestSupervisorStateVersion !== supervisorStateVersion) {
                     return;

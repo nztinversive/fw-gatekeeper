@@ -11,7 +11,6 @@ sys.path.insert(0, str(KIOSK_DIR))
 
 import config  # noqa: E402
 from kiosk_ui_auth import (  # noqa: E402
-    get_encode_service_host,
     get_enroll_preview_host,
     get_kiosk_ui_host,
     has_valid_kiosk_ui_credential,
@@ -56,7 +55,6 @@ class KioskUiAuthTests(unittest.TestCase):
 
     def test_routes_and_auxiliary_servers_are_locked_down(self):
         app_source = (KIOSK_DIR / "app.py").read_text(encoding="utf-8")
-        encode_source = (KIOSK_DIR / "encode_service.py").read_text(encoding="utf-8")
         enroll_source = (KIOSK_DIR / "enroll.py").read_text(encoding="utf-8")
         setup_source = (KIOSK_DIR / "setup.sh").read_text(encoding="utf-8")
         gitignore_source = (KIOSK_DIR.parent / ".gitignore").read_text(encoding="utf-8")
@@ -88,10 +86,7 @@ class KioskUiAuthTests(unittest.TestCase):
         self.assertIn('openSupervisorDialog("Supervisor session expired. Unlock again to retry.")', template_source)
         self.assertIn('KIOSK_SUPERVISOR_PIN = "$KIOSK_SUPERVISOR_PIN"', setup_source)
         self.assertEqual(get_kiosk_ui_host(), "127.0.0.1")
-        self.assertEqual(get_encode_service_host(), "127.0.0.1")
         self.assertEqual(get_enroll_preview_host(), "127.0.0.1")
-        self.assertIn("get_encode_service_host()", encode_source)
-        self.assertNotIn('Access-Control-Allow-Origin", "*"', encode_source)
         self.assertIn("host=get_enroll_preview_host()", enroll_source)
         self.assertIn('if [ -z "$KIOSK_UI_KEY" ]', setup_source)
         self.assertIn("pi-kiosk/config_local.py", gitignore_source)

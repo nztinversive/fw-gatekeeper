@@ -6,12 +6,6 @@ import { unauthorizedApiResponse } from '@/lib/auth';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { api } from '../../../../convex/_generated/api';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
-import {
-  createDemoAttendanceCorrection,
-  demoWriteMetadata,
-  isDemoWriteMode,
-  listDemoAttendanceCorrections,
-} from '@/lib/demo-write-mode';
 
 const VALID_ACTIONS = new Set(['add_clock_in', 'add_clock_out', 'void_event']);
 
@@ -38,23 +32,18 @@ export async function GET(req: NextRequest) {
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
-  if (isDemoWriteMode()) {
-    const workerId = req.nextUrl.searchParams.get('worker_id') || undefined;
-    return NextResponse.json({ date, corrections: listDemoAttendanceCorrections(date, workerId), ...demoWriteMetadata() });
-  }
-
   try {
     const workerId = req.nextUrl.searchParams.get('worker_id') || undefined;
     const corrections = await convex.query((api as any).attendanceCorrections.list, { date, workerId });
     return NextResponse.json({
       date,
-      corrections: isDemoWriteMode() ? [...corrections, ...listDemoAttendanceCorrections(date, workerId)] : corrections,
+      corrections,
     });
   } catch (error) {
     if (isMissingConvexFunction(error)) {
       return NextResponse.json({
         date,
-        corrections: isDemoWriteMode() ? listDemoAttendanceCorrections(date) : [],
+        corrections: [],
         backend_unavailable: true,
         warning: 'Attendance correction storage is waiting for the Convex functions to deploy.',
       });
@@ -94,20 +83,6 @@ export async function POST(req: NextRequest) {
     }
     if (action !== 'void_event' && !correctedTimestamp) {
       return NextResponse.json({ error: 'corrected_timestamp required for added events' }, { status: 400 });
-    }
-
-    if (isDemoWriteMode()) {
-      const result = createDemoAttendanceCorrection({
-        date,
-        workerId,
-        action: action as 'add_clock_in' | 'add_clock_out' | 'void_event',
-        correctedTimestamp,
-        originalAttendanceId,
-        relatedExceptionKey,
-        reason,
-        supervisorName,
-      });
-      return NextResponse.json({ ...result, ...demoWriteMetadata() }, { status: 201 });
     }
 
     const result = await convex.mutation((api as any).attendanceCorrections.create, {

@@ -36,6 +36,30 @@ async function readJsonBody(request: Request) {
   }
 }
 
+function sanitizeKioskHealth(raw: unknown) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const source = raw as Record<string, unknown>;
+  const asBool = (value: unknown) => (typeof value === 'boolean' ? value : undefined);
+  const asCount = (value: unknown) => {
+    const num = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(num) && num >= 0 ? Math.floor(num) : undefined;
+  };
+  const asText = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim().slice(0, 200) : undefined;
+
+  return {
+    cameraOk: asBool(source.cameraOk),
+    modelOk: asBool(source.modelOk),
+    livenessAvailable: asBool(source.livenessAvailable),
+    knownWorkers: asCount(source.knownWorkers),
+    queuedLogs: asCount(source.queuedLogs),
+    queuedAttempts: asCount(source.queuedAttempts),
+    degradedReason: asText(source.degradedReason),
+    lastScanAt: asText(source.lastScanAt),
+    reportedAt: new Date().toISOString(),
+  };
+}
+
 const attendanceBulkIngest = httpAction(async (ctx, request) => {
   if (!hasValidIngestCredential(request)) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
@@ -108,6 +132,7 @@ const kioskLastSyncIngest = httpAction(async (ctx, request) => {
   const result = await ctx.runMutation(internal.kiosks.updateLastSyncFromHttp, {
     kioskId: body.kioskId,
     lastSync: body.lastSync,
+    health: sanitizeKioskHealth(body.health),
   });
   console.info('secured_ingest_kiosk_sync', { kioskId: body.kioskId, updated: result.updated });
   return jsonResponse(result);

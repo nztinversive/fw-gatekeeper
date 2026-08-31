@@ -74,7 +74,7 @@ assert.match(page, /useSearchParams/, 'Briefing page must honor action-link quer
 assert.match(page, /searchParams\.get\('date'\)/, 'Briefing page should initialize the briefing date from query params.');
 assert.match(page, /searchParams\.get\('department'\)/, 'Briefing page should initialize department filtering from query params.');
 assert.match(page, /searchParams\.get\('status'\)/, 'Briefing page should initialize worker status filtering from query params.');
-assert.match(page, /\/api\/portal-role/, 'Briefing page should resolve portal role before exposing direct action intent.');
+assert.match(page, /usePortalRole|portalMembers\.current/, 'Briefing page should resolve portal role before exposing direct action intent.');
 assert.match(page, /function canOperateBriefingAction/, 'Briefing page should centralize per-action role checks.');
 assert.match(page, /role === 'admin'[\s\S]*role !== 'enrollment'[\s\S]*href\.startsWith\('\/exceptions'\) \|\| href\.startsWith\('\/briefing'\) \|\| href\.startsWith\('\/enroll\?worker_id='\)/, 'Enrollment briefing actions should be limited to exceptions, briefing filters, and exact worker enrollment handoffs.');
 assert.match(page, /function stripHrefParams/, 'Briefing page should be able to strip write intent from review links.');

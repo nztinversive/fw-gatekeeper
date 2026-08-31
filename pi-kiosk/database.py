@@ -52,9 +52,38 @@ def _get_conn() -> sqlite3.Connection:
     return _local.conn
 
 
+def _migrate_sync_state(conn: sqlite3.Connection):
+    """Convert the legacy single-row sync_state table to a keyed table.
+
+    The old schema stored one value in sync_state(id=1, last_sync); the only
+    caller stored the worker-sync watermark there, so that value is carried
+    over under the 'last_worker_sync' key to avoid a full re-backfill on
+    already-deployed kiosks.
+    """
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_state'"
+    ).fetchone()
+    if not row:
+        return
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(sync_state)").fetchall()}
+    if "last_sync" not in columns:
+        return  # already keyed
+    old = conn.execute("SELECT last_sync FROM sync_state WHERE id = 1").fetchone()
+    old_value = old["last_sync"] if old else None
+    conn.execute("DROP TABLE sync_state")
+    conn.execute("CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT)")
+    if old_value:
+        conn.execute(
+            "INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_worker_sync', ?)",
+            (old_value,),
+        )
+    logger.info("Migrated sync_state to keyed schema (last_worker_sync=%s)", old_value)
+
+
 def init_db():
     """Create and migrate required tables."""
     conn = _get_conn()
+    _migrate_sync_state(conn)
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS workers (
@@ -99,8 +128,8 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS sync_state (
-            id INTEGER PRIMARY KEY CHECK(id = 1),
-            last_sync TEXT
+            key TEXT PRIMARY KEY,
+            value TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_attendance_worker_time ON attendance_log(worker_id, timestamp);
@@ -164,7 +193,6 @@ def init_db():
     if "event_type" in attendance_columns:
         conn.execute("UPDATE attendance_log SET action = event_type WHERE action IS NULL OR action = ''")
 
-    conn.execute("INSERT OR IGNORE INTO sync_state (id, last_sync) VALUES (1, NULL)")
     conn.commit()
     logger.info("Database initialized at %s", config.DB_PATH)
 
@@ -487,6 +515,20 @@ def mark_synced(log_ids: list[int]):
     conn.commit()
 
 
+def count_unsynced_logs() -> int:
+    """Count gatekeeper logs still waiting to sync (for health reporting)."""
+    conn = _get_conn()
+    row = conn.execute("SELECT COUNT(*) FROM attendance_log WHERE synced = 0").fetchone()
+    return int(row[0]) if row else 0
+
+
+def count_unsynced_recognition_attempts() -> int:
+    """Count recognition telemetry rows still waiting to sync."""
+    conn = _get_conn()
+    row = conn.execute("SELECT COUNT(*) FROM recognition_attempts WHERE synced = 0").fetchone()
+    return int(row[0]) if row else 0
+
+
 def _optional_float(value) -> Optional[float]:
     if value is None:
         return None
@@ -583,58 +625,15 @@ def mark_recognition_attempts_synced(attempt_ids: list[int]):
     conn.commit()
 
 
-def get_sync_state(key: str = "last_sync") -> Optional[str]:
-    """Get the last sync timestamp."""
-    del key  # retained for compatibility with prior key/value API
+def get_sync_state(key: str) -> Optional[str]:
+    """Get a stored sync-state value by key (e.g. 'last_worker_sync')."""
     conn = _get_conn()
-    row = conn.execute("SELECT last_sync FROM sync_state WHERE id = 1").fetchone()
-    return row["last_sync"] if row else None
+    row = conn.execute("SELECT value FROM sync_state WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
 
 
 def set_sync_state(key: str, value: str):
-    """Set the last sync timestamp."""
-    del key  # retained for compatibility with prior key/value API
+    """Set a sync-state value by key."""
     conn = _get_conn()
-    conn.execute("INSERT OR REPLACE INTO sync_state (id, last_sync) VALUES (1, ?)", (value,))
+    conn.execute("INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)", (key, value))
     conn.commit()
-
-
-def auto_clockout_overdue(hours: int) -> list[int]:
-    """Auto clock-out workers with stale open shifts older than N hours."""
-    conn = _get_conn()
-    cutoff = (datetime.now() - timedelta(hours=hours)).isoformat(timespec="seconds")
-    rows = conn.execute(
-        """
-        SELECT ci.worker_id, ci.worker_name, MAX(ci.timestamp) AS last_clock_in
-        FROM attendance_log ci
-        WHERE ci.action = 'clock_in' AND ci.worker_id > 0
-        GROUP BY ci.worker_id, ci.worker_name
-        HAVING last_clock_in <= ?
-           AND NOT EXISTS (
-               SELECT 1 FROM attendance_log co
-               WHERE co.worker_id = ci.worker_id
-                 AND co.action = 'clock_out'
-                 AND co.timestamp > last_clock_in
-           )
-        """,
-        (cutoff,),
-    ).fetchall()
-
-    inserted: list[int] = []
-    for row in rows:
-        cursor = conn.execute(
-            """
-            INSERT INTO attendance_log
-                (worker_id, worker_name, action, timestamp, liveness_confirmed, confidence, kiosk_id, synced, note)
-            VALUES (?, ?, 'clock_out', ?, 1, 1.0, ?, 0, 'auto_clockout')
-            """,
-            (
-                int(row["worker_id"]),
-                row["worker_name"],
-                datetime.now().isoformat(timespec="seconds"),
-                config.KIOSK_ID,
-            ),
-        )
-        inserted.append(int(cursor.lastrowid))
-    conn.commit()
-    return inserted

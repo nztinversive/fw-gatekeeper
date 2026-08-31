@@ -24,8 +24,8 @@ from flask import Flask, Response, jsonify
 
 import config
 import database
+from embeddings import embed_face, model_ready, normalize_embedding
 from liveness import LivenessChecker
-from recognition import FaceRecognizer
 from kiosk_ui_auth import get_enroll_preview_host
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -166,6 +166,12 @@ def add_worker(name: str):
         print(str(exc))
         return 1
 
+    # Local enrollments must use the same 512-dim MobileFaceNet model the
+    # scan loop matches with; a dlib encoding would be rejected at the door.
+    if not model_ready():
+        print("Recognition model unavailable (download failed or corrupt). Connect to the network once and retry.")
+        return 1
+
     cap = cv2.VideoCapture(config.CAMERA_INDEX)
     if not cap.isOpened():
         print(f"Unable to open camera index {config.CAMERA_INDEX}")
@@ -205,7 +211,11 @@ def add_worker(name: str):
                 message = "Blink to verify"
 
                 if live and (time.monotonic() - last_capture) > 1.0:
-                    encoding = FaceRecognizer.encode_frame(frame, face_location)
+                    try:
+                        encoding = embed_face(frame, face_location)
+                    except Exception as exc:
+                        print(f"Encoding failed: {exc}")
+                        encoding = None
                     if encoding is not None:
                         capture_index = len(encodings) + 1
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -262,7 +272,7 @@ def add_worker(name: str):
         print("Enrollment failed before all required captures were collected.")
         return 1
 
-    average_encoding = np.mean(np.vstack(encodings), axis=0)
+    average_encoding = normalize_embedding(np.mean(np.vstack(encodings), axis=0))
     worker_id = database.add_worker(
         name=worker_name,
         encoding=average_encoding,

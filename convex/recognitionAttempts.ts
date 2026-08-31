@@ -1,4 +1,4 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import {
@@ -335,38 +335,6 @@ export const getById = query({
       return null;
     }
     return serializeAttempt(attempt);
-  },
-});
-
-export const listRange = internalQuery({
-  args: {
-    startTimestamp: v.string(),
-    endTimestamp: v.string(),
-    kioskId: v.optional(v.string()),
-    reviewed: v.optional(v.boolean()),
-    limit: v.optional(v.float64()),
-  },
-  handler: async (ctx, args) => {
-    return await listRangeInternal(ctx, args);
-  },
-});
-
-export const listForReview = internalQuery({
-  args: {
-    reviewed: v.optional(v.boolean()),
-    kioskId: v.optional(v.string()),
-    startTimestamp: v.optional(v.string()),
-    endTimestamp: v.optional(v.string()),
-    limit: v.optional(v.float64()),
-  },
-  handler: async (ctx, args) => {
-    return await listRangeInternal(ctx, {
-      startTimestamp: args.startTimestamp || "1970-01-01T00:00:00.000Z",
-      endTimestamp: args.endTimestamp || "9999-12-31T23:59:59.999Z",
-      kioskId: args.kioskId,
-      reviewed: args.reviewed ?? false,
-      limit: args.limit,
-    });
   },
 });
 

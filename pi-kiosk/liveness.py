@@ -92,8 +92,14 @@ class LivenessChecker:
             self._blink_count = 0
             self._low_ear_frames = 0
 
-    def update(self, frame: np.ndarray, face_location: tuple[int, int, int, int]) -> bool:
-        """Feed a frame + face box. Returns True once liveness is confirmed."""
+    def update(self, frame: np.ndarray, face_location: tuple[int, int, int, int], frame_check=None) -> bool:
+        """Feed a frame + face box. Returns True once liveness is confirmed.
+
+        frame_check, when given, is called as frame_check(frame, face_location)
+        for every frame that would advance blink state (closed-eye frames and
+        the completing open-eye frame). If it returns False the whole attempt
+        resets, so no frame from an unverified face can contribute to a blink.
+        """
         self._reset_window_if_expired()
         if frame is None or face_location is None:
             return False
@@ -124,9 +130,15 @@ class LivenessChecker:
         self._current_ear = (left_ear + right_ear) / 2.0
 
         if self._current_ear < self.ear_threshold:
+            if frame_check is not None and not frame_check(frame, face_location):
+                self.reset()
+                return False
             self._low_ear_frames += 1
         else:
             if self._low_ear_frames >= self.blink_frames:
+                if frame_check is not None and not frame_check(frame, face_location):
+                    self.reset()
+                    return False
                 self._blink_count += 1
                 self._alive = True
             self._low_ear_frames = 0

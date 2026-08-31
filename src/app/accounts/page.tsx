@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { useToast } from '@/components/Toast';
-import DemoWriteModeBanner from '@/components/DemoWriteModeBanner';
 
 type PortalRole = 'admin' | 'enrollment' | 'viewer';
 
@@ -12,13 +11,6 @@ type CreatedAccount = {
   email: string;
   password: string;
   role: PortalRole;
-};
-
-type PortalMemberRow = {
-  id: string;
-  email: string;
-  role: PortalRole;
-  active: boolean;
 };
 
 function getPasswordPolicyError(password: string) {
@@ -72,11 +64,9 @@ function generatePassword() {
 
 export default function AccountsPage() {
   const { toast } = useToast();
-  const demoWriteMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
-  const currentMemberQuery = useQuery(api.portalMembers.current, demoWriteMode ? 'skip' : {});
-  const currentMember = demoWriteMode ? { role: 'admin' as const } : currentMemberQuery;
+  const currentMember = useQuery(api.portalMembers.current, {});
   const isAdmin = currentMember?.role === 'admin';
-  const members = useQuery(api.portalMembers.list, isAdmin && !demoWriteMode ? {} : 'skip');
+  const members = useQuery(api.portalMembers.list, isAdmin ? {} : 'skip');
   const createPortalAccount = useAction(api.portalMembers.createPortalAccount);
   const resetPortalAccountPassword = useAction(api.portalMembers.resetPortalAccountPassword);
 
@@ -85,9 +75,8 @@ export default function AccountsPage() {
   const [password, setPassword] = useState(() => generatePassword());
   const [submitting, setSubmitting] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
-  const [demoMembers, setDemoMembers] = useState<PortalMemberRow[]>([]);
 
-  const sortedMembers = useMemo(() => [...(members ?? []), ...demoMembers], [demoMembers, members]);
+  const sortedMembers = useMemo(() => [...(members ?? [])], [members]);
   const normalizedEmail = email.trim().toLowerCase();
   const existingMember = useMemo(
     () => sortedMembers.find((member) => member.email.toLowerCase() === normalizedEmail),
@@ -116,28 +105,6 @@ export default function AccountsPage() {
     setSubmitting(true);
     setCreatedAccount(null);
     try {
-      if (demoWriteMode) {
-        const result = { email: normalizedEmail, role };
-        setDemoMembers((current) => {
-          const existingIndex = current.findIndex((member) => member.email.toLowerCase() === normalizedEmail);
-          const nextMember = {
-            id: existingIndex >= 0 ? current[existingIndex].id : `demo_member_${Date.now().toString(36)}`,
-            email: normalizedEmail,
-            role,
-            active: true,
-          };
-          if (existingIndex >= 0) {
-            return current.map((member, index) => (index === existingIndex ? nextMember : member));
-          }
-          return [...current, nextMember];
-        });
-        setCreatedAccount({ email: result.email, password, role: result.role });
-        setEmail('');
-        setPassword(generatePassword());
-        setRole('enrollment');
-        toast(existingMember ? `Demo password updated locally for ${result.email}` : `Demo account ready locally for ${result.email}`);
-        return;
-      }
       const result = existingMember
         ? await resetPortalAccountPassword({ email: normalizedEmail, password, role })
         : await createPortalAccount({ email: normalizedEmail, password, role });
@@ -156,12 +123,12 @@ export default function AccountsPage() {
 
   async function copyCredentials() {
     if (!createdAccount) return;
-    const text = `FW Gateway login\nhttps://fw-gatekeeper.onrender.com/login\n\nEmail: ${createdAccount.email}\nInitial password: ${createdAccount.password}`;
+    const text = `FW Gatekeeper login\nhttps://fw-gatekeeper.onrender.com/login\n\nEmail: ${createdAccount.email}\nInitial password: ${createdAccount.password}`;
     await navigator.clipboard.writeText(text);
     toast('Credentials copied');
   }
 
-  if (currentMember === undefined || (isAdmin && !demoWriteMode && members === undefined)) {
+  if (currentMember === undefined || (isAdmin && members === undefined)) {
     return (
       <div className="animate-fade-in">
         <h1 className="page-title text-slate-100">Account <span className="text-gold">Management</span></h1>
@@ -195,10 +162,6 @@ export default function AccountsPage() {
             Create named portal logins for Fading West users
           </p>
         </div>
-      </div>
-
-      <div className="mb-6">
-        <DemoWriteModeBanner />
       </div>
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] gap-6 mb-8">

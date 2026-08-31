@@ -6,7 +6,6 @@ import { unauthorizedApiResponse } from '@/lib/auth';
 import { hasValidPortalSession } from '@/lib/portal-auth';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
 import { api } from '../../../../convex/_generated/api';
-import { demoWriteMetadata, isDemoWriteMode } from '@/lib/demo-write-mode';
 
 const VALID_STATUSES = new Set(['open', 'reviewed', 'ignored', 'resolved']);
 
@@ -103,8 +102,6 @@ export async function GET(req: NextRequest) {
   if (!date) {
     return NextResponse.json({ error: 'date must use YYYY-MM-DD format' }, { status: 400 });
   }
-  if (isDemoWriteMode()) return NextResponse.json(emptyResponse(date, demoWriteMetadata()));
-
   try {
     const payload = await convex.query((api as any).shiftExceptions.summary, { date });
     return NextResponse.json(normalizeShiftExceptionsPayload(payload));
@@ -140,10 +137,6 @@ export async function PATCH(req: NextRequest) {
     }
     if (!VALID_STATUSES.has(status)) {
       return NextResponse.json({ error: 'status must be open, reviewed, ignored, or resolved' }, { status: 400 });
-    }
-
-    if (isDemoWriteMode()) {
-      return NextResponse.json({ ok: true, exception_key: exceptionKey, status, ...demoWriteMetadata() });
     }
 
     const result = await convex.mutation((api as any).shiftExceptions.review, {

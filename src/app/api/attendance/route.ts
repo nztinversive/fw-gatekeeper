@@ -4,7 +4,6 @@ import convex from '@/lib/convex';
 import { api } from '../../../../convex/_generated/api';
 import { ingestAttendanceEvent } from '@/lib/convex-ingest';
 import { isValidLocalDateString, resolveRequestDate } from '@/lib/date';
-import { isDemoWriteMode } from '@/lib/demo-write-mode';
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,7 +13,6 @@ export async function GET(req: NextRequest) {
     }
     const workerId = req.nextUrl.searchParams.get('worker_id');
     const includeCorrections = req.nextUrl.searchParams.get('raw') === 'true' ? false : undefined;
-    if (isDemoWriteMode()) return NextResponse.json([]);
     const rows = await convex.query(api.attendance.list, {
       date,
       workerId: workerId || undefined,
@@ -29,12 +27,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    if (isDemoWriteMode()) {
-      return NextResponse.json(
-        { error: 'Attendance capture is disabled in local demo mode.' },
-        { status: 409 },
-      );
-    }
     const body = await req.json().catch(() => ({}));
     const { worker_id, event_type, type, kiosk_id, timestamp } = body;
     const resolvedType = event_type || type;

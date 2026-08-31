@@ -10,7 +10,6 @@ import logging
 import os
 import time
 import threading
-import urllib.request
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,6 +20,7 @@ import face_recognition as fr
 
 import config
 import database
+from embeddings import embed_face, model_ready as recognition_model_ready, normalize_embedding
 from recognition import FaceRecognizer
 from sync import SyncWorker
 from sync_auth import require_kiosk_api_key
@@ -33,60 +33,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("main")
-
-# --- MobileFaceNet ONNX for 512-dim encoding (matches server) ---
-REC_MODEL_URL = "https://huggingface.co/immich-app/buffalo_s/resolve/main/recognition/model.onnx"
-REC_MODEL_PATH = Path("data/models/mobilefacenet.onnx")
-_rec_session = None
-_rec_session_error = None
-
-
-def ensure_rec_model():
-    REC_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not REC_MODEL_PATH.exists():
-        try:
-            logger.info("Downloading MobileFaceNet model (13MB)...")
-            urllib.request.urlretrieve(REC_MODEL_URL, str(REC_MODEL_PATH))
-            logger.info("Downloaded MobileFaceNet to %s", REC_MODEL_PATH)
-        except Exception as exc:
-            logger.error("Failed to download MobileFaceNet model: %s", exc)
-            return False
-    return True
-
-
-def get_rec_session():
-    global _rec_session, _rec_session_error
-    if _rec_session is None:
-        import onnxruntime as ort
-        if not ensure_rec_model():
-            _rec_session_error = "download_failed"
-            raise RuntimeError("Recognition model unavailable")
-        try:
-            _rec_session = ort.InferenceSession(str(REC_MODEL_PATH), providers=["CPUExecutionProvider"])
-            logger.info("MobileFaceNet ONNX session loaded")
-            _rec_session_error = None
-        except Exception as exc:
-            _rec_session_error = str(exc)
-            raise RuntimeError(f"Recognition model failed to initialize: {exc}") from exc
-    return _rec_session
-
-
-def get_512_embedding(face_crop_bgr):
-    """Get 512-dim MobileFaceNet embedding from a BGR face crop."""
-    session = get_rec_session()
-    face = cv2.resize(face_crop_bgr, (112, 112))
-    face_rgb = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-    face_float = face_rgb.astype(np.float32) / 255.0
-    face_float = (face_float - 0.5) / 0.5
-    face_chw = np.transpose(face_float, (2, 0, 1))
-    batch = np.expand_dims(face_chw, axis=0)
-    input_name = session.get_inputs()[0].name
-    outputs = session.run(None, {input_name: batch})
-    emb = outputs[0][0]
-    norm = np.linalg.norm(emb)
-    if norm > 0:
-        emb = emb / norm
-    return emb
 
 
 class Camera:
@@ -156,10 +102,15 @@ def _now_iso():
 
 
 def draw_box(frame_bgr, face_loc, color, label=None):
-    out = frame_bgr.copy()
+    # Mirror the display copy so workers see themselves as in a mirror
+    # (detection still runs on the unflipped frame). Overlays are drawn
+    # after the flip so labels stay readable.
+    out = cv2.flip(frame_bgr, 1)
     if face_loc is None:
         return out
     top, right, bottom, left = face_loc
+    width = out.shape[1]
+    left, right = width - right, width - left
     cv2.rectangle(out, (left, top), (right, bottom), color, 2)
     if label:
         cv2.putText(out, label, (left, max(20, top - 10)),
@@ -185,13 +136,6 @@ def cosine_sim(a, b):
     return float(np.dot(a, b) / (na * nb))
 
 
-def normalize_embedding(embedding):
-    norm = np.linalg.norm(embedding)
-    if norm > 0:
-        return embedding / norm
-    return embedding
-
-
 def largest_face(face_locations):
     return max(face_locations, key=lambda loc: (loc[2] - loc[0]) * (loc[1] - loc[3]))
 
@@ -214,6 +158,14 @@ def _empty_recognition_result(face_loc, decision="rejected_unknown"):
 
 
 def _log_recognition_attempt(result, decision):
+    try:
+        _write_recognition_attempt(result, decision)
+    except Exception as e:
+        # Telemetry writes must never take the scan loop down.
+        logger.error("Failed to log recognition attempt (%s): %s", decision, e)
+
+
+def _write_recognition_attempt(result, decision):
     database.log_recognition_attempt(
         timestamp=_now_iso(),
         kiosk_id=config.KIOSK_ID,
@@ -259,8 +211,10 @@ def run(args):
     os.makedirs(config.MODEL_DIR, exist_ok=True)
     database.init_db()
 
-    # Pre-download MobileFaceNet model, but continue booting if offline.
-    if not ensure_rec_model():
+    # Download and load the MobileFaceNet model, but continue booting if it
+    # is unavailable (offline or corrupt) - health reports it truthfully.
+    model_ready = recognition_model_ready()
+    if not model_ready:
         logger.warning("Recognition model unavailable at startup; kiosk will keep retrying in the background.")
 
     logger.info("Starting web UI on port %d...", config.KIOSK_PORT)
@@ -270,7 +224,64 @@ def run(args):
     recognizer.load_faces()
     logger.info("Loaded %d known faces", recognizer.known_count)
 
-    sync_worker = SyncWorker(recognizer=recognizer) if sync_enabled else None
+    # Blink verification. If the shape predictor is missing, keep the door
+    # working but record events as unverified and report the kiosk degraded —
+    # never claim liveness we don't have.
+    liveness = recognizer.liveness_checker if config.LIVENESS_REQUIRED else None
+    if config.LIVENESS_REQUIRED and liveness is None:
+        logger.critical(
+            "Liveness model missing: clock events will be recorded WITHOUT blink "
+            "verification and this kiosk will report itself degraded."
+        )
+
+    # An empty or model-incompatible roster rejects every scan; the dashboard
+    # must see that from boot, not only after the first worker walks up.
+    startup_degraded = None
+    if recognizer.known_count == 0:
+        startup_degraded = "no_workers_synced"
+    elif recognizer.usable_count == 0:
+        startup_degraded = "encoding_mismatch"
+    elif config.LIVENESS_REQUIRED and liveness is None:
+        startup_degraded = "liveness_unavailable"
+
+    web_app.update_health(
+        model_ok=model_ready,
+        liveness_available=liveness is not None,
+        known_workers=recognizer.known_count,
+        degraded_reason=startup_degraded,
+    )
+
+    def kiosk_health():
+        snapshot = web_app.get_health_snapshot()
+        snapshot["known_workers"] = recognizer.known_count
+        return snapshot
+
+    def base_degraded_reason():
+        """The standing degradation, if any, once transient faults clear.
+
+        Roster-aware so that clearing a transient fault (camera recovery,
+        model recovery, a successful scan) can never erase the fact that an
+        empty roster is still rejecting every worker.
+        """
+        if recognizer.known_count == 0:
+            return "no_workers_synced"
+        if recognizer.usable_count == 0:
+            # Rows exist but none match the kiosk model (legacy 128-dim data):
+            # every scan will be rejected until re-enrollment.
+            return "encoding_mismatch"
+        if config.LIVENESS_REQUIRED and liveness is None:
+            return "liveness_unavailable"
+        return None
+
+    sync_worker = (
+        SyncWorker(
+            recognizer=recognizer,
+            health_provider=kiosk_health,
+            health_reporter=web_app.update_health,
+        )
+        if sync_enabled
+        else None
+    )
     if sync_worker:
         sync_worker.start()
 
@@ -280,6 +291,7 @@ def run(args):
     while True:
         try:
             camera.start()
+            web_app.update_health(camera_ok=True, degraded_reason=base_degraded_reason())
             if camera_attempts:
                 logger.info("Camera initialized after %d retry attempt(s)", camera_attempts)
             break
@@ -290,6 +302,7 @@ def run(args):
             if camera_attempts >= 10 and not critical_logged:
                 logger.critical("Camera failed to initialize after %d attempts; continuing to retry every 30 seconds", camera_attempts)
                 critical_logged = True
+            web_app.update_health(camera_ok=False, degraded_reason="camera_error")
             web_app.update_status(state="ERROR", message=f"Camera error: {e}. Retrying in 30s", worker_id=None, face_detected=False)
             time.sleep(30)
 
@@ -318,7 +331,7 @@ def run(args):
                 time.sleep(0.1)
                 continue
 
-            bgr_frame, rgb_frame = frames
+            bgr_frame, rgb_frame, frame_ts = frames
 
             try:
                 # Use dlib for face DETECTION (finding where the face is)
@@ -338,60 +351,68 @@ def run(args):
                 top, right, bottom, left = largest_face(locs)
                 face_loc = (top * 2, right * 2, bottom * 2, left * 2)
 
-                # Crop face from BGR frame for MobileFaceNet encoding
-                ft, fr_, fb, fl = face_loc
-                h, w = bgr_frame.shape[:2]
-                pad = int(max(fb - ft, fr_ - fl) * 0.25)
-                y1 = max(0, ft - pad)
-                y2 = min(h, fb + pad)
-                x1 = max(0, fl - pad)
-                x2 = min(w, fr_ + pad)
-                face_crop = bgr_frame[y1:y2, x1:x2]
-
-                if face_crop.size == 0:
-                    embedding_history.clear()
-                    current_result[0] = _empty_recognition_result(face_loc, decision="rejected_no_embedding")
-                    continue
-
-                # Get 512-dim MobileFaceNet embedding (matches server encoding)
+                # Get the shared 512-dim MobileFaceNet embedding (same model
+                # as server enrollment and the local enroll CLI)
                 try:
-                    embedding = get_512_embedding(face_crop)
+                    embedding = embed_face(bgr_frame, face_loc)
                 except Exception as e:
                     logger.error("ONNX encoding error: %s", e)
                     embedding_history.clear()
                     current_result[0] = _empty_recognition_result(face_loc, decision="rejected_model_error")
                     continue
 
+                if embedding is None:
+                    embedding_history.clear()
+                    current_result[0] = _empty_recognition_result(face_loc, decision="rejected_no_embedding")
+                    continue
+
                 embedding_history.append(embedding)
                 smoothed_embedding = normalize_embedding(np.mean(np.stack(embedding_history), axis=0))
 
                 # Match against known workers
-                known_encs, known_ids, known_names = recognizer._snapshot_known_faces()
+                known_encs, known_ids, known_names = recognizer.snapshot_known_faces()
                 matched = None
                 conf = 0.0
                 best_idx = None
                 second_score = None
 
                 if known_encs:
-                    enc_dim = len(known_encs[0])
                     cand_dim = len(smoothed_embedding)
+                    # Validate every roster row, not just the first: legacy
+                    # 128-dim entries can coexist with 512-dim ones (server and
+                    # local stores both still accept them), and an unchecked
+                    # np.dot on a mixed roster would crash the scan.
+                    compatible = [
+                        (i, known) for i, known in enumerate(known_encs) if len(known) == cand_dim
+                    ]
+                    skipped = len(known_encs) - len(compatible)
+                    if skipped and detect_count[0] % 50 == 1:
+                        logger.warning(
+                            "Skipping %d roster encoding(s) with incompatible dimensions (expected %d)",
+                            skipped, cand_dim,
+                        )
 
-                    if enc_dim == cand_dim:
-                        # Both 512-dim - cosine similarity
-                        scores = []
-                        for i, known in enumerate(known_encs):
-                            sim = cosine_sim(np.array(known), smoothed_embedding)
-                            scores.append((sim, i))
-                        scores.sort(reverse=True, key=lambda item: item[0])
-                        best_sim, best_idx = scores[0]
-                        if len(scores) > 1:
-                            second_score = scores[1][0]
-                        conf = best_sim
-                        logger.info("Match: sim=%.3f name=%s window=%d", conf, known_names[best_idx], len(embedding_history))
-                        if conf >= config.RECOGNITION_MATCH_THRESHOLD:
-                            matched = known_names[best_idx]
-                    else:
-                        logger.warning("Dim mismatch: known=%d vs live=%d", enc_dim, cand_dim)
+                    if not compatible:
+                        # No usable encodings at all: every worker would be
+                        # silently rejected. Surface it as a kiosk fault, not a
+                        # failed recognition.
+                        logger.warning("Dim mismatch: no roster encodings match live dim=%d", cand_dim)
+                        embedding_history.clear()
+                        current_result[0] = _empty_recognition_result(face_loc, decision="rejected_dim_mismatch")
+                        continue
+
+                    scores = []
+                    for i, known in compatible:
+                        sim = cosine_sim(np.array(known), smoothed_embedding)
+                        scores.append((sim, i))
+                    scores.sort(reverse=True, key=lambda item: item[0])
+                    best_sim, best_idx = scores[0]
+                    if len(scores) > 1:
+                        second_score = scores[1][0]
+                    conf = best_sim
+                    logger.info("Match: sim=%.3f name=%s window=%d", conf, known_names[best_idx], len(embedding_history))
+                    if conf >= config.RECOGNITION_MATCH_THRESHOLD:
+                        matched = known_names[best_idx]
 
                 margin = conf - second_score if second_score is not None else None
                 candidate_worker_id = known_ids[best_idx] if best_idx is not None else None
@@ -406,6 +427,7 @@ def run(args):
 
                 current_result[0] = {
                     "face_loc": face_loc,
+                    "frame_ts": frame_ts,
                     "name": matched,
                     "confidence": conf,
                     "candidate_worker_id": candidate_worker_id,
@@ -430,36 +452,225 @@ def run(args):
                           worker_id=None, known_workers=recognizer.known_count, face_detected=False)
     logger.info("Kiosk ready")
 
+    # Liveness wait state: set when a matched worker still needs to blink.
+    pending_clock = [None]
+
+    def record_clock(result, worker_id, display_name, display_id, confidence, liveness_confirmed):
+        """Log the clock event + telemetry, update the display. Returns True on success."""
+        if config.KIOSK_TYPE == "entry":
+            action = "clock_in"
+        elif config.KIOSK_TYPE == "exit":
+            action = "clock_out"
+        else:
+            last_action = database.get_last_action(worker_id)
+            action = "clock_out" if last_action == "clock_in" else "clock_in"
+
+        result["liveness_confirmed"] = liveness_confirmed
+        try:
+            database.log_attendance(
+                worker_id=worker_id, worker_name=display_name,
+                action=action, liveness_confirmed=liveness_confirmed, confidence=confidence,
+            )
+            _log_recognition_attempt(result, "accepted")
+        except Exception as e:
+            # A busy/locked SQLite must never take the kiosk down.
+            logger.error("Failed to record attendance for %s: %s", display_name, e, exc_info=True)
+            web_app.update_status(state="ERROR", message="Could not record scan - please try again",
+                                  worker_name=display_name, worker_id=display_id, face_detected=True,
+                                  confidence=confidence, known_workers=recognizer.known_count)
+            return False
+
+        last_clocks[worker_id] = datetime.now()
+        web_app.update_health(last_scan_at=_now_iso(), degraded_reason=base_degraded_reason())
+
+        # Worker-facing copy: name and time only. Confidence percentages are
+        # operator data and live in the recognition telemetry, not on the door.
+        time_str = datetime.now().strftime("%I:%M %p")
+        msg = (
+            f"Welcome, {display_name}! {time_str}"
+            if action == "clock_in"
+            else f"Goodbye, {display_name}! {time_str}"
+        )
+        web_app.update_status(state="CLOCKED_IN", message=msg,
+                              worker_name=display_name, worker_id=display_id, action=action,
+                              confidence=confidence, face_detected=True,
+                              liveness_confirmed=liveness_confirmed,
+                              known_workers=recognizer.known_count)
+        logger.info("%s: %s id=%s (confidence: %.2f, liveness=%s)",
+                    action.replace("_", " ").title(), display_name, display_id or "n/a",
+                    confidence, liveness_confirmed)
+        return True
+
+    camera_healthy = True
+    model_healthy = model_ready
+    # roster-derived degraded_reason currently reported
+    roster_fault = startup_degraded if startup_degraded in ("no_workers_synced", "encoding_mismatch") else None
     try:
         while True:
             try:
                 bgr_frame, rgb_frame = camera.capture()
             except Exception as e:
                 logger.error("Capture error: %s", e)
+                if camera_healthy:
+                    camera_healthy = False
+                    web_app.update_health(camera_ok=False, degraded_reason="camera_error")
                 time.sleep(1)
                 continue
+
+            if not camera_healthy:
+                camera_healthy = True
+                web_app.update_health(camera_ok=True, degraded_reason=base_degraded_reason())
 
             now = time.time()
 
             # 1. Push BGR frame to MJPEG stream (always, never blocks)
             web_app.set_frame(draw_box(bgr_frame, box_loc, box_color, box_label))
 
-            # 2. Feed to detection thread
+            # 2. Feed to detection thread (stamped so results can be ordered
+            #    against events like blink confirmation)
             with detect_lock:
                 if pending_frame[0] is None:
-                    pending_frame[0] = (bgr_frame.copy(), rgb_frame.copy())
+                    pending_frame[0] = (bgr_frame.copy(), rgb_frame.copy(), now)
 
-            # 3. Skip during display hold
+            # 3. Skip during display hold; drop results that land mid-hold so a
+            #    lingering face can't re-trigger off stale data every cycle.
             if now < display_until[0]:
+                current_result[0] = None
                 time.sleep(0.05)
                 continue
 
-            # 4. Process detection result
+            # 4. Blink verification window for an already-matched worker.
+            #    The clock is only recorded after BOTH a blink AND a fresh
+            #    recognition result matching the pending worker observed
+            #    after that blink, so a bystander's blink between detection
+            #    cycles can never complete someone else's attendance.
+            pending = pending_clock[0]
+            if pending is not None:
+                fresh = current_result[0]
+                identity_changed = False
+                if fresh is not None:
+                    current_result[0] = None
+                    fresh_name = fresh.get("name")
+                    fresh_worker_id = None
+                    if fresh_name is not None:
+                        _, fresh_ids, fresh_names = recognizer.snapshot_known_faces()
+                        if fresh_name in fresh_names:
+                            fresh_worker_id = fresh_ids[fresh_names.index(fresh_name)]
+                    if fresh_worker_id != pending["worker_id"]:
+                        identity_changed = True
+                    else:
+                        # The post-blink confirmation must come from a frame
+                        # captured AFTER the blink completed - a result already
+                        # in flight when the blink landed proves nothing about
+                        # who blinked.
+                        if (
+                            pending["blink_confirmed"]
+                            and fresh.get("frame_ts", 0.0) > pending["blink_confirmed_at"]
+                        ):
+                            pending["post_blink_confirmed"] = True
+                        if fresh.get("face_loc") is not None:
+                            box_loc = fresh.get("face_loc")
+
+                if identity_changed:
+                    pending_clock[0] = None
+                    _log_recognition_attempt(pending["result"], "rejected_liveness_identity_change")
+                    liveness.reset()
+                    box_loc = None
+                    box_label = None
+                    box_color = GOLD
+                    web_app.update_status(state="IDLE", message="Hold steady...",
+                                          worker_id=None, face_detected=True,
+                                          known_workers=recognizer.known_count)
+                    continue
+
+                if not pending["blink_confirmed"]:
+                    def _frame_matches_pending(check_frame, check_loc):
+                        # Every frame that advances blink state (closed-eye
+                        # frames and the completing open-eye frame) must embed
+                        # to the pending worker; otherwise LivenessChecker
+                        # resets the attempt, so no frame from a different
+                        # face can contribute to the blink.
+                        try:
+                            emb = embed_face(check_frame, check_loc)
+                        except Exception as e:
+                            logger.warning("Blink-frame embedding failed: %s", e)
+                            return False
+                        if (
+                            emb is None
+                            or pending["encoding"] is None
+                            or len(pending["encoding"]) != len(emb)
+                        ):
+                            return False
+                        return cosine_sim(pending["encoding"], emb) >= config.RECOGNITION_MATCH_THRESHOLD
+
+                    blink_ok = (
+                        liveness.update(bgr_frame, box_loc, frame_check=_frame_matches_pending)
+                        if box_loc is not None
+                        else False
+                    )
+                    if blink_ok:
+                        # Identity-bound blink complete - now require a fresh
+                        # recognition result from a frame captured after this
+                        # moment to re-confirm the same worker before
+                        # recording. Give the slower detection thread time to
+                        # deliver it.
+                        pending["blink_confirmed"] = True
+                        pending["blink_confirmed_at"] = now
+                        pending["deadline"] = max(pending["deadline"], now + config.LIVENESS_WAIT_SEC)
+
+                if pending["post_blink_confirmed"]:
+                    pending_clock[0] = None
+                    recorded = record_clock(
+                        pending["result"], pending["worker_id"], pending["display_name"],
+                        pending["display_id"], pending["confidence"], liveness_confirmed=True,
+                    )
+                    liveness.reset()
+                    display_until[0] = now + (config.DISPLAY_TIME_SUCCESS_SEC if recorded else 2)
+                elif now > pending["deadline"]:
+                    pending_clock[0] = None
+                    _log_recognition_attempt(pending["result"], "rejected_liveness_timeout")
+                    web_app.update_status(state="NOT_RECOGNIZED",
+                                          message="Blink not detected - please try again",
+                                          worker_name=pending["display_name"], worker_id=pending["display_id"],
+                                          face_detected=True, confidence=pending["confidence"],
+                                          ear=liveness.get_ear(), known_workers=recognizer.known_count)
+                    liveness.reset()
+                    display_until[0] = now + 2
+                else:
+                    waiting_msg = (
+                        f"Hold still, {pending['display_name']} - verifying..."
+                        if pending["blink_confirmed"]
+                        else f"Blink to verify, {pending['display_name']}"
+                    )
+                    web_app.update_status(state="WAITING_FOR_BLINK",
+                                          message=waiting_msg,
+                                          worker_name=pending["display_name"], worker_id=pending["display_id"],
+                                          face_detected=True, confidence=pending["confidence"],
+                                          ear=liveness.get_ear(), known_workers=recognizer.known_count)
+                    time.sleep(0.03)
+                continue
+
+            # 5. Consume the detection result exactly once (a result must never
+            #    be reprocessed across loop ticks).
             result = current_result[0]
+            if result is not None:
+                current_result[0] = None
+
+            # Roster degradation tracks sync state alone - it must not wait
+            # for someone to scan, in either direction.
+            if recognizer.known_count == 0:
+                expected_roster_fault = "no_workers_synced"
+            elif recognizer.usable_count == 0:
+                expected_roster_fault = "encoding_mismatch"
+            else:
+                expected_roster_fault = None
+            if expected_roster_fault != roster_fault:
+                roster_fault = expected_roster_fault
+                web_app.update_health(degraded_reason=expected_roster_fault or base_degraded_reason())
 
             if result is None:
-                unknown_streak = 0
                 if box_loc is not None:
+                    unknown_streak = 0
                     box_loc = None
                     box_label = None
                     web_app.update_status(state="IDLE", message="Step toward camera",
@@ -470,9 +681,51 @@ def run(args):
             face_loc = result.get("face_loc")
             name = result.get("name")
             confidence = result.get("confidence") or 0.0
+            decision = result.get("decision")
             box_loc = face_loc
 
+            # 6. Kiosk faults are not the worker's fault: say the scanner is
+            #    down instead of blaming their face.
+            degraded_fault = None
+            if decision == "rejected_model_error":
+                degraded_fault = "model_error"
+                model_healthy = False
+                web_app.update_health(model_ok=False, degraded_reason=degraded_fault)
+            elif not model_healthy:
+                # Any non-model-error result means an embedding was computed,
+                # so a transient ONNX failure has recovered - stop reporting it.
+                model_healthy = True
+                web_app.update_health(model_ok=True, degraded_reason=base_degraded_reason())
+
+            if degraded_fault is None and decision == "rejected_dim_mismatch":
+                degraded_fault = "encoding_mismatch"
+                web_app.update_health(degraded_reason=degraded_fault)
+            elif degraded_fault is None and recognizer.known_count == 0:
+                degraded_fault = "no_workers_synced"
+                web_app.update_health(degraded_reason=degraded_fault)
+
+            if degraded_fault:
+                roster_fault = degraded_fault if degraded_fault != "model_error" else roster_fault
+            elif roster_fault:
+                # This scan produced a compatible embedding against a synced
+                # roster, so any earlier roster/model degradation is over.
+                roster_fault = None
+                web_app.update_health(degraded_reason=base_degraded_reason())
+
+            if degraded_fault:
+                box_color = RED
+                box_label = None
+                _log_recognition_attempt(result, decision or "rejected_unknown")
+                web_app.update_status(state="SERVICE_DEGRADED",
+                                      message="Scanner unavailable - please use the sign-in sheet",
+                                      worker_id=None, face_detected=True,
+                                      known_workers=recognizer.known_count)
+                display_until[0] = now + config.DISPLAY_TIME_SEC
+                continue
+
             if name is None:
+                # unknown_streak counts consumed detection results, so this is
+                # N real recognition attempts, not N camera frames.
                 unknown_streak += 1
                 box_color = GOLD if unknown_streak < config.RECOGNITION_UNKNOWN_STREAK else RED
                 box_label = None
@@ -481,7 +734,8 @@ def run(args):
                                           worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
                 else:
-                    _log_recognition_attempt(result, result.get("decision") or "rejected_unknown")
+                    unknown_streak = 0
+                    _log_recognition_attempt(result, decision or "rejected_unknown")
                     web_app.update_status(state="NOT_RECOGNIZED", message="Face not recognized",
                                           worker_id=None, face_detected=True, confidence=confidence,
                                           known_workers=recognizer.known_count)
@@ -491,11 +745,13 @@ def run(args):
             unknown_streak = 0
             box_color = GREEN
 
-            _, known_ids, known_names = recognizer._snapshot_known_faces()
+            known_encs, known_ids, known_names = recognizer.snapshot_known_faces()
             worker_id = None
+            worker_encoding = None
             if name in known_names:
                 idx = known_names.index(name)
                 worker_id = known_ids[idx]
+                worker_encoding = np.array(known_encs[idx])
 
             if worker_id is None:
                 continue
@@ -506,14 +762,18 @@ def run(args):
             id_suffix = f" | ID: {display_id}" if display_id else ""
             box_label = f"{display_name}{id_suffix}"
 
+            # Debounce against the database (not just memory) so a service
+            # restart can't re-arm double-clocking, and word it by what
+            # actually happened last — an exit kiosk must not say "clocked in".
             last = last_clocks.get(worker_id)
-            if last and datetime.now() - last < timedelta(minutes=config.CLOCK_DEBOUNCE_MINUTES):
-                pct = int(confidence * 100)
-                already_msg = (
-                    f"Already clocked in, {display_name}! ID: {display_id} ({pct}%)"
-                    if display_id
-                    else f"Already clocked in, {display_name}! ({pct}%)"
-                )
+            recently_clocked = (
+                (last and datetime.now() - last < timedelta(minutes=config.CLOCK_DEBOUNCE_MINUTES))
+                or database.was_recently_clocked(worker_id, config.CLOCK_DEBOUNCE_MINUTES)
+            )
+            if recently_clocked:
+                last_action = database.get_last_action(worker_id)
+                verb = "clocked out" if last_action == "clock_out" else "clocked in"
+                already_msg = f"Already {verb}, {display_name}!"
                 web_app.update_status(state="ALREADY_CLOCKED",
                                       message=already_msg,
                                       worker_name=display_name, worker_id=display_id, face_detected=True,
@@ -523,36 +783,31 @@ def run(args):
                 display_until[0] = now + config.DISPLAY_TIME_SEC
                 continue
 
-            if config.KIOSK_TYPE == "entry":
-                action = "clock_in"
-            elif config.KIOSK_TYPE == "exit":
-                action = "clock_out"
-            else:
-                last_action = database.get_last_action(worker_id)
-                action = "clock_out" if last_action == "clock_in" else "clock_in"
+            if liveness is not None:
+                # Matched - now require a blink before the event is recorded.
+                liveness.reset()
+                pending_clock[0] = {
+                    "result": result,
+                    "worker_id": worker_id,
+                    "display_name": display_name,
+                    "display_id": display_id,
+                    "confidence": confidence,
+                    "encoding": worker_encoding,
+                    "deadline": now + config.LIVENESS_WAIT_SEC,
+                    "blink_confirmed": False,
+                    "blink_confirmed_at": 0.0,
+                    "post_blink_confirmed": False,
+                }
+                web_app.update_status(state="WAITING_FOR_BLINK",
+                                      message=f"Blink to verify, {display_name}",
+                                      worker_name=display_name, worker_id=display_id,
+                                      face_detected=True, confidence=confidence,
+                                      ear=liveness.get_ear(), known_workers=recognizer.known_count)
+                continue
 
-            database.log_attendance(
-                worker_id=worker_id, worker_name=display_name,
-                action=action, liveness_confirmed=False, confidence=confidence,
-            )
-            _log_recognition_attempt(result, "accepted")
-            last_clocks[worker_id] = datetime.now()
-
-            time_str = datetime.now().strftime("%I:%M %p")
-            pct = int(confidence * 100)
-            id_text = f" ID: {display_id}" if display_id else ""
-            msg = (
-                f"Welcome, {display_name}!{id_text} ({pct}%) - {time_str}"
-                if action == "clock_in"
-                else f"Goodbye, {display_name}!{id_text} ({pct}%) - {time_str}"
-            )
-
-            web_app.update_status(state="CLOCKED_IN", message=msg,
-                                  worker_name=display_name, worker_id=display_id, action=action,
-                                  confidence=confidence, face_detected=True,
-                                  known_workers=recognizer.known_count)
-            logger.info("%s: %s id=%s (confidence: %.2f)", action.replace("_", " ").title(), display_name, display_id or "n/a", confidence)
-            display_until[0] = now + config.DISPLAY_TIME_SEC
+            recorded = record_clock(result, worker_id, display_name, display_id, confidence,
+                                    liveness_confirmed=False)
+            display_until[0] = now + (config.DISPLAY_TIME_SUCCESS_SEC if recorded else 2)
 
     except KeyboardInterrupt:
         logger.info("Shutting down...")

@@ -62,10 +62,10 @@ assert.match(
   /hasValidPortalSession\(req,\s*\['admin',\s*'enrollment',\s*'viewer'\]\)/,
   'Dashboard worker roster reads should allow viewer portal members',
 );
-assert.match(
+assert.doesNotMatch(
   workersRoute,
-  /POST[\s\S]*requireAdmin\(req\)/,
-  'Worker creation outside the enrollment flow must stay admin-only',
+  /export async function POST/,
+  'Worker creation must go through /api/enroll only; the raw workers POST was removed',
 );
 assert.match(
   workersRoute,

@@ -98,10 +98,6 @@ def get_kiosk_ui_host() -> str:
     return _config_or_env("KIOSK_UI_HOST", "KIOSK_UI_HOST", "127.0.0.1") or "127.0.0.1"
 
 
-def get_encode_service_host() -> str:
-    return _config_or_env("KIOSK_ENCODE_HOST", "KIOSK_ENCODE_HOST", "127.0.0.1") or "127.0.0.1"
-
-
 def get_enroll_preview_host() -> str:
     return _config_or_env(
         "KIOSK_ENROLL_PREVIEW_HOST",

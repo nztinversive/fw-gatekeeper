@@ -3,15 +3,7 @@ import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
 import { hasValidKioskKey, isKioskRequestAllowed, unauthorizedApiResponse } from '@/lib/auth';
 import { hasPortalMemberAccess, type PortalMemberRole } from '@/lib/portal-member';
 
-const PUBLIC_PATHS = ['/login', '/api/auth', '/api/convex-auth', '/api/health'];
-
-function isLocalDemoWriteMode() {
-  return (
-    process.env.NODE_ENV !== 'production' &&
-    process.env.FW_DEMO_WRITE_MODE === '1' &&
-    process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1'
-  );
-}
+const PUBLIC_PATHS = ['/login', '/api/convex-auth', '/api/health'];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -20,6 +12,10 @@ function isPublicPath(pathname: string): boolean {
 function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
   const { pathname, searchParams } = req.nextUrl;
   const method = req.method.toUpperCase();
+
+  if (pathname === '/api/employee-directory' && method === 'GET') {
+    return ['admin', 'enrollment'];
+  }
 
   if (pathname === '/api/enroll') {
     return ['admin', 'enrollment'];
@@ -41,10 +37,6 @@ function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
     return ['admin', 'enrollment', 'viewer'];
   }
 
-  if (pathname === '/api/portal-role' && method === 'GET') {
-    return ['admin', 'enrollment', 'viewer'];
-  }
-
   if (pathname === '/api/recognition-attempts' && method === 'PATCH') {
     return ['admin', 'enrollment'];
   }
@@ -63,6 +55,10 @@ function getApiAllowedRoles(req: NextRequest): PortalMemberRole[] {
 
   if (pathname === '/api/attendance-corrections' && method === 'POST') {
     return ['admin', 'enrollment'];
+  }
+
+  if (pathname === '/api/schedules' && method === 'GET') {
+    return ['admin', 'enrollment', 'viewer'];
   }
 
   if (pathname === '/api/shift-briefing' && method === 'GET') {
@@ -138,9 +134,6 @@ const authenticatedMiddleware = convexAuthNextjsMiddleware(async (req, { convexA
 });
 
 export function proxy(req: NextRequest, event: NextFetchEvent) {
-  if (isLocalDemoWriteMode()) {
-    return NextResponse.next();
-  }
   return authenticatedMiddleware(req, event);
 }
 

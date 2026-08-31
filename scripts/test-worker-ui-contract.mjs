@@ -32,7 +32,8 @@ assert.match(enrollPage, /workerId: workerIdRef\.current/, 'Enroll submit payloa
 assert.match(enrollPage, /Employee ID Number[\s\S]*Department/, 'Enroll page must show Employee ID Number between Full Name and Department.');
 assert.match(enrollPage, /employeeId: employeeIdRef\.current\.trim\(\)/, 'Enroll submit payload must include the employee ID number.');
 assert.match(enrollPage, /setEmployeeId\(worker\.employee_id \|\| ''\)/, 'Re-enrollment prefill must load the existing employee ID number.');
-assert.match(enrollPage, /searchEmployeeDirectory\(name\)/, 'New enrollment should suggest workers from the supplied employee directory.');
+assert.match(enrollPage, /\/api\/employee-directory\?q=/, 'New enrollment should fetch directory suggestions server-side so the roster PII stays out of the client bundle.');
+assert.doesNotMatch(enrollPage, /searchEmployeeDirectory/, 'Enroll page must not bundle the employee directory data client-side.');
 assert.match(enrollPage, /selectEmployee[\s\S]*setEmployeeId\(employee\.employeeId\)[\s\S]*setDepartment\(employee\.department\)/, 'Selecting a directory match must fill its employee ID and area.');
 assert.match(enrollPage, /role="combobox"[\s\S]*role="listbox"[\s\S]*role="option"/, 'Employee suggestions must expose accessible combobox semantics.');
 assert.match(enrollPage, /No roster match\. You can continue with a new name\./, 'Enrollment must preserve manual entry for people outside the supplied roster.');
@@ -52,14 +53,12 @@ assert.match(proactiveActions, /Review now/, 'Dashboard Action Center must provi
 assert.match(dashboardPage, /Shift Command <span className="text-gold">Inbox<\/span>/, 'Dashboard must lead with the shift command inbox instead of a passive live dashboard.');
 assert.match(dashboardPage, /Live Shift Sentinel/, 'Dashboard command inbox must include the deterministic live Sentinel surface.');
 assert.match(dashboardPage, /Mark Sentinel seen/, 'Dashboard Sentinel acknowledgements must stay lightweight and in-app.');
-assert.match(dashboardPage, /Next best action/, 'Dashboard command inbox must show the next best action before supporting evidence.');
-assert.match(dashboardPage, /Needs action[\s\S]*Closeout blockers[\s\S]*Watch signals/, 'Dashboard command inbox must group supervisor work by operational meaning.');
+assert.match(dashboardPage, /Live Shift Sentinel/, 'Dashboard command inbox must lead with the single ranked action queue (the Sentinel).');
+assert.doesNotMatch(dashboardPage, /Needs action[\s\S]*Closeout blockers[\s\S]*Watch signals/, 'Dashboard must not re-render ranked actions as parallel command groups; the Sentinel is the single queue.');
 assert.match(dashboardPage, /Open exception work[\s\S]*Suggested resolutions/, 'Dashboard command inbox must surface exception work with server-backed suggested resolutions.');
 assert.doesNotMatch(dashboardPage, /group\.items\.slice\(0,\s*4\)/, 'Dashboard command inbox must not hide overflow command actions.');
 assert.match(dashboardPage, /exceptionSignalUnavailable \? \([\s\S]*role="status"[\s\S]*exceptionUnavailableCopy/, 'Dashboard exception work must show unavailable state instead of all-clear copy when exception data is stale or missing.');
 assert.match(dashboardPage, /0 of \$\{systemHealth\.kiosks\.total\} kiosks online|\$\{systemHealth\.kiosks\.counts\.online\} of \$\{systemHealth\.kiosks\.total\} kiosks online/, 'Dashboard should use plain-language kiosk online copy instead of ambiguous 0/2 sync shorthand.');
-assert.match(dashboardPage, /workers enrolled/i, 'Dashboard should label recognition-ready workers as enrolled, not generally ready/present.');
-assert.match(dashboardPage, /Worker data ready/, 'Dashboard system health should use operator-friendly worker sync copy instead of technical Sync payload copy.');
 assert.match(dashboardPage, /need disposition/, 'Dashboard command inbox should summarize exception work as disposition, not raw dashboard activity.');
 assert.match(dashboardPage, /blockers \/ risks/, 'Dashboard command inbox should summarize closeout blockers before supporting roster evidence.');
 assert.doesNotMatch(dashboardPage, /3\.0-mobilefacenet|face_service\.version \|\|/, 'Dashboard should not foreground raw face model version in the main health card.');

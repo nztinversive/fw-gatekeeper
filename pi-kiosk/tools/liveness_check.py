@@ -1,21 +1,34 @@
-"""Browser-based quick test for camera, face detection, and blink liveness.
+"""Field diagnostic for blink detection (liveness).
 
-Run: py quick_test.py
-Open: http://localhost:5555
+Standalone browser-based check of the camera, dlib HOG face detection, and the
+blink-liveness pipeline used when LIVENESS_REQUIRED is enabled. Run it on a
+kiosk (with the kiosk service stopped, so the camera is free) to verify the
+shape predictor model and EAR thresholds before turning liveness on.
+
+Run:  python3 tools/liveness_check.py   (from the pi-kiosk directory)
+Open: http://127.0.0.1:5599 (loopback only)
 """
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 import cv2
 import face_recognition
 from flask import Flask, Response, jsonify
 
-import config
-from liveness import LivenessChecker
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import config  # noqa: E402
+from liveness import LivenessChecker  # noqa: E402
+
+# Loopback-only diagnostic port; must not collide with the kiosk UI (:5555),
+# the enrollment preview (:5556), or anything else the kiosk runs.
+LIVENESS_CHECK_PORT = 5599
 
 app = Flask(__name__)
 
@@ -167,9 +180,9 @@ def main():
     worker = threading.Thread(target=_camera_loop, daemon=True)
     worker.start()
     time.sleep(0.8)
-    print(f"Open http://localhost:{config.KIOSK_PORT} in your browser")
+    print(f"Open http://127.0.0.1:{LIVENESS_CHECK_PORT} in your browser")
     try:
-        app.run(host="0.0.0.0", port=config.KIOSK_PORT, debug=False, use_reloader=False, threaded=True)
+        app.run(host="127.0.0.1", port=LIVENESS_CHECK_PORT, debug=False, use_reloader=False, threaded=True)
     finally:
         global _running
         _running = False

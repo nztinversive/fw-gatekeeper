@@ -6,47 +6,7 @@ import { useAuthActions } from '@convex-dev/auth/react';
 import { normalizeConvexAuthError } from '@/lib/convex-auth-errors';
 
 export default function LoginPage() {
-  const localDemoMode = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FW_DEMO_WRITE_MODE === '1';
-  if (localDemoMode) {
-    return <LocalDemoLogin />;
-  }
-
   return <AuthenticatedLogin />;
-}
-
-function LocalDemoLogin() {
-  const router = useRouter();
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-navy-950 relative overflow-hidden">
-      <div className="absolute inset-0 bg-grid-pattern bg-grid opacity-30" />
-      <div className="w-full max-w-md p-8 relative z-10 animate-fade-in">
-        <div className="text-center mb-10">
-          <div className="w-16 h-16 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-gold/5">
-            <svg className="w-8 h-8 text-gold" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-display font-bold tracking-tight text-slate-100">
-            <span className="text-gold">FW</span> Gateway
-          </h1>
-          <p className="text-slate-500 text-sm font-mono mt-3 uppercase tracking-widest text-[11px]">Local demo mode</p>
-        </div>
-
-        <div className="glass-card p-6 space-y-5">
-          <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-100 leading-6">
-            Demo write mode is on. Protected pages are open locally, and write actions are saved only in this local session.
-          </div>
-          <button type="button" onClick={() => router.push('/schedules')} className="btn-primary w-full py-3.5 text-base">
-            Continue to local demo
-          </button>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Set NEXT_PUBLIC_CONVEX_URL to use the normal named-account login flow.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function AuthenticatedLogin() {
@@ -99,7 +59,7 @@ function AuthenticatedLogin() {
             </svg>
           </div>
           <h1 className="text-3xl font-display font-bold tracking-tight text-slate-100">
-            <span className="text-gold">FW</span> Gateway
+            <span className="text-gold">FW</span> Gatekeeper
           </h1>
           <p className="text-slate-500 text-sm font-mono mt-3 uppercase tracking-widest text-[11px]">Access Control System</p>
         </div>

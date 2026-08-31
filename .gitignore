@@ -8,3 +8,7 @@ __pycache__/
 
 .env.local
 pi-kiosk/config_local.py
+
+# Local scratch/build outputs
+outputs/
+tmp_*
