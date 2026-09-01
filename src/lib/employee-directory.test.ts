@@ -39,4 +39,20 @@ describe('employee directory', () => {
     expect(suggestions[0]).toMatchObject({ employeeId: 'F-1', name: 'Steven Wheeler (D)' });
     expect(suggestions).toHaveLength(12);
   });
+
+  it('reserves employee-ID matches before name fallback so one worker cannot fill two roster rows', () => {
+    const result = reconcileEmployeeDirectory([
+      { id: 'worker-1', name: 'Amanda Bonapace', employeeId: 'F-2', encodingStatus: 'valid' },
+    ]);
+
+    expect(result.employees.find((employee) => employee.employeeId === 'F-2')).toMatchObject({
+      status: 'enrolled',
+      workerId: 'worker-1',
+    });
+    expect(result.employees.find((employee) => employee.employeeId === 'S-1')).toMatchObject({
+      status: 'not_enrolled',
+    });
+    expect(result.employees.find((employee) => employee.employeeId === 'S-1')).not.toHaveProperty('workerId');
+    expect(result.summary.enrolled).toBe(1);
+  });
 });

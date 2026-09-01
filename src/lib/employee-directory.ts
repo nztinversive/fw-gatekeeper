@@ -153,10 +153,19 @@ export function reconcileEmployeeDirectory(
       .map((worker) => [normalizeDirectoryValue(worker.employeeId!), worker]),
   );
   const workersByName = new Map(workers.map((worker) => [normalizeDirectoryValue(worker.name), worker]));
+  const reservedWorkerIds = new Set<string>();
 
-  const employees = employeeDirectory.map((employee) => {
-    const worker = workersByEmployeeId.get(normalizeDirectoryValue(employee.employeeId))
-      || workersByName.get(normalizeDirectoryValue(employee.name));
+  const idMatches = employeeDirectory.map((employee) => {
+    const worker = workersByEmployeeId.get(normalizeDirectoryValue(employee.employeeId));
+    if (worker) reservedWorkerIds.add(worker.id);
+    return worker;
+  });
+
+  const employees = employeeDirectory.map((employee, index) => {
+    const idMatch = idMatches[index];
+    const nameMatch = workersByName.get(normalizeDirectoryValue(employee.name));
+    const worker = idMatch || (nameMatch && !reservedWorkerIds.has(nameMatch.id) ? nameMatch : undefined);
+    if (worker) reservedWorkerIds.add(worker.id);
     const status: EmployeeEnrollmentStatus = worker?.encodingStatus === 'valid'
       ? 'enrolled'
       : worker?.encodingStatus === 'invalid'
