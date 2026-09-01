@@ -1,6 +1,7 @@
 import { internalQuery, query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { assertPortalRole } from "./access";
+import { findEmployeeDirectoryById } from "../src/lib/employee-directory";
 
 // The kiosk matches exclusively 512-dim MobileFaceNet embeddings; legacy
 // 128-dim dlib encodings are invalid and require re-enrollment.
@@ -120,22 +121,22 @@ export const get = query({
   },
 });
 
-export const create = mutation({
-  args: {
-    name: v.string(),
-    employeeId: v.optional(v.string()),
-    department: v.optional(v.string()),
-    faceEncoding: v.array(v.float64()),
-    photoStorageIds: v.optional(v.array(v.id("_storage"))),
-  },
-  returns: v.object({
-    id: v.id("workers"),
-    name: v.string(),
-    employeeId: v.optional(v.string()),
-    department: v.string(),
-  }),
-  handler: async (ctx, args) => {
-    await assertPortalRole(ctx, ["admin", "enrollment"]);
+const createWorkerArgs = {
+  name: v.string(),
+  employeeId: v.optional(v.string()),
+  department: v.optional(v.string()),
+  faceEncoding: v.array(v.float64()),
+  photoStorageIds: v.optional(v.array(v.id("_storage"))),
+};
+
+const createWorkerResult = v.object({
+  id: v.id("workers"),
+  name: v.string(),
+  employeeId: v.optional(v.string()),
+  department: v.string(),
+});
+
+async function createWorker(ctx: any, args: any) {
     const name = normalizeName(args.name);
     if (!name) {
       throw new Error("Worker name is required");
@@ -181,6 +182,35 @@ export const create = mutation({
       active: true,
     });
     return { id, name, employeeId, department };
+}
+
+export const create = mutation({
+  args: createWorkerArgs,
+  returns: createWorkerResult,
+  handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin"]);
+    return await createWorker(ctx, args);
+  },
+});
+
+export const createFromRoster = mutation({
+  args: {
+    employeeId: v.string(),
+    faceEncoding: v.array(v.float64()),
+    photoStorageIds: v.optional(v.array(v.id("_storage"))),
+  },
+  returns: createWorkerResult,
+  handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
+    const employee = findEmployeeDirectoryById(args.employeeId);
+    if (!employee) throw new Error("Employee must be selected from the company roster");
+    return await createWorker(ctx, {
+      name: employee.name,
+      employeeId: employee.employeeId,
+      department: employee.department,
+      faceEncoding: args.faceEncoding,
+      photoStorageIds: args.photoStorageIds,
+    });
   },
 });
 

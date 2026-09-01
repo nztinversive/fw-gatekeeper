@@ -81,4 +81,35 @@ describe("worker identity safeguards", () => {
       faceEncoding: encoding,
     })).rejects.toThrow("Worker name already exists");
   });
+
+  it("allows enrollment roles to create only canonical roster workers", async () => {
+    const test = convexTest(schema, modules);
+    const enrollmentId = await test.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", { email: "enrollment@example.com" });
+      await ctx.db.insert("portalMembers", { userId, role: "enrollment", active: true, createdAt: new Date().toISOString() });
+      return userId;
+    });
+    const enrollment = test.withIdentity({ subject: enrollmentId });
+
+    await expect(enrollment.mutation(api.workers.create, {
+      name: "Off Roster Person",
+      employeeId: "OTHER-1",
+      department: "Unknown",
+      faceEncoding: encoding,
+    })).rejects.toThrow("Insufficient permissions");
+
+    await expect(enrollment.mutation(api.workers.createFromRoster, {
+      employeeId: "f-2",
+      faceEncoding: encoding,
+    })).resolves.toMatchObject({
+      name: "Alex Gonzalez",
+      employeeId: "F-2",
+      department: "Area Manager",
+    });
+
+    await expect(enrollment.mutation(api.workers.createFromRoster, {
+      employeeId: "OTHER-1",
+      faceEncoding: encoding,
+    })).rejects.toThrow("Employee must be selected from the company roster");
+  });
 });

@@ -122,6 +122,12 @@ export function normalizeDirectoryValue(value: string) {
     .trim();
 }
 
+export function findEmployeeDirectoryById(employeeId?: string) {
+  if (!employeeId?.trim()) return undefined;
+  const normalizedId = normalizeDirectoryValue(employeeId);
+  return employeeDirectory.find((employee) => normalizeDirectoryValue(employee.employeeId) === normalizedId);
+}
+
 function editDistance(left: string, right: string) {
   const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
   for (let leftIndex = 1; leftIndex <= left.length; leftIndex++) {
