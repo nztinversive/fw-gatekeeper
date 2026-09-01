@@ -240,8 +240,8 @@ export const appGuides: AppGuide[] = [
     purpose: 'Confirm gate devices are syncing workers and uploading attendance to the portal.',
     steps: [
       'Check the online, stale, offline, and never-synced totals.',
-      'Open the affected kiosk and compare its last sync and upload times.',
-      'Confirm its portal URL, kiosk ID, and API key configuration.',
+      'Find the affected device under Registered kiosks and compare the card’s last sync and attendance upload times.',
+      'Match the card’s kiosk ID to the Pi, then verify the portal URL and KIOSK_API_KEY externally in Render and the Pi environment.',
       'Refresh after the device syncs and verify it returns online.',
     ],
     tips: ['Never paste the kiosk API key into notes or screenshots.', 'A newly enrolled worker appears after the kiosk’s next successful sync.'],

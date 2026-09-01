@@ -109,13 +109,17 @@ export default function GuideDrawer() {
             <div className="flex-1 overflow-y-auto px-5 py-6">
               {guide ? (
                 <div className="space-y-7">
-                  <p className="text-sm leading-6 text-slate-300">{guide.purpose}</p>
                   {currentRole === undefined ? (
                     <div role="status" className="rounded-xl border border-cyan-400/15 bg-cyan-400/5 px-4 py-3 text-sm leading-6 text-cyan-100">
                       Loading guidance for your account. We’ll show only actions available to your role.
                     </div>
+                  ) : !canRoleUseGuide(guide, currentRole) ? (
+                    <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm leading-6 text-amber-100">
+                      This page does not have guidance for your role. Open the Guide Center to see the workflows available to your account.
+                    </div>
                   ) : (
                     <>
+                      <p className="text-sm leading-6 text-slate-300">{guide.purpose}</p>
                       {guide.roleNotes?.[currentRole] && (
                         <div className="rounded-xl border border-gold/20 bg-gold/5 px-4 py-3 text-sm leading-6 text-amber-100">
                           <span className="font-semibold text-gold">For your role: </span>{guide.roleNotes[currentRole]}

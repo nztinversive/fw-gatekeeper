@@ -59,6 +59,15 @@ describe('role-aware application guides', () => {
 
     expect(sharedViewerCopy).not.toMatch(/save notes|reopen a closeout|resolve exceptions|correct an exception|re-enroll a worker|manage schedules/i);
   });
+
+  it('points kiosk troubleshooting at visible evidence and named external configuration', () => {
+    const kioskSteps = getGuideSteps(guide('/kiosks'), 'admin').join(' ');
+
+    expect(kioskSteps).not.toContain('Open the affected kiosk');
+    expect(kioskSteps).toContain('Registered kiosks');
+    expect(kioskSteps).toContain('Render');
+    expect(kioskSteps).toContain('Pi environment');
+  });
 });
 
 describe('guide search', () => {
