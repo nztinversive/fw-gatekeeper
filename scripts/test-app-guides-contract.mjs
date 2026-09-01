@@ -20,6 +20,7 @@ assert.match(drawer, /event\.key === 'Escape'/, 'The guide drawer must support k
 assert.match(drawer, /event\.key !== 'Tab'/, 'The guide drawer must keep keyboard focus inside the modal.');
 assert.match(drawer, /wasOpenRef\.current[\s\S]*triggerRef\.current\?\.focus\(\)/, 'Closing the guide must restore focus after the modal unmounts.');
 assert.match(drawer, /getGuideSteps\(guide, currentRole\)/, 'The contextual guide must render steps for the current role.');
+assert.match(drawer, /currentRole === undefined[\s\S]*Loading guidance for your account[\s\S]*getGuideSteps\(guide, currentRole\)/, 'The contextual guide must not render actionable steps until the current role resolves.');
 assert.match(drawer, /guide\.roleNotes\?\.\[currentRole\]/, 'Contextual help must surface role-specific guidance.');
 assert.match(drawer, /canRoleUseGuide\(linkedGuide, currentRole\)/, 'Related links must not advertise pages unavailable to the current role.');
 assert.match(center, /Your Gatekeeper loop/, 'The Guide Center must explain the role-aware daily workflow.');

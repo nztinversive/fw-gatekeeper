@@ -110,35 +110,43 @@ export default function GuideDrawer() {
               {guide ? (
                 <div className="space-y-7">
                   <p className="text-sm leading-6 text-slate-300">{guide.purpose}</p>
-                  {currentRole && guide.roleNotes?.[currentRole] && (
-                    <div className="rounded-xl border border-gold/20 bg-gold/5 px-4 py-3 text-sm leading-6 text-amber-100">
-                      <span className="font-semibold text-gold">For your role: </span>{guide.roleNotes[currentRole]}
+                  {currentRole === undefined ? (
+                    <div role="status" className="rounded-xl border border-cyan-400/15 bg-cyan-400/5 px-4 py-3 text-sm leading-6 text-cyan-100">
+                      Loading guidance for your account. We’ll show only actions available to your role.
                     </div>
-                  )}
-                  <section>
-                    <h3 className="section-label mb-3">Recommended steps</h3>
-                    <ol className="space-y-3">
-                      {getGuideSteps(guide, currentRole).map((step, index) => (
-                        <li key={step} className="flex gap-3 text-sm leading-6 text-slate-300">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-gold/25 bg-gold/10 font-mono text-xs font-semibold text-gold">{index + 1}</span>
-                          <span>{step}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
-                  <section className="rounded-xl border border-cyan-400/15 bg-cyan-400/5 p-4">
-                    <h3 className="section-label text-cyan-300">Good to know</h3>
-                    <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
-                      {guide.tips.map((tip) => <li key={tip}>• {tip}</li>)}
-                    </ul>
-                  </section>
-                  {relatedLinks.length > 0 && (
-                    <section>
-                      <h3 className="section-label mb-3">Related pages</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {relatedLinks.map((link) => <Link key={link.href} href={link.href} className="btn-secondary text-xs">{link.label}</Link>)}
-                      </div>
-                    </section>
+                  ) : (
+                    <>
+                      {guide.roleNotes?.[currentRole] && (
+                        <div className="rounded-xl border border-gold/20 bg-gold/5 px-4 py-3 text-sm leading-6 text-amber-100">
+                          <span className="font-semibold text-gold">For your role: </span>{guide.roleNotes[currentRole]}
+                        </div>
+                      )}
+                      <section>
+                        <h3 className="section-label mb-3">Recommended steps</h3>
+                        <ol className="space-y-3">
+                          {getGuideSteps(guide, currentRole).map((step, index) => (
+                            <li key={step} className="flex gap-3 text-sm leading-6 text-slate-300">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-gold/25 bg-gold/10 font-mono text-xs font-semibold text-gold">{index + 1}</span>
+                              <span>{step}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </section>
+                      <section className="rounded-xl border border-cyan-400/15 bg-cyan-400/5 p-4">
+                        <h3 className="section-label text-cyan-300">Good to know</h3>
+                        <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
+                          {guide.tips.map((tip) => <li key={tip}>• {tip}</li>)}
+                        </ul>
+                      </section>
+                      {relatedLinks.length > 0 && (
+                        <section>
+                          <h3 className="section-label mb-3">Related pages</h3>
+                          <div className="flex flex-wrap gap-2">
+                            {relatedLinks.map((link) => <Link key={link.href} href={link.href} className="btn-secondary text-xs">{link.label}</Link>)}
+                          </div>
+                        </section>
+                      )}
+                    </>
                   )}
                 </div>
               ) : (

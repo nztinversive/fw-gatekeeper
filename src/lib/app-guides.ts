@@ -206,20 +206,20 @@ export const appGuides: AppGuide[] = [
     purpose: 'Define when departments are expected to work so briefing and exception calculations have the right baseline.',
     steps: [
       'Review the active schedules before adding another one.',
-      'Set the days, start and end time, department, and effective dates.',
+      'Set the days, start and end time, and department.',
       'Avoid overlapping schedules for the same department unless intentional.',
       'Return to Briefing and confirm the expected coverage changed correctly.',
     ],
     stepsByRole: {
       enrollment: [
         'Review the active schedules and select the relevant department.',
-        'Confirm the scheduled days, start time, end time, and effective dates.',
+        'Confirm the scheduled days, start time, end time, and department.',
         'Document any missing, overlapping, or incorrect coverage.',
         'Ask an administrator to make the change, then verify it in Briefing.',
       ],
       viewer: [
         'Review the active schedules and select the relevant department.',
-        'Confirm the scheduled days, start time, end time, and effective dates.',
+        'Confirm the scheduled days, start time, end time, and department.',
         'Document any missing, overlapping, or incorrect coverage.',
         'Ask an administrator to make the change, then verify it in Briefing.',
       ],
@@ -258,7 +258,7 @@ export const appGuides: AppGuide[] = [
       'Enter the person’s work email and choose the lowest sufficient role.',
       'Generate an initial password and create the account.',
       'Share credentials directly with the user, not in a public channel.',
-      'Review the active user list and deactivate access that is no longer needed.',
+      'Use an existing account’s email to reset its password or update its role when access changes.',
     ],
     tips: ['Viewer is read-only; Enrollment can capture faces; Admin can change system data.', 'Use named accounts instead of shared credentials.'],
     related: [{ href: '/guide', label: 'Compare role workflows' }],
@@ -271,17 +271,17 @@ export const appGuides: AppGuide[] = [
     eyebrow: 'Recognition evidence',
     purpose: 'Investigate uncertain matches and recognition quality without changing attendance records.',
     steps: [
-      'Choose the date, kiosk, or worker connected to the recognition concern.',
-      'Compare the best and second-best candidates and their scores.',
-      'Look for repeated low-confidence or ambiguous attempts.',
-      'Re-enroll the worker or inspect the kiosk when the evidence shows a recurring problem.',
+      'Filter attempts by date, decision, review status, confidence, or kiosk.',
+      'Start with unreviewed, low-confidence, rejected, or low-margin attempts.',
+      'Compare the candidate name, score, margin, decision, and kiosk evidence.',
+      'Mark the attempt Confirmed or Ignored, then re-enroll the worker or inspect the kiosk if the pattern repeats.',
     ],
     stepsByRole: {
       viewer: [
-        'Choose the date, kiosk, or worker connected to the recognition concern.',
-        'Compare the best and second-best candidates and their scores.',
-        'Look for repeated low-confidence or ambiguous attempts.',
-        'Share the attempt evidence with an enrollment operator or administrator when action is needed.',
+        'Filter attempts by date, decision, review status, confidence, or kiosk.',
+        'Start with unreviewed, low-confidence, rejected, or low-margin attempts.',
+        'Compare the candidate name, score, margin, decision, and kiosk evidence.',
+        'Share the attempt, candidate, and kiosk details with an enrollment operator or administrator when action is needed.',
       ],
     },
     keywords: ['low confidence', 'wrong match', 'face match', 'recognition score', 'ambiguous'],
@@ -299,7 +299,8 @@ export function canRoleUseGuide(guide: AppGuide, role: GuideRole | undefined) {
 }
 
 export function getGuideSteps(guide: AppGuide, role: GuideRole | undefined) {
-  return (role && guide.stepsByRole?.[role]) || guide.steps;
+  const effectiveRole = role ?? 'viewer';
+  return guide.stepsByRole?.[effectiveRole] || guide.steps;
 }
 
 export function searchAppGuides(query: string, role: GuideRole | undefined) {

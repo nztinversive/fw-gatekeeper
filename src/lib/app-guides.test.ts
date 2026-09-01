@@ -24,6 +24,32 @@ describe('role-aware application guides', () => {
     expect(getGuideSteps(guide('/briefing'), 'enrollment').join(' ')).not.toContain('attendance changes to an administrator');
     expect(getGuideSteps(guide('/schedules'), 'admin').join(' ')).toContain('Set the days');
   });
+
+  it('defaults unresolved roles to the least-privileged instructions', () => {
+    const workerSteps = getGuideSteps(guide('/workers'), undefined).join(' ');
+
+    expect(workerSteps).not.toContain('Use Enroll Face');
+    expect(workerSteps).toContain('enrollment operator or administrator');
+  });
+
+  it('describes only controls and evidence available in the application', () => {
+    const scheduleSteps = ['admin', 'enrollment', 'viewer'].flatMap((role) =>
+      getGuideSteps(guide('/schedules'), role as 'admin' | 'enrollment' | 'viewer'),
+    ).join(' ');
+    const accountSteps = getGuideSteps(guide('/accounts'), 'admin').join(' ');
+    const recognitionSteps = ['admin', 'enrollment', 'viewer'].flatMap((role) =>
+      getGuideSteps(guide('/calibration/recognition'), role as 'admin' | 'enrollment' | 'viewer'),
+    ).join(' ');
+
+    expect(scheduleSteps).not.toMatch(/effective date/i);
+    expect(accountSteps).not.toMatch(/deactivate/i);
+    expect(accountSteps).toMatch(/reset its password|update its role/i);
+    expect(recognitionSteps).not.toMatch(/second-best|choose the .*worker/i);
+    expect(recognitionSteps).toMatch(/decision/i);
+    expect(recognitionSteps).toMatch(/confidence/i);
+    expect(recognitionSteps).toMatch(/kiosk/i);
+    expect(recognitionSteps).toMatch(/margin/i);
+  });
 });
 
 describe('guide search', () => {
