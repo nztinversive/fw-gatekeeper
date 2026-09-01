@@ -153,23 +153,38 @@ function termMatches(term: string, searchableParts: string[]) {
 export function reconcileEmployeeDirectory(
   workers: DirectoryWorker[],
 ): { employees: EmployeeDirectoryEnrollmentEntry[]; summary: EmployeeDirectorySummary } {
-  const workersByEmployeeId = new Map(
-    workers
-      .filter((worker) => worker.employeeId?.trim())
-      .map((worker) => [normalizeDirectoryValue(worker.employeeId!), worker]),
-  );
-  const workersByName = new Map(workers.map((worker) => [normalizeDirectoryValue(worker.name), worker]));
+  const groupWorkers = (keyForWorker: (worker: DirectoryWorker) => string | undefined) => {
+    const groups = new Map<string, DirectoryWorker[]>();
+    for (const worker of workers) {
+      const key = keyForWorker(worker);
+      if (!key) continue;
+      groups.set(key, [...(groups.get(key) || []), worker]);
+    }
+    return groups;
+  };
+  const workersByEmployeeId = groupWorkers((worker) => worker.employeeId?.trim()
+    ? normalizeDirectoryValue(worker.employeeId)
+    : undefined);
+  const workersByName = groupWorkers((worker) => normalizeDirectoryValue(worker.name));
   const reservedWorkerIds = new Set<string>();
 
+  // Legacy duplicates predate the uniqueness guard. Never choose an arbitrary
+  // worker from an ambiguous identity group for a re-enrollment target.
+  for (const group of [...workersByEmployeeId.values(), ...workersByName.values()]) {
+    if (group.length > 1) group.forEach((worker) => reservedWorkerIds.add(worker.id));
+  }
+
   const idMatches = employeeDirectory.map((employee) => {
-    const worker = workersByEmployeeId.get(normalizeDirectoryValue(employee.employeeId));
+    const matches = workersByEmployeeId.get(normalizeDirectoryValue(employee.employeeId));
+    const worker = matches?.length === 1 ? matches[0] : undefined;
     if (worker) reservedWorkerIds.add(worker.id);
     return worker;
   });
 
   const employees = employeeDirectory.map((employee, index) => {
     const idMatch = idMatches[index];
-    const nameMatch = workersByName.get(normalizeDirectoryValue(employee.name));
+    const nameMatches = workersByName.get(normalizeDirectoryValue(employee.name));
+    const nameMatch = nameMatches?.length === 1 ? nameMatches[0] : undefined;
     const worker = idMatch || (nameMatch && !reservedWorkerIds.has(nameMatch.id) ? nameMatch : undefined);
     if (worker) reservedWorkerIds.add(worker.id);
     const status: EmployeeEnrollmentStatus = worker?.encodingStatus === 'valid'

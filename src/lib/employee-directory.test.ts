@@ -55,4 +55,28 @@ describe('employee directory', () => {
     expect(result.employees.find((employee) => employee.employeeId === 'S-1')).not.toHaveProperty('workerId');
     expect(result.summary.enrolled).toBe(1);
   });
+
+  it('leaves ambiguous legacy employee IDs unmatched instead of choosing an arbitrary worker', () => {
+    const result = reconcileEmployeeDirectory([
+      { id: 'worker-1', name: 'Alex Gonzalez', employeeId: 'F-2', encodingStatus: 'valid' },
+      { id: 'worker-2', name: 'Different Name', employeeId: 'f-2', encodingStatus: 'missing' },
+    ]);
+    const alex = result.employees.find((employee) => employee.employeeId === 'F-2');
+
+    expect(alex).toMatchObject({ status: 'not_enrolled' });
+    expect(alex).not.toHaveProperty('workerId');
+    expect(result.summary.enrolled).toBe(0);
+  });
+
+  it('leaves ambiguous legacy names unmatched', () => {
+    const result = reconcileEmployeeDirectory([
+      { id: 'worker-1', name: 'Amanda Bonapace', encodingStatus: 'valid' },
+      { id: 'worker-2', name: 'Amanda Bonapace', encodingStatus: 'valid' },
+    ]);
+    const amanda = result.employees.find((employee) => employee.employeeId === 'S-1');
+
+    expect(amanda).toMatchObject({ status: 'not_enrolled' });
+    expect(amanda).not.toHaveProperty('workerId');
+    expect(result.summary.enrolled).toBe(0);
+  });
 });
