@@ -215,6 +215,7 @@ function EnrollPageContent() {
       const result = await res.json();
       stopCamera();
       setResultMsg(`Face encoding saved. ${result.photosCount} photos captured.`);
+      setStep('done');
       try {
         const progressRes = await fetch('/api/employee-directory?status=not_enrolled');
         const progressBody = progressRes.ok ? await progressRes.json() : null;
@@ -222,7 +223,6 @@ function EnrollPageContent() {
       } catch {
         // Enrollment succeeded; progress copy can gracefully omit fresh totals.
       }
-      setStep('done');
     } catch (err) {
       stopCamera();
       setErrorMsg(err instanceof Error ? err.message : 'Enrollment failed');
