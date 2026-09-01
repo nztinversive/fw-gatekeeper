@@ -127,11 +127,22 @@ const links = [
       </svg>
     ),
   },
+  {
+    href: '/guide',
+    group: 'Help',
+    label: 'Guide Center',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a4.5 4.5 0 00-4.5 4.5v7.5A2.25 2.25 0 009.75 21h4.5a2.25 2.25 0 002.25-2.25v-7.5a4.5 4.5 0 00-4.5-4.5z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V5.25a3 3 0 016 0v1.5M9.75 12h4.5M9.75 15.75h4.5" />
+      </svg>
+    ),
+  },
 ];
 
 // The mobile tab bar carries the supervisor loop, not admin setup tasks.
 const primaryMobileLinks = ['/', '/exceptions', '/closeout'];
-const navGroups = ['Shift', 'Evidence', 'Setup'];
+const navGroups = ['Shift', 'Evidence', 'Setup', 'Help'];
 
 export default function Sidebar() {
   const pathname = usePathname();

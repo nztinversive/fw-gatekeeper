@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Sidebar from './Sidebar';
+import GuideDrawer from './GuideDrawer';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,6 +18,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="md:ml-[260px] min-h-screen pb-[calc(7rem+env(safe-area-inset-bottom))] pt-16 md:pb-0 md:pt-0">
         <div className="max-w-7xl mx-auto px-4 py-6 md:px-8 md:py-8">{children}</div>
       </main>
+      <GuideDrawer />
     </>
   );
 }
