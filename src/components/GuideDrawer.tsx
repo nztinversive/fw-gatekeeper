@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { canRoleUseGuide, getGuideForPath } from '@/lib/app-guides';
+import { canRoleUseGuide, getGuideForPath, getGuideSteps } from '@/lib/app-guides';
 import { usePortalRole } from '@/hooks/usePortalRole';
 
 export default function GuideDrawer() {
@@ -12,24 +12,63 @@ export default function GuideDrawer() {
   const currentRole = usePortalRole();
   const [open, setOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const previousPathnameRef = useRef(pathname);
+  const wasOpenRef = useRef(false);
 
-  useEffect(() => setOpen(false), [pathname]);
+  const relatedLinks = (guide?.related || []).filter((link) => {
+    const linkedGuide = getGuideForPath(link.href);
+    return !linkedGuide || canRoleUseGuide(linkedGuide, currentRole);
+  });
+
+  const closeGuide = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
-    if (!open) return;
+    if (previousPathnameRef.current !== pathname) {
+      previousPathnameRef.current = pathname;
+      setOpen(false);
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) {
+      if (wasOpenRef.current) {
+        wasOpenRef.current = false;
+        triggerRef.current?.focus();
+      }
+      return;
+    }
+    wasOpenRef.current = true;
     closeButtonRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        closeGuide();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
+  }, [open, closeGuide]);
 
   if (pathname === '/guide') return null;
 
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
@@ -39,13 +78,15 @@ export default function GuideDrawer() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9a3.375 3.375 0 116.75 0c0 2.25-3.375 2.25-3.375 4.5M12 17.25h.008v.008H12v-.008z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        Help
+        <span className="md:hidden">Help</span>
+        <span className="hidden md:inline">How to use this page</span>
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50">
-          <button type="button" aria-label="Close page guide" onClick={() => setOpen(false)} className="absolute inset-0 bg-navy-950/75 backdrop-blur-sm" />
+          <button type="button" tabIndex={-1} aria-label="Close page guide" onClick={() => closeGuide()} className="absolute inset-0 bg-navy-950/75 backdrop-blur-sm" />
           <aside
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="page-guide-title"
@@ -58,7 +99,7 @@ export default function GuideDrawer() {
                   {guide ? `How to use ${guide.title}` : 'Need help with this page?'}
                 </h2>
               </div>
-              <button ref={closeButtonRef} type="button" onClick={() => setOpen(false)} className="btn-ghost -mr-2 -mt-2" aria-label="Close guide">
+              <button ref={closeButtonRef} type="button" onClick={() => closeGuide()} className="btn-ghost -mr-2 -mt-2" aria-label="Close guide">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -77,7 +118,7 @@ export default function GuideDrawer() {
                   <section>
                     <h3 className="section-label mb-3">Recommended steps</h3>
                     <ol className="space-y-3">
-                      {guide.steps.map((step, index) => (
+                      {getGuideSteps(guide, currentRole).map((step, index) => (
                         <li key={step} className="flex gap-3 text-sm leading-6 text-slate-300">
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-gold/25 bg-gold/10 font-mono text-xs font-semibold text-gold">{index + 1}</span>
                           <span>{step}</span>
@@ -91,16 +132,11 @@ export default function GuideDrawer() {
                       {guide.tips.map((tip) => <li key={tip}>• {tip}</li>)}
                     </ul>
                   </section>
-                  {guide.related.length > 0 && (
+                  {relatedLinks.length > 0 && (
                     <section>
                       <h3 className="section-label mb-3">Related pages</h3>
                       <div className="flex flex-wrap gap-2">
-                        {guide.related
-                          .filter((link) => {
-                            const linkedGuide = getGuideForPath(link.href);
-                            return !linkedGuide || canRoleUseGuide(linkedGuide, currentRole);
-                          })
-                          .map((link) => <Link key={link.href} href={link.href} className="btn-secondary text-xs">{link.label}</Link>)}
+                        {relatedLinks.map((link) => <Link key={link.href} href={link.href} className="btn-secondary text-xs">{link.label}</Link>)}
                       </div>
                     </section>
                   )}
