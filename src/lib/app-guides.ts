@@ -70,7 +70,7 @@ export const appGuides: AppGuide[] = [
       ],
     },
     tips: ['Use department filters when a supervisor owns only one area.', 'Print or export when a durable handoff is needed.'],
-    related: [{ href: '/schedules', label: 'Manage schedules' }, { href: '/exceptions', label: 'Open exception queue' }],
+    related: [{ href: '/schedules', label: 'Review schedules' }, { href: '/exceptions', label: 'Open exception queue' }],
   },
   {
     path: '/exceptions',
@@ -118,8 +118,8 @@ export const appGuides: AppGuide[] = [
       ],
     },
     keywords: ['signoff', 'end of day', 'finish shift', 'supervisor notes'],
-    tips: ['Save notes while work is in progress.', 'Reopen a closeout if a correction must be made after signoff.'],
-    related: [{ href: '/exceptions', label: 'Resolve exceptions' }, { href: '/log', label: 'Review the day’s log' }],
+    tips: ['Keep useful handoff notes while work is in progress.', 'A signed-off closeout may need supervisor review after a correction.'],
+    related: [{ href: '/exceptions', label: 'Review exceptions' }, { href: '/log', label: 'Review the day’s log' }],
     roleNotes: { viewer: 'Use this page to review closeout readiness. An authorized supervisor must save notes or complete signoff.' },
   },
   {
@@ -135,7 +135,7 @@ export const appGuides: AppGuide[] = [
       'Export events or calculated hours when the record must be shared.',
     ],
     tips: ['A source-linked view highlights the relevant worker or event.', 'Attendance corrections belong in Exceptions, not directly in this table.'],
-    related: [{ href: '/exceptions', label: 'Correct an exception' }, { href: '/closeout', label: 'Return to closeout' }],
+    related: [{ href: '/exceptions', label: 'Review an exception' }, { href: '/closeout', label: 'Return to closeout' }],
   },
   {
     path: '/workers',
@@ -286,7 +286,7 @@ export const appGuides: AppGuide[] = [
     },
     keywords: ['low confidence', 'wrong match', 'face match', 'recognition score', 'ambiguous'],
     tips: ['Use Exceptions for attendance corrections.', 'One weak attempt may be environmental; repeated weak attempts need action.'],
-    related: [{ href: '/workers', label: 'Re-enroll a worker' }, { href: '/exceptions', label: 'Review attendance exceptions' }],
+    related: [{ href: '/workers', label: 'Review worker readiness' }, { href: '/exceptions', label: 'Review attendance exceptions' }],
   },
 ];
 

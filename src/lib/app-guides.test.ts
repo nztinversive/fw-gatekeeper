@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appGuides, getGuideSteps, searchAppGuides } from './app-guides';
+import { appGuides, canRoleUseGuide, getGuideSteps, searchAppGuides } from './app-guides';
 
 function guide(path: string) {
   const match = appGuides.find((item) => item.path === path);
@@ -49,6 +49,15 @@ describe('role-aware application guides', () => {
     expect(recognitionSteps).toMatch(/confidence/i);
     expect(recognitionSteps).toMatch(/kiosk/i);
     expect(recognitionSteps).toMatch(/margin/i);
+  });
+
+  it('keeps shared tips and related links safe for viewers', () => {
+    const sharedViewerCopy = appGuides
+      .filter((item) => canRoleUseGuide(item, 'viewer'))
+      .flatMap((item) => [...item.tips, ...item.related.map((link) => link.label)])
+      .join(' ');
+
+    expect(sharedViewerCopy).not.toMatch(/save notes|reopen a closeout|resolve exceptions|correct an exception|re-enroll a worker|manage schedules/i);
   });
 });
 
