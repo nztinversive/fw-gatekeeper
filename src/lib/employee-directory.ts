@@ -4,6 +4,28 @@ export type EmployeeDirectoryEntry = {
   department: string;
 };
 
+export type EmployeeEnrollmentStatus = 'not_enrolled' | 'enrolled' | 'invalid';
+export type EmployeeDirectoryFilter = EmployeeEnrollmentStatus | 'all' | 'remaining';
+
+export type EmployeeDirectoryEnrollmentEntry = EmployeeDirectoryEntry & {
+  status: EmployeeEnrollmentStatus;
+  workerId?: string;
+};
+
+export type EmployeeDirectorySummary = {
+  total: number;
+  enrolled: number;
+  remaining: number;
+  invalid: number;
+};
+
+export type DirectoryWorker = {
+  id: string;
+  name: string;
+  employeeId?: string;
+  encodingStatus?: 'valid' | 'missing' | 'invalid';
+};
+
 export const employeeDirectory: EmployeeDirectoryEntry[] = [
   { name: 'Alex Gonzalez', employeeId: 'F-2', department: 'Area Manager' },
   { name: 'Amanda Bonapace', employeeId: 'S-1', department: 'Sales' },
@@ -91,7 +113,7 @@ export const employeeDirectory: EmployeeDirectoryEntry[] = [
   { name: 'Yonny Rodriguez Acosta', employeeId: 'F-80', department: 'Station 14' },
 ];
 
-function normalize(value: string) {
+export function normalizeDirectoryValue(value: string) {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -100,20 +122,73 @@ function normalize(value: string) {
     .trim();
 }
 
+function editDistance(left: string, right: string) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex++) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex++) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
+function termMatches(term: string, searchableParts: string[]) {
+  if (searchableParts.some((part) => part.includes(term) || part.startsWith(term))) return true;
+  if (term.length < 4) return false;
+  return searchableParts.some((part) => Math.abs(part.length - term.length) <= 2 && editDistance(part, term) <= 2);
+}
+
+export function reconcileEmployeeDirectory(
+  workers: DirectoryWorker[],
+): { employees: EmployeeDirectoryEnrollmentEntry[]; summary: EmployeeDirectorySummary } {
+  const workersByEmployeeId = new Map(
+    workers
+      .filter((worker) => worker.employeeId?.trim())
+      .map((worker) => [normalizeDirectoryValue(worker.employeeId!), worker]),
+  );
+  const workersByName = new Map(workers.map((worker) => [normalizeDirectoryValue(worker.name), worker]));
+
+  const employees = employeeDirectory.map((employee) => {
+    const worker = workersByEmployeeId.get(normalizeDirectoryValue(employee.employeeId))
+      || workersByName.get(normalizeDirectoryValue(employee.name));
+    const status: EmployeeEnrollmentStatus = worker?.encodingStatus === 'valid'
+      ? 'enrolled'
+      : worker?.encodingStatus === 'invalid'
+        ? 'invalid'
+        : 'not_enrolled';
+    return { ...employee, status, ...(worker ? { workerId: worker.id } : {}) };
+  });
+
+  const enrolled = employees.filter((employee) => employee.status === 'enrolled').length;
+  const invalid = employees.filter((employee) => employee.status === 'invalid').length;
+  return {
+    employees,
+    summary: { total: employees.length, enrolled, remaining: employees.length - enrolled, invalid },
+  };
+}
+
 export function searchEmployeeDirectory(query: string, limit = 8) {
-  const normalizedQuery = normalize(query);
+  const normalizedQuery = normalizeDirectoryValue(query);
   if (!normalizedQuery) return [];
 
   const terms = normalizedQuery.split(/\s+/);
 
-  return employeeDirectory
+  const ranked = employeeDirectory
     .map((employee, index) => {
-      const normalizedName = normalize(employee.name);
-      const normalizedId = normalize(employee.employeeId);
-      const normalizedDepartment = normalize(employee.department);
+      const normalizedName = normalizeDirectoryValue(employee.name);
+      const normalizedId = normalizeDirectoryValue(employee.employeeId);
+      const normalizedDepartment = normalizeDirectoryValue(employee.department);
       const searchable = `${normalizedName} ${normalizedId} ${normalizedDepartment}`;
 
-      if (!terms.every((term) => searchable.includes(term))) return null;
+      const searchableParts = searchable.split(/\s+/);
+      const strictMatch = terms.every((term) => searchableParts.some((part) => part.includes(term)));
+      if (!terms.every((term) => termMatches(term, searchableParts))) return null;
 
       let score = 4;
       if (normalizedId === normalizedQuery) score = 0;
@@ -121,10 +196,34 @@ export function searchEmployeeDirectory(query: string, limit = 8) {
       else if (normalizedName.startsWith(normalizedQuery)) score = 2;
       else if (terms.every((term) => normalizedName.split(' ').some((part) => part.startsWith(term)))) score = 3;
 
-      return { employee, index, score };
+      return { employee, index, score, strictMatch };
     })
-    .filter((result): result is NonNullable<typeof result> => result !== null)
+    .filter((result): result is NonNullable<typeof result> => result !== null);
+
+  const results = ranked.some((result) => result.strictMatch)
+    ? ranked.filter((result) => result.strictMatch)
+    : ranked;
+
+  return results
     .sort((a, b) => a.score - b.score || a.index - b.index)
     .slice(0, limit)
     .map(({ employee }) => employee);
+}
+
+export function filterEmployeeDirectory(
+  employees: EmployeeDirectoryEnrollmentEntry[],
+  query: string,
+  status: EmployeeDirectoryFilter,
+  limit = 12,
+) {
+  const employeesById = new Map(employees.map((employee) => [employee.employeeId, employee]));
+  const ordered = query.trim()
+    ? searchEmployeeDirectory(query, employeeDirectory.length)
+        .map((employee) => employeesById.get(employee.employeeId))
+        .filter((employee): employee is EmployeeDirectoryEnrollmentEntry => Boolean(employee))
+    : employees;
+
+  return ordered
+    .filter((employee) => status === 'all' || (status === 'remaining' ? employee.status !== 'enrolled' : employee.status === status))
+    .slice(0, query.trim() ? limit : employeeDirectory.length);
 }

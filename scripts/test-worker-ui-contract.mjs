@@ -36,10 +36,15 @@ assert.match(enrollPage, /\/api\/employee-directory\?q=/, 'New enrollment should
 assert.doesNotMatch(enrollPage, /searchEmployeeDirectory/, 'Enroll page must not bundle the employee directory data client-side.');
 assert.match(enrollPage, /selectEmployee[\s\S]*setEmployeeId\(employee\.employeeId\)[\s\S]*setDepartment\(employee\.department\)/, 'Selecting a directory match must fill its employee ID and area.');
 assert.match(enrollPage, /role="combobox"[\s\S]*role="listbox"[\s\S]*role="option"/, 'Employee suggestions must expose accessible combobox semantics.');
-assert.match(enrollPage, /No roster match\. You can continue with a new name\./, 'Enrollment must preserve manual entry for people outside the supplied roster.');
+assert.match(enrollPage, /No roster match\. Check the spelling or employee ID before creating someone new\./, 'Enrollment must warn operators before creating an off-roster person.');
+assert.match(enrollPage, /currentRole === 'admin'[\s\S]*Employee not listed\? Add manually/, 'Only admins should receive the explicit off-roster manual entry path.');
+assert.match(enrollPage, /Roster progress[\s\S]*of \{directorySummary\.total\} enrolled[\s\S]*remaining/, 'Enrollment must show live roster progress and remaining count.');
+assert.match(enrollPage, /Already enrolled[\s\S]*Needs re-enrollment[\s\S]*Ready to enroll/, 'Roster results must clearly distinguish enrollment status.');
+assert.match(enrollPage, /disabled=\{!name\.trim\(\) \|\| \(!workerId && !selectedEmployee && !manualEntry\)\}/, 'Enrollment must require a roster selection unless an admin explicitly uses manual entry.');
 assert.match(employeeDirectory, /Camilo \(Kevin Rojas\) Pacheco/, 'Employee directory should retain roster aliases used for search.');
 assert.match(enrollPage, /<Link href="\/enroll" className="btn-primary w-full py-3\.5 text-base block text-center">/, 'Done state must clear worker_id by navigating to a fresh /enroll URL before enrolling another person.');
 assert.match(enrollRoute, /employeeId\?: string/, 'Enroll API must accept an optional employee ID number.');
+assert.match(enrollRoute, /api\.workers\.findByEmployeeId/, 'Enroll API must reject duplicate employee IDs before processing photos.');
 assert.match(enrollRoute, /workerId\?: string/, 'Enroll API must accept an optional existing worker id.');
 assert.match(enrollRoute, /api\.workers\.update/, 'Enroll API must update an existing worker when workerId is provided.');
 assert.doesNotMatch(enrollRoute, /if \(existingWorker\?\.active\) \{\n\s*return NextResponse\.json\(\{ error: 'Worker name already exists' \}/, 'Enroll API must not reject the same active worker before checking workerId.');

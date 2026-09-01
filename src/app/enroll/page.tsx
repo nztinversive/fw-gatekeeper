@@ -5,7 +5,11 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 // Type-only import: the directory data itself stays server-side (served via
 // /api/employee-directory) so the roster never ships in the client bundle.
-import type { EmployeeDirectoryEntry } from '@/lib/employee-directory';
+import type {
+  EmployeeDirectoryEnrollmentEntry,
+  EmployeeDirectorySummary,
+  EmployeeEnrollmentStatus,
+} from '@/lib/employee-directory';
 import { usePortalRole } from '@/hooks/usePortalRole';
 
 type Step = 'name' | 'camera' | 'capturing' | 'processing' | 'done' | 'error';
@@ -21,9 +25,15 @@ function EnrollPageContent() {
   const [name, setName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [department, setDepartment] = useState('');
-  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeDirectoryEntry | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeDirectoryEnrollmentEntry | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<EmployeeEnrollmentStatus | 'all' | 'remaining'>('remaining');
+  const [directorySummary, setDirectorySummary] = useState<EmployeeDirectorySummary | null>(null);
+  const [completionSummary, setCompletionSummary] = useState<EmployeeDirectorySummary | null>(null);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState('');
+  const [manualEntry, setManualEntry] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [captureCount, setCaptureCount] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
@@ -36,42 +46,49 @@ function EnrollPageContent() {
   const employeeIdRef = useRef(employeeId);
   const departmentRef = useRef(department);
   const workerIdRef = useRef(workerId);
-  const [suggestions, setSuggestions] = useState<EmployeeDirectoryEntry[]>([]);
+  const [suggestions, setSuggestions] = useState<EmployeeDirectoryEnrollmentEntry[]>([]);
   nameRef.current = name;
   employeeIdRef.current = employeeId;
   departmentRef.current = department;
-  workerIdRef.current = workerId;
+  workerIdRef.current = selectedEmployee?.workerId || workerId;
 
   useEffect(() => {
-    if (workerId || !name.trim()) {
+    if (workerId) {
       setSuggestions([]);
       return;
     }
     const controller = new AbortController();
     const timer = setTimeout(async () => {
+      setDirectoryLoading(true);
+      setDirectoryError('');
       try {
-        const res = await fetch(`/api/employee-directory?q=${encodeURIComponent(name.trim())}`, {
+        const effectiveStatus = name.trim() ? 'all' : statusFilter;
+        const res = await fetch(`/api/employee-directory?q=${encodeURIComponent(name.trim())}&status=${effectiveStatus}`, {
           signal: controller.signal,
         });
-        if (!res.ok) return;
+        if (!res.ok) throw new Error('Roster unavailable');
         const body = await res.json();
         setSuggestions(Array.isArray(body?.suggestions) ? body.suggestions : []);
+        if (body?.summary) setDirectorySummary(body.summary);
       } catch {
-        // Keep the previous suggestions on transient failures.
+        if (!controller.signal.aborted) setDirectoryError('Unable to load the employee roster. Try again in a moment.');
+      } finally {
+        if (!controller.signal.aborted) setDirectoryLoading(false);
       }
     }, 200);
     return () => {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [name, workerId]);
+  }, [name, statusFilter, workerId]);
 
-  const selectEmployee = (employee: EmployeeDirectoryEntry) => {
+  const selectEmployee = (employee: EmployeeDirectoryEnrollmentEntry) => {
     setName(employee.name);
     setEmployeeId(employee.employeeId);
     setDepartment(employee.department);
     setSelectedEmployee(employee);
     setShowSuggestions(false);
+    setManualEntry(false);
     setActiveSuggestion(0);
   };
 
@@ -82,7 +99,8 @@ function EnrollPageContent() {
       setSelectedEmployee(null);
     }
     setName(value);
-    setShowSuggestions(Boolean(value.trim()));
+    if (value.trim()) setStatusFilter('all');
+    setShowSuggestions(true);
     setActiveSuggestion(0);
   };
 
@@ -97,7 +115,8 @@ function EnrollPageContent() {
       setActiveSuggestion((current) => (current - 1 + suggestions.length) % suggestions.length);
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      selectEmployee(suggestions[activeSuggestion]);
+      const employee = suggestions[Math.min(activeSuggestion, suggestions.length - 1)];
+      if (employee) selectEmployee(employee);
     } else if (event.key === 'Escape') {
       setShowSuggestions(false);
     }
@@ -196,6 +215,13 @@ function EnrollPageContent() {
       const result = await res.json();
       stopCamera();
       setResultMsg(`Face encoding saved. ${result.photosCount} photos captured.`);
+      try {
+        const progressRes = await fetch('/api/employee-directory?status=not_enrolled');
+        const progressBody = progressRes.ok ? await progressRes.json() : null;
+        if (progressBody?.summary) setCompletionSummary(progressBody.summary);
+      } catch {
+        // Enrollment succeeded; progress copy can gracefully omit fresh totals.
+      }
       setStep('done');
     } catch (err) {
       stopCamera();
@@ -263,7 +289,7 @@ function EnrollPageContent() {
   if (step === 'name') {
     return (
       <div className="min-h-[80vh] flex items-center justify-center p-4 animate-fade-in">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-3xl">
           <div className="text-center mb-8">
             <div className="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center mx-auto mb-4">
               <svg className="w-7 h-7 text-gold" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -276,6 +302,31 @@ function EnrollPageContent() {
             </h1>
             <p className="text-slate-400 mt-2 text-sm">{workerId ? 'Update face data for an existing team member' : 'Add a new team member to the gatekeeper system'}</p>
           </div>
+
+          {!workerId && directorySummary && (
+            <div className="glass-card mb-4 p-5" aria-label="Enrollment progress">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="section-label">Roster progress</p>
+                  <p className="mt-1 text-xl font-display font-semibold text-slate-100">
+                    {directorySummary.enrolled} of {directorySummary.total} enrolled
+                  </p>
+                </div>
+                <p className="text-sm font-semibold text-amber-400">{directorySummary.remaining} remaining</p>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-navy-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-gold transition-all"
+                  style={{ width: `${directorySummary.total ? (directorySummary.enrolled / directorySummary.total) * 100 : 0}%` }}
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-400">
+                <span><strong className="text-emerald-400">{directorySummary.enrolled}</strong> recognition ready</span>
+                <span><strong className="text-amber-400">{directorySummary.remaining - directorySummary.invalid}</strong> not enrolled</span>
+                <span><strong className="text-red-400">{directorySummary.invalid}</strong> needs re-enrollment</span>
+              </div>
+            </div>
+          )}
 
           <details className="glass-card mb-4 px-5 py-4">
             <summary className="cursor-pointer text-sm font-semibold text-slate-300">
@@ -309,19 +360,48 @@ function EnrollPageContent() {
           </details>
 
           <div className="glass-card p-6 space-y-5">
+            {!workerId && !selectedEmployee && !manualEntry && (
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="employee-name" className="section-label block">Find an employee</label>
+                  {directoryLoading && <span className="text-xs text-slate-500">Updating roster…</span>}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2" aria-label="Roster filters">
+                  {([
+                    ['remaining', `Remaining${directorySummary ? ` (${directorySummary.remaining})` : ''}`],
+                    ['enrolled', `Enrolled${directorySummary ? ` (${directorySummary.enrolled})` : ''}`],
+                    ['invalid', `Invalid${directorySummary ? ` (${directorySummary.invalid})` : ''}`],
+                    ['all', `All${directorySummary ? ` (${directorySummary.total})` : ''}`],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => { setStatusFilter(value); setName(''); setActiveSuggestion(0); setShowSuggestions(true); }}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${statusFilter === value ? 'border-gold/50 bg-gold/15 text-gold' : 'border-navy-600 text-slate-400 hover:text-slate-200'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="relative">
-              <label htmlFor="employee-name" className="section-label mb-1.5 block">Full Name *</label>
+              <label htmlFor="employee-name" className="section-label mb-1.5 block">
+                {workerId || selectedEmployee || manualEntry ? 'Full Name *' : 'Search by name, employee ID, or area'}
+              </label>
               <input
                 id="employee-name"
                 type="text"
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                onFocus={() => setShowSuggestions(Boolean(name.trim()) && !workerId)}
+                onFocus={() => setShowSuggestions(!workerId)}
                 onBlur={() => setShowSuggestions(false)}
                 onKeyDown={handleNameKeyDown}
-                placeholder="Start typing a name, ID, or area"
+                placeholder="Try Alex, F-2, or Station 4"
                 autoFocus
                 autoComplete="off"
+                readOnly={Boolean(selectedEmployee) || Boolean(workerId)}
                 role="combobox"
                 aria-autocomplete="list"
                 aria-expanded={showSuggestions && suggestions.length > 0}
@@ -329,11 +409,11 @@ function EnrollPageContent() {
                 aria-activedescendant={showSuggestions && suggestions.length > 0 ? `employee-suggestion-${activeSuggestion}` : undefined}
                 className="input-field text-lg py-3"
               />
-              {!workerId && showSuggestions && suggestions.length > 0 && (
+              {!workerId && !selectedEmployee && !manualEntry && showSuggestions && suggestions.length > 0 && (
                 <div
                   id="employee-suggestions"
                   role="listbox"
-                  className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-navy-600 bg-navy-900 shadow-2xl shadow-black/40"
+                  className="mt-3 max-h-80 w-full overflow-y-auto rounded-xl border border-navy-600 bg-navy-900"
                 >
                   {suggestions.map((employee, index) => (
                     <button
@@ -349,24 +429,39 @@ function EnrollPageContent() {
                     >
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-slate-100">{employee.name}</span>
-                        <span className="block truncate text-xs text-slate-500">{employee.department}</span>
+                        <span className="block truncate text-xs text-slate-500">{employee.employeeId} · {employee.department}</span>
                       </span>
-                      <span className="shrink-0 rounded-md bg-navy-700 px-2 py-1 font-mono text-xs text-gold">
-                        {employee.employeeId}
+                      <span className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${employee.status === 'enrolled' ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-400' : employee.status === 'invalid' ? 'border-red-400/20 bg-red-400/10 text-red-400' : 'border-amber-400/20 bg-amber-400/10 text-amber-400'}`}>
+                        {employee.status === 'enrolled' ? 'Already enrolled' : employee.status === 'invalid' ? 'Needs re-enrollment' : 'Ready to enroll'}
                       </span>
                     </button>
                   ))}
                 </div>
               )}
-              {!workerId && name.trim() && showSuggestions && suggestions.length === 0 && (
-                <div className="absolute z-20 mt-2 w-full rounded-xl border border-navy-600 bg-navy-900 px-4 py-3 text-sm text-slate-400 shadow-2xl shadow-black/40">
-                  No roster match. You can continue with a new name.
+              {!workerId && !selectedEmployee && !manualEntry && showSuggestions && name.trim() && !directoryLoading && !directoryError && suggestions.length === 0 && (
+                <div className="mt-3 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
+                  No roster match. Check the spelling or employee ID before creating someone new.
                 </div>
               )}
-              {!workerId && (
-                <p className="mt-1.5 text-xs text-slate-500">
-                  Select a roster match to fill the employee ID and area automatically.
-                </p>
+              {!workerId && !selectedEmployee && !manualEntry && directoryError && (
+                <div role="alert" className="mt-3 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+                  {directoryError}
+                </div>
+              )}
+              {!workerId && selectedEmployee && (
+                <div className={`mt-3 rounded-xl border px-4 py-3 ${selectedEmployee.status === 'enrolled' ? 'border-emerald-400/20 bg-emerald-400/5' : selectedEmployee.status === 'invalid' ? 'border-red-400/20 bg-red-400/5' : 'border-gold/20 bg-gold/5'}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-200">
+                        {selectedEmployee.status === 'enrolled' ? 'Already enrolled — this will update their face data.' : selectedEmployee.status === 'invalid' ? 'Existing face data is invalid — re-enrollment is recommended.' : 'Roster employee selected and ready to enroll.'}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">{selectedEmployee.employeeId} · {selectedEmployee.department}</p>
+                    </div>
+                    <button type="button" onClick={() => { setSelectedEmployee(null); setName(''); setEmployeeId(''); setDepartment(''); }} className="btn-ghost shrink-0 text-xs">
+                      Change
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -377,6 +472,7 @@ function EnrollPageContent() {
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 placeholder="e.g. F-2"
+                readOnly={!workerId && !manualEntry}
                 className="input-field"
               />
             </div>
@@ -388,16 +484,27 @@ function EnrollPageContent() {
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
                 placeholder="e.g. Area Manager, Mill, Station 4"
+                readOnly={!workerId && !manualEntry}
                 className="input-field"
               />
             </div>
 
+            {!workerId && !selectedEmployee && currentRole === 'admin' && (
+              <button
+                type="button"
+                onClick={() => { setManualEntry((current) => !current); setName(''); setEmployeeId(''); setDepartment(''); }}
+                className="btn-ghost w-full text-sm"
+              >
+                {manualEntry ? 'Back to company roster' : 'Employee not listed? Add manually'}
+              </button>
+            )}
+
             <button
               onClick={startCamera}
-              disabled={!name.trim()}
+              disabled={!name.trim() || (!workerId && !selectedEmployee && !manualEntry)}
               className="btn-primary w-full py-3.5 text-base flex items-center justify-center gap-2"
             >
-              Continue to Camera
+              {selectedEmployee?.workerId || workerId ? 'Continue to Re-enrollment' : 'Continue to Camera'}
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
               </svg>
@@ -552,12 +659,25 @@ function EnrollPageContent() {
           </h2>
           <p className="text-slate-400 mb-8 text-sm">{resultMsg}</p>
 
+          {completionSummary && (
+            <div className="glass-card mb-6 p-4 text-left">
+              <p className="section-label">Roster progress</p>
+              <p className="mt-1 text-lg font-display font-semibold text-slate-100">
+                {completionSummary.enrolled} of {completionSummary.total} enrolled
+              </p>
+              <p className="mt-1 text-sm text-amber-400">{completionSummary.remaining} employees remaining</p>
+            </div>
+          )}
+
           <div className="space-y-3">
             <Link href="/enroll" className="btn-primary w-full py-3.5 text-base block text-center">
-              Enroll Another Person
+              Enroll Next Employee
+            </Link>
+            <Link href="/enroll" className="btn-secondary block w-full text-center">
+              Return to Remaining Roster
             </Link>
             <Link href="/workers" className="btn-secondary block w-full text-center">
-              Back to Workers
+              View Enrolled Employees
             </Link>
           </div>
         </div>

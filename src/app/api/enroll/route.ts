@@ -49,6 +49,15 @@ export async function POST(req: NextRequest) {
     if (existingWorker?.active && (!workerId || existingWorker.id !== workerId)) {
       return NextResponse.json({ error: 'Worker name already exists' }, { status: 409 });
     }
+    if (employeeIdForSave) {
+      const existingEmployeeId = await convex.query(api.workers.findByEmployeeId, { employeeId: employeeIdForSave });
+      if (existingEmployeeId?.active && (!workerId || existingEmployeeId.id !== workerId)) {
+        return NextResponse.json(
+          { error: `Employee ID ${employeeIdForSave} is already enrolled for ${existingEmployeeId.name}` },
+          { status: 409 },
+        );
+      }
+    }
 
     let faceEncoding: number[] | undefined;
     try {

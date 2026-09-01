@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { employeeDirectory, searchEmployeeDirectory } from './employee-directory';
+import { employeeDirectory, filterEmployeeDirectory, reconcileEmployeeDirectory, searchEmployeeDirectory } from './employee-directory';
 
 describe('employee directory', () => {
   it('contains the supplied roster with unique employee IDs', () => {
@@ -15,5 +15,28 @@ describe('employee directory', () => {
 
   it('prioritizes exact IDs over partial ID matches', () => {
     expect(searchEmployeeDirectory('F-1')[0]?.name).toBe('Steven Wheeler (D)');
+  });
+
+  it('finds likely misspellings so operators can avoid duplicate people', () => {
+    expect(searchEmployeeDirectory('Alex Gonzales')[0]?.employeeId).toBe('F-2');
+  });
+
+  it('reconciles roster progress by employee ID before falling back to name', () => {
+    const result = reconcileEmployeeDirectory([
+      { id: 'worker-1', name: 'Different Display Name', employeeId: 'f-2', encodingStatus: 'valid' },
+      { id: 'worker-2', name: 'Amanda Bonapace', encodingStatus: 'invalid' },
+    ]);
+
+    expect(result.employees.find((employee) => employee.employeeId === 'F-2')).toMatchObject({ status: 'enrolled', workerId: 'worker-1' });
+    expect(result.employees.find((employee) => employee.employeeId === 'S-1')).toMatchObject({ status: 'invalid', workerId: 'worker-2' });
+    expect(result.summary).toEqual({ total: 84, enrolled: 1, remaining: 83, invalid: 1 });
+  });
+
+  it('preserves relevance ranking before limiting reconciled suggestions', () => {
+    const { employees } = reconcileEmployeeDirectory([]);
+    const suggestions = filterEmployeeDirectory(employees, 'F-1', 'all');
+
+    expect(suggestions[0]).toMatchObject({ employeeId: 'F-1', name: 'Steven Wheeler (D)' });
+    expect(suggestions).toHaveLength(12);
   });
 });

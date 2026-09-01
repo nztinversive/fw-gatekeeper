@@ -29,6 +29,11 @@ export default function WorkersPage() {
   const currentRole = usePortalRole();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'valid' | 'missing' | 'invalid'>('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'name' | 'employee_id' | 'status'>('name');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const canEdit = currentRole === 'admin';
   // Re-enrollment is an enrollment-role workflow too: /api/enroll and the
   // worker-by-id prefill both authorize it, and it preserves metadata.
@@ -108,6 +113,17 @@ export default function WorkersPage() {
   const enrolledCount = workers.filter(hasFaceEncoding).length;
   const invalidFaceCount = workers.filter((worker) => getEncodingStatus(worker) === 'invalid').length;
   const missingFaceCount = workers.filter((worker) => getEncodingStatus(worker) === 'missing').length;
+  const departments = Array.from(new Set(workers.map((worker) => worker.department).filter(Boolean))).sort();
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const filteredWorkers = workers
+    .filter((worker) => statusFilter === 'all' || getEncodingStatus(worker) === statusFilter)
+    .filter((worker) => departmentFilter === 'all' || worker.department === departmentFilter)
+    .filter((worker) => !normalizedSearch || `${worker.name} ${worker.employee_id || ''} ${worker.department || ''}`.toLocaleLowerCase().includes(normalizedSearch))
+    .sort((left, right) => {
+      if (sortBy === 'status') return getEncodingStatus(left).localeCompare(getEncodingStatus(right)) || left.name.localeCompare(right.name);
+      if (sortBy === 'employee_id') return (left.employee_id || '').localeCompare(right.employee_id || '', undefined, { numeric: true }) || left.name.localeCompare(right.name);
+      return left.name.localeCompare(right.name);
+    });
 
   return (
     <div className="animate-fade-in">
@@ -187,7 +203,7 @@ export default function WorkersPage() {
             </div>
             <div>
               <label className="section-label mb-1.5 block">Employee ID Number</label>
-              <input placeholder="e.g. 1042" inputMode="numeric" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="input-field" />
+              <input placeholder="e.g. F-2" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="input-field" />
             </div>
             <div>
               <label className="section-label mb-1.5 block">Department</label>
@@ -198,6 +214,52 @@ export default function WorkersPage() {
               <button onClick={resetEdit} className="btn-secondary">Cancel</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {!loading && workers.length > 0 && (
+        <div className="glass-card mb-6 p-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_180px_180px_140px_auto]">
+            <div>
+              <label htmlFor="worker-search" className="section-label mb-1.5 block">Search employees</label>
+              <input
+                id="worker-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Name, ID, or department"
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label htmlFor="worker-status" className="section-label mb-1.5 block">Enrollment status</label>
+              <select id="worker-status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)} className="input-field">
+                <option value="all">All statuses</option>
+                <option value="missing">Needs enrollment</option>
+                <option value="valid">Face enrolled</option>
+                <option value="invalid">Invalid face data</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="worker-department" className="section-label mb-1.5 block">Department</label>
+              <select id="worker-department" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className="input-field">
+                <option value="all">All departments</option>
+                {departments.map((departmentName) => <option key={departmentName} value={departmentName}>{departmentName}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="worker-sort" className="section-label mb-1.5 block">Sort by</label>
+              <select id="worker-sort" value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)} className="input-field">
+                <option value="name">Name</option>
+                <option value="employee_id">Employee ID</option>
+                <option value="status">Status</option>
+              </select>
+            </div>
+            <div className="flex items-end gap-1" aria-label="Worker view">
+              <button type="button" onClick={() => setViewMode('cards')} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${viewMode === 'cards' ? 'border-gold/50 bg-gold/15 text-gold' : 'border-navy-600 text-slate-400'}`}>Cards</button>
+              <button type="button" onClick={() => setViewMode('table')} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${viewMode === 'table' ? 'border-gold/50 bg-gold/15 text-gold' : 'border-navy-600 text-slate-400'}`}>Compact</button>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Showing {filteredWorkers.length} of {workers.length} registered workers</p>
         </div>
       )}
 
@@ -214,9 +276,11 @@ export default function WorkersPage() {
           <p className="text-slate-400 font-display">No workers registered yet</p>
           <p className="text-xs text-slate-600 mt-1">Use Enroll Face to add the first worker.</p>
         </div>
-      ) : (
+      ) : filteredWorkers.length === 0 ? (
+        <div className="glass-card p-10 text-center text-sm text-slate-400">No workers match these filters.</div>
+      ) : viewMode === 'cards' ? (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {workers.map((w, i) => {
+        {filteredWorkers.map((w, i) => {
           const encodingStatus = getEncodingStatus(w);
           const faceReady = encodingStatus === 'valid';
           const faceInvalid = encodingStatus === 'invalid';
@@ -274,6 +338,35 @@ export default function WorkersPage() {
           );
         })}
       </div>
+      ) : (
+        <div className="glass-card overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="border-b border-navy-600 text-xs uppercase tracking-wide text-slate-500">
+              <tr><th className="px-4 py-3">Employee</th><th className="px-4 py-3">ID</th><th className="px-4 py-3">Department</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
+            </thead>
+            <tbody className="divide-y divide-navy-700/60">
+              {filteredWorkers.map((worker) => {
+                const encodingStatus = getEncodingStatus(worker);
+                const statusLabel = encodingStatus === 'valid' ? 'Face enrolled' : encodingStatus === 'invalid' ? 'Invalid face data' : 'Needs enrollment';
+                return (
+                  <tr key={worker.id} className="hover:bg-navy-800/50">
+                    <td className="px-4 py-3 font-semibold text-slate-200">{worker.name}</td>
+                    <td className="px-4 py-3 font-mono text-slate-400">{worker.employee_id || 'Not set'}</td>
+                    <td className="px-4 py-3 text-slate-400">{worker.department || 'No department'}</td>
+                    <td className="px-4 py-3"><span className={`badge border ${encodingStatus === 'valid' ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-400' : encodingStatus === 'invalid' ? 'border-red-400/20 bg-red-400/10 text-red-400' : 'border-amber-400/20 bg-amber-400/10 text-amber-400'}`}>{statusLabel}</span></td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        {canEdit && <button onClick={() => startEdit(worker)} className="btn-ghost text-xs">Edit</button>}
+                        {canEnroll && <Link href={`/enroll?worker_id=${encodeURIComponent(worker.id)}`} className={encodingStatus === 'valid' ? 'btn-ghost text-xs' : 'btn-primary text-xs'}>{encodingStatus === 'missing' ? 'Enroll' : 'Re-enroll'}</Link>}
+                        {canEdit && <button onClick={() => deactivate(worker.id)} className="rounded-lg border border-red-400/20 px-2 py-1 text-xs text-red-400 hover:bg-red-400/10">Deactivate</button>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
