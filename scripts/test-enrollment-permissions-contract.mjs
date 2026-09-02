@@ -74,10 +74,31 @@ assert.match(
 );
 
 const enrollRoute = read('src/app/api/enroll/route.ts');
+const convexWorkers = read('convex/workers.ts');
 assert.match(
   enrollRoute,
   /const isAdminSession = await hasValidPortalSession\(req,\s*\['admin'\]\)/,
   'Enrollment API should detect admin role separately before allowing metadata changes during re-enrollment',
+);
+assert.match(
+  enrollRoute,
+  /!isAdminSession[\s\S]*findEmployeeDirectoryById\(employeeIdForSave\)[\s\S]*Select an employee from the company roster/,
+  'Enrollment-role creation must reject identities that are not in the company roster.',
+);
+assert.match(
+  enrollRoute,
+  /api\.workers\.createFromRoster/,
+  'Enrollment-role creation must use the roster-validated Convex mutation.',
+);
+assert.match(
+  convexWorkers,
+  /export const create = mutation\([\s\S]*assertPortalRole\(ctx, \["admin"\]\)/,
+  'Generic Convex worker creation must remain admin-only.',
+);
+assert.match(
+  convexWorkers,
+  /export const createFromRoster = mutation\([\s\S]*findEmployeeDirectoryById\(args\.employeeId\)/,
+  'Convex must independently validate enrollment-role creation against the roster.',
 );
 assert.match(
   enrollRoute,

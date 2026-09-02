@@ -24,7 +24,9 @@ export default defineSchema({
     enrolledAt: v.string(),
     updatedAt: v.optional(v.string()),
     active: v.boolean(),
-  }).index("by_active", ["active"]),
+  })
+    .index("by_active", ["active"])
+    .index("by_employee_id_and_active", ["employeeId", "active"]),
 
   attendance: defineTable({
     workerId: v.string(),
