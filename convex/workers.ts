@@ -1,6 +1,7 @@
 import { internalQuery, query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { assertPortalRole } from "./access";
+import { findEmployeeDirectoryById } from "../src/lib/employee-directory";
 
 // The kiosk matches exclusively 512-dim MobileFaceNet embeddings; legacy
 // 128-dim dlib encodings are invalid and require re-enrollment.
@@ -22,7 +23,7 @@ function normalizeDepartment(department?: string) {
 }
 
 function normalizeEmployeeId(employeeId?: string) {
-  return employeeId?.trim() || undefined;
+  return employeeId?.trim().toLocaleUpperCase() || undefined;
 }
 
 function getEncodingStatus(encoding?: number[]) {
@@ -35,8 +36,39 @@ async function findWorkerByName(ctx: any, name: string) {
   if (!normalizedLower) {
     return null;
   }
-  const workers = await ctx.db.query("workers").collect();
-  return workers.find((worker: any) => worker.name.trim().toLocaleLowerCase() === normalizedLower) || null;
+  let cursor: string | null = null;
+  do {
+    const page: any = await ctx.db.query("workers").paginate({ cursor, numItems: 500 });
+    const worker = page.page.find((candidate: any) => candidate.name.trim().toLocaleLowerCase() === normalizedLower);
+    if (worker) return worker;
+    if (page.isDone) return null;
+    cursor = page.continueCursor;
+  } while (cursor);
+  return null;
+}
+
+async function findWorkerByEmployeeId(ctx: any, employeeId?: string) {
+  const normalized = normalizeEmployeeId(employeeId);
+  if (!normalized) return null;
+  const exact = await ctx.db
+    .query("workers")
+    .withIndex("by_employee_id_and_active", (q: any) => q.eq("employeeId", normalized).eq("active", true))
+    .first();
+  if (exact) return exact;
+
+  // Compatibility for records created before IDs were normalized on write.
+  let cursor: string | null = null;
+  do {
+    const page: any = await ctx.db
+      .query("workers")
+      .withIndex("by_active", (q: any) => q.eq("active", true))
+      .paginate({ cursor, numItems: 500 });
+    const worker = page.page.find((candidate: any) => normalizeEmployeeId(candidate.employeeId) === normalized);
+    if (worker) return worker;
+    if (page.isDone) return null;
+    cursor = page.continueCursor;
+  } while (cursor);
+  return null;
 }
 
 export const list = query({
@@ -89,16 +121,22 @@ export const get = query({
   },
 });
 
-export const create = mutation({
-  args: {
-    name: v.string(),
-    employeeId: v.optional(v.string()),
-    department: v.optional(v.string()),
-    faceEncoding: v.array(v.float64()),
-    photoStorageIds: v.optional(v.array(v.id("_storage"))),
-  },
-  handler: async (ctx, args) => {
-    await assertPortalRole(ctx, ["admin", "enrollment"]);
+const createWorkerArgs = {
+  name: v.string(),
+  employeeId: v.optional(v.string()),
+  department: v.optional(v.string()),
+  faceEncoding: v.array(v.float64()),
+  photoStorageIds: v.optional(v.array(v.id("_storage"))),
+};
+
+const createWorkerResult = v.object({
+  id: v.id("workers"),
+  name: v.string(),
+  employeeId: v.optional(v.string()),
+  department: v.string(),
+});
+
+async function createWorker(ctx: any, args: any) {
     const name = normalizeName(args.name);
     if (!name) {
       throw new Error("Worker name is required");
@@ -110,9 +148,13 @@ export const create = mutation({
     const employeeId = normalizeEmployeeId(args.employeeId);
     const department = normalizeDepartment(args.department);
     const existing = await findWorkerByName(ctx, name);
+    const existingEmployeeId = await findWorkerByEmployeeId(ctx, employeeId);
 
     if (existing?.active) {
       throw new Error("Worker name already exists");
+    }
+    if (existingEmployeeId?.active && existingEmployeeId._id !== existing?._id) {
+      throw new Error(`Employee ID ${employeeId} already belongs to ${existingEmployeeId.name}`);
     }
 
     if (existing && !existing.active) {
@@ -140,6 +182,35 @@ export const create = mutation({
       active: true,
     });
     return { id, name, employeeId, department };
+}
+
+export const create = mutation({
+  args: createWorkerArgs,
+  returns: createWorkerResult,
+  handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin"]);
+    return await createWorker(ctx, args);
+  },
+});
+
+export const createFromRoster = mutation({
+  args: {
+    employeeId: v.string(),
+    faceEncoding: v.array(v.float64()),
+    photoStorageIds: v.optional(v.array(v.id("_storage"))),
+  },
+  returns: createWorkerResult,
+  handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
+    const employee = findEmployeeDirectoryById(args.employeeId);
+    if (!employee) throw new Error("Employee must be selected from the company roster");
+    return await createWorker(ctx, {
+      name: employee.name,
+      employeeId: employee.employeeId,
+      department: employee.department,
+      faceEncoding: args.faceEncoding,
+      photoStorageIds: args.photoStorageIds,
+    });
   },
 });
 
@@ -159,6 +230,20 @@ export const findByName = query({
   },
 });
 
+export const findByEmployeeId = query({
+  args: { employeeId: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({ id: v.id("workers"), name: v.string(), active: v.number() }),
+  ),
+  handler: async (ctx, args) => {
+    await assertPortalRole(ctx, ["admin", "enrollment"]);
+    const worker = await findWorkerByEmployeeId(ctx, args.employeeId);
+    if (!worker) return null;
+    return { id: worker._id, name: worker.name, active: worker.active ? 1 : 0 };
+  },
+});
+
 export const update = mutation({
   args: {
     id: v.id("workers"),
@@ -169,6 +254,7 @@ export const update = mutation({
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
     enrolledAt: v.optional(v.string()),
   },
+  returns: v.object({ ok: v.boolean() }),
   handler: async (ctx, args) => {
     await assertPortalRole(ctx, ["admin", "enrollment"]);
     const { id, ...fields } = args;
@@ -187,7 +273,14 @@ export const update = mutation({
       }
       updates.name = trimmedName;
     }
-    if (fields.employeeId !== undefined) updates.employeeId = normalizeEmployeeId(fields.employeeId);
+    if (fields.employeeId !== undefined) {
+      const normalizedEmployeeId = normalizeEmployeeId(fields.employeeId);
+      const existingEmployeeId = await findWorkerByEmployeeId(ctx, normalizedEmployeeId);
+      if (existingEmployeeId && existingEmployeeId._id !== id && existingEmployeeId.active) {
+        throw new Error(`Employee ID ${normalizedEmployeeId} already belongs to ${existingEmployeeId.name}`);
+      }
+      updates.employeeId = normalizedEmployeeId;
+    }
     if (fields.department !== undefined) updates.department = normalizeDepartment(fields.department);
     if (fields.faceEncoding !== undefined) updates.faceEncoding = fields.faceEncoding;
     if (fields.photoStorageIds !== undefined) updates.photoStorageIds = fields.photoStorageIds;
