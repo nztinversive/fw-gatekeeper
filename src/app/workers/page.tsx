@@ -103,6 +103,36 @@ export default function WorkersPage() {
     }
   };
 
+  // Admin-only: irreversibly deletes the face template + enrollment photos and
+  // deactivates the worker so kiosks drop the cached template on next sync.
+  const purgeBiometrics = async (w: Worker) => {
+    const reason = window.prompt(
+      `Permanently delete ${w.name}'s face template and enrollment photos?\n\n` +
+      'This also deactivates the worker; kiosks drop the cached template within one sync cycle. ' +
+      'This cannot be undone.\n\nEnter a reason (required):',
+    );
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast('A reason is required to purge face data', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/workers/purge-biometrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: w.id, reason: reason.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || 'Failed to purge face data');
+      }
+      toast(`${w.name}'s face data purged and worker deactivated`);
+      fetchWorkers();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Failed to purge face data', 'error');
+    }
+  };
+
   const startEdit = (w: Worker) => {
     setEditId(w.id);
     setName(w.name);
@@ -333,6 +363,15 @@ export default function WorkersPage() {
                     Deactivate
                   </button>
                 )}
+                {canEdit && (
+                  <button
+                    onClick={() => purgeBiometrics(w)}
+                    title="Permanently delete face template and photos, then deactivate"
+                    className="px-3 py-2 text-xs rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 transition-all"
+                  >
+                    Purge face data
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -359,6 +398,7 @@ export default function WorkersPage() {
                         {canEdit && <button onClick={() => startEdit(worker)} className="btn-ghost text-xs">Edit</button>}
                         {canEnroll && <Link href={`/enroll?worker_id=${encodeURIComponent(worker.id)}`} className={encodingStatus === 'valid' ? 'btn-ghost text-xs' : 'btn-primary text-xs'}>{encodingStatus === 'missing' ? 'Enroll' : 'Re-enroll'}</Link>}
                         {canEdit && <button onClick={() => deactivate(worker.id)} className="rounded-lg border border-red-400/20 px-2 py-1 text-xs text-red-400 hover:bg-red-400/10">Deactivate</button>}
+                        {canEdit && <button onClick={() => purgeBiometrics(worker)} title="Permanently delete face template and photos, then deactivate" className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-300 hover:bg-red-500/20">Purge face data</button>}
                       </div>
                     </td>
                   </tr>
