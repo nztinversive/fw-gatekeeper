@@ -91,8 +91,25 @@ export async function POST(req: NextRequest) {
       if (encodeRes.ok) {
         faceEncoding = encodeBody.encoding;
       } else {
+        // The face service's quality gate returns 422 with a structured detail
+        // ({ message, photos, disagreeing_pairs }); other failures use a string detail.
+        const detail = encodeBody?.detail;
+        const qualityDetail = detail && typeof detail === 'object' && !Array.isArray(detail) ? detail : null;
+        const detailMessage = typeof detail === 'string' ? detail : undefined;
         return NextResponse.json(
-          { error: encodeBody?.detail || encodeBody?.error || 'Face encoding service rejected the enrollment photos' },
+          {
+            error:
+              qualityDetail?.message ||
+              detailMessage ||
+              encodeBody?.error ||
+              'Face encoding service rejected the enrollment photos',
+            ...(qualityDetail
+              ? {
+                  photos: Array.isArray(qualityDetail.photos) ? qualityDetail.photos : [],
+                  disagreeing_pairs: Array.isArray(qualityDetail.disagreeing_pairs) ? qualityDetail.disagreeing_pairs : [],
+                }
+              : {}),
+          },
           { status: encodeRes.status === 422 ? 422 : 503 }
         );
       }
