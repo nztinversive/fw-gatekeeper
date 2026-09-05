@@ -4,6 +4,7 @@ import { listEffectiveAttendanceByTimestampRange } from "./attendance";
 import { findActiveKioskByIdentifier } from "./kioskLookup";
 import { listAllRecognitionAttemptsByFactoryDate } from "./recognitionAttempts";
 import { assertPortalRole } from "./access";
+import { getFactoryLocalDateKey } from "./localDate";
 
 const LOW_MARGIN_THRESHOLD = 0.08;
 
@@ -85,7 +86,12 @@ function getMinutesFromTimestamp(timestamp?: string | null): number | null {
 }
 
 function dateHasPassed(date: string) {
-  return date < new Date().toISOString().slice(0, 10);
+  // Compare against the factory's local calendar day, not the UTC day.
+  // From 19:00 Central the UTC date is already tomorrow, which used to mark
+  // "today" as passed and flag every still-clocked-in worker as a missing
+  // clock-out hours before their scheduled end.
+  const today = getFactoryLocalDateKey(new Date().toISOString());
+  return today !== null && date < today;
 }
 
 function formatTime(value?: string | null) {
