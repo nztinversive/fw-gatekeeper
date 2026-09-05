@@ -147,6 +147,18 @@ export default defineSchema({
   }).index("by_active", ["active"])
     .index("by_kiosk_id", ["kioskId"]),
 
+  // One row per (kiosk, condition) episode, written by the alerting cron in
+  // convex/alerts.ts. A row is "open" while resolvedAt is unset; a fresh
+  // episode gets a new row once the previous one has resolved.
+  alertState: defineTable({
+    kioskId: v.string(),
+    condition: v.string(),
+    firstSeenAt: v.string(),
+    lastNotifiedAt: v.optional(v.string()),
+    resolvedAt: v.optional(v.string()),
+  })
+    .index("by_kiosk_condition", ["kioskId", "condition"]),
+
   schedules: defineTable({
     name: v.string(),
     days: v.string(),
