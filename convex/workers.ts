@@ -1,6 +1,7 @@
 import { internalQuery, query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { assertPortalRole } from "./access";
+import { writeAuditLog } from "./audit";
 import { findEmployeeDirectoryById } from "../src/lib/employee-directory";
 
 // The kiosk matches exclusively 512-dim MobileFaceNet embeddings; legacy
@@ -127,6 +128,8 @@ const createWorkerArgs = {
   department: v.optional(v.string()),
   faceEncoding: v.array(v.float64()),
   photoStorageIds: v.optional(v.array(v.id("_storage"))),
+  // ISO timestamp of the biometric consent acknowledgement captured at enrollment.
+  consentAt: v.optional(v.string()),
 };
 
 const createWorkerResult = v.object({
@@ -167,6 +170,9 @@ async function createWorker(ctx: any, args: any) {
         enrolledAt: now,
         updatedAt: now,
         active: true,
+        consentAt: args.consentAt,
+        // A fresh enrollment supersedes any earlier purge marker.
+        biometricsPurgedAt: undefined,
       });
       return { id: existing._id, name, employeeId, department };
     }
@@ -180,6 +186,7 @@ async function createWorker(ctx: any, args: any) {
       enrolledAt: now,
       updatedAt: now,
       active: true,
+      consentAt: args.consentAt,
     });
     return { id, name, employeeId, department };
 }
@@ -198,6 +205,7 @@ export const createFromRoster = mutation({
     employeeId: v.string(),
     faceEncoding: v.array(v.float64()),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
+    consentAt: v.optional(v.string()),
   },
   returns: createWorkerResult,
   handler: async (ctx, args) => {
@@ -210,6 +218,7 @@ export const createFromRoster = mutation({
       department: employee.department,
       faceEncoding: args.faceEncoding,
       photoStorageIds: args.photoStorageIds,
+      consentAt: args.consentAt,
     });
   },
 });
@@ -253,6 +262,7 @@ export const update = mutation({
     faceEncoding: v.optional(v.array(v.float64())),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
     enrolledAt: v.optional(v.string()),
+    consentAt: v.optional(v.string()),
   },
   returns: v.object({ ok: v.boolean() }),
   handler: async (ctx, args) => {
@@ -285,6 +295,11 @@ export const update = mutation({
     if (fields.faceEncoding !== undefined) updates.faceEncoding = fields.faceEncoding;
     if (fields.photoStorageIds !== undefined) updates.photoStorageIds = fields.photoStorageIds;
     if (fields.enrolledAt !== undefined) updates.enrolledAt = fields.enrolledAt;
+    if (fields.consentAt !== undefined) updates.consentAt = fields.consentAt;
+    if (fields.faceEncoding !== undefined) {
+      // Re-enrollment restores biometric data, so clear any earlier purge marker.
+      updates.biometricsPurgedAt = undefined;
+    }
     updates.updatedAt = new Date().toISOString();
     await ctx.db.patch(id, updates);
     return { ok: true };
@@ -294,9 +309,71 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("workers") },
   handler: async (ctx, args) => {
-    await assertPortalRole(ctx, ["admin"]);
+    const member = await assertPortalRole(ctx, ["admin"]);
+    const worker = await ctx.db.get(args.id);
+    if (!worker) throw new Error("Worker not found");
     await ctx.db.patch(args.id, { active: false, updatedAt: new Date().toISOString() });
+    await writeAuditLog(ctx, {
+      actorUserId: member.userId,
+      action: "workers.remove",
+      targetTable: "workers",
+      targetId: args.id,
+      details: JSON.stringify({ name: worker.name, employeeId: worker.employeeId ?? null }),
+    });
     return { ok: true };
+  },
+});
+
+/**
+ * Permanently delete a worker's biometric data (face template + enrollment
+ * photos). The worker is also deactivated: kiosks only drop a worker from
+ * their local roster when the sync row says inactive, and `sync.py` skips
+ * rows with a null face_encoding, so a purged-but-active worker would keep
+ * matching at the door from the cached template. See RETENTION.md.
+ */
+export const purgeBiometrics = mutation({
+  args: { id: v.id("workers"), reason: v.string() },
+  returns: v.object({ ok: v.boolean(), photosDeleted: v.number(), purgedAt: v.string() }),
+  handler: async (ctx, args) => {
+    const member = await assertPortalRole(ctx, ["admin"]);
+    const reason = args.reason.trim();
+    if (!reason) {
+      throw new Error("A reason is required to purge face data");
+    }
+    const worker = await ctx.db.get(args.id);
+    if (!worker) throw new Error("Worker not found");
+
+    let photosDeleted = 0;
+    for (const storageId of worker.photoStorageIds ?? []) {
+      await ctx.storage.delete(storageId);
+      photosDeleted += 1;
+    }
+
+    const now = new Date().toISOString();
+    await ctx.db.patch(args.id, {
+      faceEncoding: undefined,
+      photoStorageIds: undefined,
+      active: false,
+      updatedAt: now,
+      biometricsPurgedAt: now,
+    });
+
+    await writeAuditLog(ctx, {
+      actorUserId: member.userId,
+      action: "workers.purgeBiometrics",
+      targetTable: "workers",
+      targetId: args.id,
+      reason,
+      details: JSON.stringify({
+        name: worker.name,
+        employeeId: worker.employeeId ?? null,
+        hadFaceEncoding: Boolean(worker.faceEncoding),
+        photosDeleted,
+        wasActive: worker.active,
+      }),
+    });
+
+    return { ok: true, photosDeleted, purgedAt: now };
   },
 });
 
